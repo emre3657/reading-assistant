@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
+import '../services/ocr_text_formatter.dart';
 import '../services/text_recognition_service.dart';
 import 'widgets/image_preview.dart';
 
@@ -55,6 +56,11 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   /// Last text produced by OCR; null when there is no OCR result. Used to tell
   /// whether the user has edited the text.
   String? _recognizedText;
+
+  /// Unmodified OCR result of the current image; the line-joined text is
+  /// always derived from it.
+  String? _rawText;
+  bool _joinLines = false;
   String? _errorMessage;
   String? _infoMessage;
 
@@ -86,6 +92,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       widget.previewImageBuilder(file),
     );
     _recognizedText = null;
+    _rawText = null;
+    _joinLines = false;
     _quarterTurns = 0;
     _textController.clear();
   }
@@ -167,6 +175,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     setState(() {
       _selection = null;
       _recognizedText = null;
+      _rawText = null;
+      _joinLines = false;
       _quarterTurns = 0;
       _textController.clear();
       _errorMessage = null;
@@ -218,6 +228,32 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       _quarterTurns = (_quarterTurns + delta) % 4;
       _errorMessage = null;
       _infoMessage = null;
+    });
+  }
+
+  /// Shows the text derived from the raw OCR result, joined or not. Edits are
+  /// replaced, so the user must confirm first. [_recognizedText] follows the
+  /// displayed generated text, which keeps edit detection correct.
+  Future<void> _setJoinLines(bool value) async {
+    if (_isBusy || _rawText == null) return;
+    if (_hasEditedText) {
+      final confirmed = await _confirm(
+        title: 'Düzenlediğin metin silinsin mi?',
+        content:
+            'Satır birleştirme ayarı değiştirilirse düzenlediğin metin '
+            'ham OCR sonucundan yeniden oluşturulacak. Metin henüz '
+            'kaydedilmedi.',
+        confirmLabel: 'Metni sil ve uygula',
+      );
+      if (!confirmed || !mounted || _isBusy) return;
+    }
+    final raw = _rawText;
+    if (raw == null) return;
+    final display = value ? joinOcrLines(raw) : raw;
+    setState(() {
+      _joinLines = value;
+      _recognizedText = display;
+      _textController.value = TextEditingValue(text: display);
     });
   }
 
@@ -291,6 +327,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
               'fotoğrafla "Metni çıkar" düğmesine tekrar basabilirsin.';
         } else {
           _recognizedText = text;
+          _rawText = text;
+          _joinLines = false;
           _textController.value = TextEditingValue(text: text);
         }
       }
@@ -410,8 +448,24 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
               ],
               if (_recognizedText != null) ...[
                 const SizedBox(height: 24),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Satırları birleştir'),
+                  subtitle: const Text(
+                    'Kitaptaki satır sonlarını boşluğa çevirir; boş satırla '
+                    'ayrılmış paragraflar korunur. Satır sonunda tire ve '
+                    'sonraki satırda küçük harf varsa kelime birleştirilir. '
+                    'Bu tahmine dayanır; gerçek tireli kelimeleri de '
+                    'birleştirebilir. Her seferinde ham OCR sonucundan '
+                    'üretilir.',
+                  ),
+                  value: _joinLines,
+                  onChanged: _isBusy ? null : _setJoinLines,
+                ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _textController,
+                  textAlign: TextAlign.justify,
                   readOnly: _isRecognizing,
                   minLines: 6,
                   maxLines: null,

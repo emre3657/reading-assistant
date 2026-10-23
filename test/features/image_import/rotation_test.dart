@@ -55,6 +55,10 @@ class _Harness {
   );
 
   Future<void> start(WidgetTester tester) async {
+    // Tall surface so the longer layout keeps all controls on screen.
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(app);
     await tester.pump();
     await tester.tap(find.text(_selectLabel));
