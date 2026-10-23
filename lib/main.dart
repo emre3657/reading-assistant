@@ -1,122 +1,243 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const ReadingAssistantApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+/// Opens the system photo picker. Returns null when the user cancels.
+typedef PickImage = Future<XFile?> Function();
 
-  // This widget is the root of your application.
+/// Returns an image picked before Android killed the activity, if any.
+typedef RetrieveLostImage = Future<XFile?> Function();
+
+Future<XFile?> pickImageFromGallery() {
+  // Full metadata is not needed and would request extra photo permissions.
+  return ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    requestFullMetadata: false,
+  );
+}
+
+Future<XFile?> retrieveLostImageFromPicker() async {
+  final response = await ImagePicker().retrieveLostData();
+  if (response.isEmpty) return null;
+  if (response.exception != null) throw response.exception!;
+  return response.file ?? response.files?.firstOrNull;
+}
+
+class ReadingAssistantApp extends StatelessWidget {
+  const ReadingAssistantApp({
+    super.key,
+    this.pickImage = pickImageFromGallery,
+    this.retrieveLostImage = retrieveLostImageFromPicker,
+  });
+
+  final PickImage pickImage;
+  final RetrieveLostImage retrieveLostImage;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Reading Assistant',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: HomePage(
+        pickImage: pickImage,
+        retrieveLostImage: retrieveLostImage,
+      ),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class HomePage extends StatefulWidget {
+  const HomePage({
+    super.key,
+    required this.pickImage,
+    required this.retrieveLostImage,
+  });
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+  final PickImage pickImage;
+  final RetrieveLostImage retrieveLostImage;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _HomePageState extends State<HomePage> {
+  XFile? _image;
+  bool _isPicking = false;
+  String? _errorMessage;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    // Lost picker results only exist on Android.
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      _isPicking = true;
+      _recoverLostImage();
+    }
+  }
+
+  Future<void> _recoverLostImage() async {
+    XFile? recovered;
+    String? error;
+    try {
+      recovered = await widget.retrieveLostImage();
+    } catch (_) {
+      error = 'Önceki fotoğraf seçimi kurtarılamadı. Lütfen tekrar seçin.';
+    }
+    if (!mounted) return;
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isPicking = false;
+      if (recovered != null) _image = recovered;
+      _errorMessage = error;
+    });
+  }
+
+  Future<void> _selectImage() async {
+    if (_isPicking) return;
+    setState(() {
+      _isPicking = true;
+      _errorMessage = null;
+    });
+    XFile? picked;
+    String? error;
+    try {
+      picked = await widget.pickImage();
+    } catch (_) {
+      error = 'Görsel seçilemedi. Lütfen tekrar deneyin.';
+    }
+    if (!mounted) return;
+    setState(() {
+      _isPicking = false;
+      // A cancelled pick (null) keeps the current image.
+      if (picked != null) _image = picked;
+      _errorMessage = error;
+    });
+  }
+
+  void _removeImage() {
+    if (_isPicking) return;
+    // Only drops the reference. The file is not deleted here because the
+    // picker's copy may still be needed by later steps.
+    setState(() {
+      _image = null;
+      _errorMessage = null;
+    });
+  }
+
+  void _onPreviewError() {
+    if (!mounted) return;
+    setState(() {
+      _image = null;
+      _errorMessage = 'Görsel görüntülenemedi. Lütfen başka bir görsel seçin.';
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    final image = _image;
+    final hasImage = image != null;
+
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Reading Assistant'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (hasImage)
+                _ImagePreview(
+                  key: ValueKey(image.path),
+                  path: image.path,
+                  onError: _onPreviewError,
+                )
+              else
+                const _EmptyState(),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 16),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              if (_isPicking)
+                const Center(
+                  child: CircularProgressIndicator(
+                    semanticsLabel: 'Yükleniyor',
+                  ),
+                )
+              else ...[
+                FilledButton.icon(
+                  onPressed: _selectImage,
+                  icon: const Icon(Icons.photo_library),
+                  label: Text(
+                    hasImage ? 'Görseli değiştir' : 'Galeriden görsel seç',
+                  ),
+                ),
+                if (hasImage) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _removeImage,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Görseli kaldır'),
+                  ),
+                ],
+              ],
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 32),
+      child: Text(
+        'Metnini okumak istediğin sayfanın fotoğrafını galeriden seç.',
+        textAlign: TextAlign.center,
       ),
+    );
+  }
+}
+
+class _ImagePreview extends StatelessWidget {
+  const _ImagePreview({super.key, required this.path, required this.onError});
+
+  final String path;
+  final VoidCallback onError;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.file(
+      File(path),
+      fit: BoxFit.contain,
+      semanticLabel: 'Seçilen görselin önizlemesi',
+      errorBuilder: (context, error, stackTrace) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => onError());
+        return const SizedBox.shrink();
+      },
     );
   }
 }
