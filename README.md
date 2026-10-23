@@ -40,10 +40,24 @@ Doğrulanan bilgiler:
 - Bağımlılıklar: `flutter`, `cupertino_icons`, `image_picker ^1.2.4` (Android SDK 24+, iOS 13+ destekler); geliştirme tarafında `flutter_test` ve `flutter_lints`.
 - Android `minSdk`/`targetSdk`/`compileSdk` değerleri Flutter varsayılanlarından gelir. Android'de depolama izni istenmez; Android 13+ sistem fotoğraf seçicisi kullanılır. Activity sistem tarafından kapatılırsa seçim `retrieveLostData` ile kurtarılır.
 - iOS'ta `NSPhotoLibraryUsageDescription` açıklaması [Info.plist](ios/Runner/Info.plist) içinde tanımlı; `requestFullMetadata: false` ile ek izin istenmez. Kamera yok.
-- [lib/main.dart](lib/main.dart): tek ekran; galeriden tek görsel seçme, oranı koruyarak önizleme, değiştirme, kaldırma, iptalde mevcut görseli koruma, Türkçe hata mesajları. Seçici, testlerde değiştirilebilmesi için fonksiyon olarak enjekte edilir.
-- Seçilen görselin dosyası bu adımda silinmez; temizlik OCR akışında, yalnızca uygulamaya ait kopyalar için yapılacak.
+- Ekran: galeriden tek görsel seçme, oranı koruyarak ve görüntü boyutuna göre sınırlı çözünürlükte önizleme (kaynak dosya değiştirilmez), değiştirme, kaldırma, iptalde mevcut görseli koruma, Türkçe hata mesajları. Önizleme hatası yalnızca hâlâ aktif olan seçime uygulanır. Galeri seçimi `ImagePickerService` ile soyutlanır ve testlerde sahtesiyle değiştirilir.
+- Dosya sahipliği (paket kaynağından doğrulandı): `image_picker_android 0.8.13+25` seçilen dosyayı uygulamanın önbelleğine (`cacheDir/{uuid}/{ad}`), `image_picker_ios 0.8.13+13` ise `NSTemporaryDirectory` altına kopyalayıp yolunu döndürür. Bizim kodumuz kopya oluşturmaz ve dosya silmez; bu kopyaların yaşam döngüsü henüz yönetilmiyor, temizlik OCR akışında yapılacak.
 - Android ve iOS dışında web, windows, linux ve macos dizinleri de var; hedef platformlar yalnızca Android ve iOS.
-- [test/widget_test.dart](test/widget_test.dart): başlangıç ekranı, seçim, iptal, kaldırma, hata, çift seçimi engelleme, kayıp görsel kurtarma ve büyük yazı testleri.
+- Testler: [test/features/image_import/](test/features/image_import) altında ekran ve önizleme testleri.
+
+## Klasör yapısı
+
+```text
+lib/
+  main.dart                      # yalnızca uygulamayı başlatır
+  app.dart                       # MaterialApp ve tema
+  features/
+    image_import/
+      presentation/
+        image_import_screen.dart # ekran ve basit durum yönetimi
+        widgets/image_preview.dart
+      services/image_picker_service.dart
+```
 
 ## Geliştirme
 
