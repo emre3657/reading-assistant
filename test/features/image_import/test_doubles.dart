@@ -5,6 +5,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
+import 'package:reading_assistant/features/image_import/services/text_recognition_service.dart';
+
+class FakeTextRecognitionService implements TextRecognitionService {
+  FakeTextRecognitionService(this.onRecognize);
+
+  final Future<String> Function(String path) onRecognize;
+  final List<String> paths = [];
+
+  @override
+  Future<String> recognizeText(String imagePath) {
+    paths.add(imagePath);
+    return onRecognize(imagePath);
+  }
+}
 
 /// Image provider whose load never finishes until the test fails it.
 class ControlledImageProvider extends ImageProvider<ControlledImageProvider> {
