@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
+import 'package:reading_assistant/features/image_import/services/image_rotation_service.dart';
 import 'package:reading_assistant/features/image_import/services/text_recognition_service.dart';
 
 class FakeTextRecognitionService implements TextRecognitionService {
@@ -37,6 +38,30 @@ class ControlledImageProvider extends ImageProvider<ControlledImageProvider> {
     ImageDecoderCallback decode,
   ) {
     return MultiFrameImageStreamCompleter(codec: codec.future, scale: 1);
+  }
+}
+
+class FakeImageRotationService implements ImageRotationService {
+  FakeImageRotationService({this.onCreate, this.onDelete});
+
+  final Future<String> Function(String sourcePath, int quarterTurns)? onCreate;
+  final Future<void> Function(String path)? onDelete;
+
+  /// Source path and turns of every copy request.
+  final List<(String, int)> created = [];
+  final List<String> deleted = [];
+
+  @override
+  Future<String> createRotatedCopy(String sourcePath, int quarterTurns) {
+    created.add((sourcePath, quarterTurns));
+    return onCreate?.call(sourcePath, quarterTurns) ??
+        Future.value('/tmp/rotated_${created.length}.jpg');
+  }
+
+  @override
+  Future<void> deleteCopy(String path) async {
+    deleted.add(path);
+    await onDelete?.call(path);
   }
 }
 

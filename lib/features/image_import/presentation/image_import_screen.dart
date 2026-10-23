@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/image_picker_service.dart';
+import '../services/image_rotation_service.dart';
 import '../services/text_recognition_service.dart';
 import 'widgets/image_preview.dart';
 
@@ -27,11 +28,13 @@ class ImageImportScreen extends StatefulWidget {
     super.key,
     this.pickerService = const ImagePickerService(),
     this.textRecognitionService = const TextRecognitionService(),
+    this.rotationService = const ImageRotationService(),
     this.previewImageBuilder = fileImageProvider,
   });
 
   final ImagePickerService pickerService;
   final TextRecognitionService textRecognitionService;
+  final ImageRotationService rotationService;
   final PreviewImageBuilder previewImageBuilder;
 
   @override
@@ -41,6 +44,10 @@ class ImageImportScreen extends StatefulWidget {
 class _ImageImportScreenState extends State<ImageImportScreen> {
   final _textController = TextEditingController();
   _Selection? _selection;
+
+  /// Clockwise quarter turns (0-3) applied to the preview and to OCR input.
+  /// Reset for every new selection.
+  int _quarterTurns = 0;
   int _lastSelectionId = 0;
   bool _isPicking = false;
   bool _isRecognizing = false;
@@ -79,6 +86,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       widget.previewImageBuilder(file),
     );
     _recognizedText = null;
+    _quarterTurns = 0;
     _textController.clear();
   }
 
@@ -159,6 +167,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     setState(() {
       _selection = null;
       _recognizedText = null;
+      _quarterTurns = 0;
       _textController.clear();
       _errorMessage = null;
       _infoMessage = null;
@@ -201,6 +210,17 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     return confirmed ?? false;
   }
 
+  /// Rotates the image used for the preview and for the next OCR run. The
+  /// recognized or edited text is kept.
+  void _rotate(int delta) {
+    if (_selection == null || _isBusy) return;
+    setState(() {
+      _quarterTurns = (_quarterTurns + delta) % 4;
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+  }
+
   Future<void> _extractText() async {
     final selection = _selection;
     if (selection == null || _isBusy) return;
@@ -222,15 +242,38 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       _errorMessage = null;
       _infoMessage = null;
     });
+    final quarterTurns = _quarterTurns;
     String? text;
     String? error;
+    // Temporary rotated copy owned by this OCR run; deleted only after OCR has
+    // finished, whether it succeeded, failed or the screen was closed.
+    String? rotatedPath;
+    var rotationFailed = false;
     try {
-      // The original picked file is used, not the downscaled preview.
-      text = await widget.textRecognitionService.recognizeText(
-        selection.file.path,
-      );
+      var inputPath = selection.file.path;
+      if (quarterTurns != 0) {
+        try {
+          rotatedPath = await widget.rotationService.createRotatedCopy(
+            inputPath,
+            quarterTurns,
+          );
+        } catch (_) {
+          rotationFailed = true;
+          rethrow;
+        }
+        inputPath = rotatedPath;
+      }
+      // Without rotation the original picked file is used, not the downscaled
+      // preview.
+      text = await widget.textRecognitionService.recognizeText(inputPath);
     } catch (_) {
-      error = 'Metin çıkarılamadı. Tekrar denemek için "Metni çıkar" düğmesine bas.';
+      error = rotationFailed
+          ? 'Görsel döndürülemedi. Döndürmeyi değiştirip tekrar deneyebilirsin.'
+          : 'Metin çıkarılamadı. Tekrar denemek için "Metni çıkar" düğmesine bas.';
+    } finally {
+      if (rotatedPath != null) {
+        await widget.rotationService.deleteCopy(rotatedPath);
+      }
     }
     if (!mounted) return;
     if (_selection?.id != selection.id) {
@@ -276,6 +319,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                 ImagePreview(
                   key: ValueKey(selection.id),
                   image: selection.image,
+                  quarterTurns: _quarterTurns,
                   onError: () => _onPreviewError(selection.id),
                 )
               else
@@ -311,6 +355,35 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                 )
               else ...[
                 if (hasImage) ...[
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _rotate(3),
+                        icon: const Icon(Icons.rotate_left),
+                        label: const Text('Sola döndür'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () => _rotate(1),
+                        icon: const Icon(Icons.rotate_right),
+                        label: const Text('Sağa döndür'),
+                      ),
+                    ],
+                  ),
+                  if (_quarterTurns != 0) ...[
+                    const SizedBox(height: 8),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        'Görsel saat yönünde ${_quarterTurns * 90}° döndürüldü. '
+                        'Metin çıkarma bu yönle yapılır.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: _extractText,
                     icon: const Icon(Icons.text_snippet),
