@@ -98,6 +98,12 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     });
   }
 
+  /// True when the user changed the text after OCR (or typed it themselves).
+  bool get _hasEditedText {
+    final text = _textController.text;
+    return text.isNotEmpty && text != _recognizedText;
+  }
+
   Future<void> _selectImage() async {
     if (_isBusy) return;
     setState(() {
@@ -113,16 +119,41 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       error = 'Görsel seçilemedi. Lütfen tekrar deneyin.';
     }
     if (!mounted) return;
+
+    // The picker is opened first, so a cancelled pick never asks anything.
+    // The progress state stays on while the dialog is open.
+    if (picked != null && _hasEditedText) {
+      final confirmed = await _confirm(
+        title: 'Düzenlediğin metin silinsin mi?',
+        content:
+            'Yeni görsel seçilirse düzenlediğin metin silinecek. '
+            'Metin henüz kaydedilmedi.',
+        confirmLabel: 'Metni sil ve değiştir',
+      );
+      if (!mounted) return;
+      if (!confirmed) picked = null;
+    }
+
     setState(() {
       _isPicking = false;
-      // A cancelled pick (null) keeps the current image and text.
+      // A cancelled or declined pick keeps the current image and text.
       if (picked != null) _applySelection(picked);
       _errorMessage = error;
     });
   }
 
-  void _removeImage() {
+  Future<void> _removeImage() async {
     if (_isBusy) return;
+    if (_hasEditedText) {
+      final confirmed = await _confirm(
+        title: 'Düzenlediğin metin silinsin mi?',
+        content:
+            'Görsel kaldırılırsa düzenlediğin metin de silinecek. '
+            'Metin henüz kaydedilmedi.',
+        confirmLabel: 'Metni sil ve kaldır',
+      );
+      if (!confirmed || !mounted || _isBusy) return;
+    }
     // Only drops the reference. File ownership and cleanup are not managed
     // yet, so nothing is deleted.
     setState(() {
@@ -145,14 +176,16 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     });
   }
 
-  Future<bool> _confirmOverwrite() async {
+  Future<bool> _confirm({
+    required String title,
+    required String content,
+    required String confirmLabel,
+  }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Metnin üzerine yazılsın mı?'),
-        content: const Text(
-          'Düzenlediğin metin, yeniden çıkarılan metinle değiştirilecek.',
-        ),
+        title: Text(title),
+        content: Text(content),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -160,7 +193,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Üzerine yaz'),
+            child: Text(confirmLabel),
           ),
         ],
       ),
@@ -172,9 +205,13 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     final selection = _selection;
     if (selection == null || _isBusy) return;
 
-    final currentText = _textController.text;
-    if (currentText.isNotEmpty && currentText != _recognizedText) {
-      final confirmed = await _confirmOverwrite();
+    if (_hasEditedText) {
+      final confirmed = await _confirm(
+        title: 'Metnin üzerine yazılsın mı?',
+        content:
+            'Düzenlediğin metin, yeniden çıkarılan metinle değiştirilecek.',
+        confirmLabel: 'Üzerine yaz',
+      );
       if (!confirmed || !mounted || _isBusy || _selection?.id != selection.id) {
         return;
       }

@@ -50,6 +50,12 @@ class _Harness {
   }
 }
 
+// The progress indicator behind the dialog never settles.
+Future<void> _showDialog(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+}
+
 Future<void> _extract(WidgetTester tester) async {
   await tester.tap(find.text(_extractLabel));
   await tester.pump();
@@ -200,6 +206,161 @@ void main() {
 
     expect(_textField, findsNothing);
     expect(find.text(_selectLabel), findsOneWidget);
+  });
+
+  group('protecting edited text', () {
+    Future<_Harness> startEdited(
+      WidgetTester tester, {
+      Future<XFile?> Function()? onPick,
+    }) async {
+      final harness = _Harness(
+        onRecognize: (_) async => _ocrText,
+        onPick: onPick,
+      );
+      await harness.start(tester);
+      await _extract(tester);
+      await tester.enterText(_textField, 'Benim düzeltmem');
+      await tester.pump();
+      return harness;
+    }
+
+    testWidgets('asks before removing the image and keeps all on decline', (
+      tester,
+    ) async {
+      await startEdited(tester);
+
+      await tester.tap(find.text(_removeLabel));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      await tester.tap(find.text('Vazgeç'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_removeLabel), findsOneWidget);
+      expect(_fieldText(tester), 'Benim düzeltmem');
+    });
+
+    testWidgets('removes the image and text after confirmation', (
+      tester,
+    ) async {
+      await startEdited(tester);
+
+      await tester.tap(find.text(_removeLabel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Metni sil ve kaldır'));
+      await tester.pumpAndSettle();
+
+      expect(_textField, findsNothing);
+      expect(find.text(_selectLabel), findsOneWidget);
+    });
+
+    testWidgets('removes an unedited result without asking', (tester) async {
+      final harness = _Harness(onRecognize: (_) async => _ocrText);
+      await harness.start(tester);
+      await _extract(tester);
+
+      await tester.tap(find.text(_removeLabel));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(_textField, findsNothing);
+    });
+
+    testWidgets('opens the picker first and does not ask when cancelled', (
+      tester,
+    ) async {
+      var picks = 0;
+      await startEdited(
+        tester,
+        onPick: () async => picks++ == 0 ? XFile('/tmp/a.png') : null,
+      );
+
+      await tester.tap(find.text(_changeLabel));
+      await tester.pumpAndSettle();
+
+      expect(picks, 2);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text(_removeLabel), findsOneWidget);
+      expect(_fieldText(tester), 'Benim düzeltmem');
+    });
+
+    testWidgets('asks only after an image is really picked', (tester) async {
+      final pick = Completer<XFile?>();
+      var picks = 0;
+      await startEdited(
+        tester,
+        onPick: () =>
+            picks++ == 0 ? Future.value(XFile('/tmp/a.png')) : pick.future,
+      );
+
+      await tester.tap(find.text(_changeLabel));
+      await tester.pump();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      pick.complete(XFile('/tmp/b.png'));
+      await _showDialog(tester);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      // Still busy: nothing else can be started behind the dialog.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('keeps the current image and text when the user declines', (
+      tester,
+    ) async {
+      var picks = 0;
+      final harness = await startEdited(
+        tester,
+        onPick: () async => XFile('/tmp/${picks++ == 0 ? 'a' : 'b'}.png'),
+      );
+
+      await tester.tap(find.text(_changeLabel));
+      await _showDialog(tester);
+      await tester.tap(find.text('Vazgeç'));
+      await tester.pumpAndSettle();
+
+      expect(harness.providers, hasLength(1));
+      expect(find.text(_extractLabel), findsOneWidget);
+      expect(_fieldText(tester), 'Benim düzeltmem');
+
+      await tester.tap(find.text(_extractLabel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Üzerine yaz'));
+      await tester.pumpAndSettle();
+      expect(harness.recognizer.paths.last, '/tmp/a.png');
+    });
+
+    testWidgets('replaces image and clears text after confirmation', (
+      tester,
+    ) async {
+      var picks = 0;
+      final harness = await startEdited(
+        tester,
+        onPick: () async => XFile('/tmp/${picks++ == 0 ? 'a' : 'b'}.png'),
+      );
+
+      await tester.tap(find.text(_changeLabel));
+      await _showDialog(tester);
+      await tester.tap(find.text('Metni sil ve değiştir'));
+      await tester.pumpAndSettle();
+
+      expect(harness.providers, hasLength(2));
+      expect(_textField, findsNothing);
+      expect(find.text(_extractLabel), findsOneWidget);
+    });
+
+    testWidgets('does not touch the state if closed during the dialog', (
+      tester,
+    ) async {
+      await startEdited(tester);
+
+      await tester.tap(find.text(_removeLabel));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('re-running OCR over existing text', () {
