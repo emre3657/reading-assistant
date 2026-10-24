@@ -1,30 +1,17 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
-import '../services/ocr_result.dart';
-import '../services/ocr_text_formatter.dart';
 import '../services/text_recognition_service.dart';
+import 'image_import_controller.dart';
 import 'widgets/image_preview.dart';
 
-/// Creates the image used to preview a picked file.
-typedef PreviewImageBuilder = ImageProvider Function(XFile file);
+export 'image_import_controller.dart'
+    show PreviewImageBuilder, fileImageProvider;
 
-ImageProvider fileImageProvider(XFile file) => FileImage(File(file.path));
-
-/// One successful pick or recovery. The id tells apart two selections of the
-/// same file.
-class _Selection {
-  const _Selection(this.id, this.file, this.image);
-
-  final int id;
-  final XFile file;
-  final ImageProvider image;
-}
-
+/// UI and dialogs of the image import flow. State and async flows live in
+/// [ImageImportController]; confirmations are asked here, with the controller
+/// revision read before asking, so a stale answer is ignored.
 class ImageImportScreen extends StatefulWidget {
   const ImageImportScreen({
     super.key,
@@ -44,124 +31,54 @@ class ImageImportScreen extends StatefulWidget {
 }
 
 class _ImageImportScreenState extends State<ImageImportScreen> {
-  final _textController = TextEditingController();
-  _Selection? _selection;
-
-  /// Clockwise quarter turns (0-3) applied to the preview and to OCR input.
-  /// Reset for every new selection.
-  int _quarterTurns = 0;
-  int _lastSelectionId = 0;
-  bool _isPicking = false;
-  bool _isRecognizing = false;
-
-  /// Last text produced by OCR; null when there is no OCR result. Used to tell
-  /// whether the user has edited the text.
-  String? _recognizedText;
-
-  /// Unmodified OCR result of the current image (text and line layout); the
-  /// line-joined text is always derived from it.
-  OcrResult? _ocrResult;
-  bool _joinLines = false;
-  String? _errorMessage;
-  String? _infoMessage;
-
-  bool get _isBusy => _isPicking || _isRecognizing;
+  late final ImageImportController _controller;
 
   @override
   void initState() {
     super.initState();
-    if (widget.pickerService.canRecoverLostImage) {
-      _isPicking = true;
-      _recoverLostImage();
-    }
+    _controller = ImageImportController(
+      pickerService: widget.pickerService,
+      textRecognitionService: widget.textRecognitionService,
+      rotationService: widget.rotationService,
+      previewImageBuilder: widget.previewImageBuilder,
+    )..recoverLostImage();
   }
 
   @override
   void dispose() {
-    // A running OCR call is not cancelled; its result is ignored because the
-    // screen is no longer mounted.
-    _textController.dispose();
+    // A running OCR call is not cancelled; the controller drops its result
+    // and still deletes the run's temporary copy.
+    _controller.dispose();
     super.dispose();
   }
 
-  /// Replaces the current image and drops everything tied to the old one.
-  /// Must be called inside setState.
-  void _applySelection(XFile file) {
-    _selection = _Selection(
-      ++_lastSelectionId,
-      file,
-      widget.previewImageBuilder(file),
-    );
-    _recognizedText = null;
-    _ocrResult = null;
-    _joinLines = false;
-    _quarterTurns = 0;
-    _textController.clear();
-  }
-
-  Future<void> _recoverLostImage() async {
-    XFile? recovered;
-    String? error;
-    try {
-      recovered = await widget.pickerService.retrieveLostImage();
-    } catch (_) {
-      error = 'Önceki fotoğraf seçimi kurtarılamadı. Lütfen tekrar seçin.';
-    }
-    if (!mounted) return;
-    setState(() {
-      _isPicking = false;
-      if (recovered != null) _applySelection(recovered);
-      _errorMessage = error;
-    });
-  }
-
-  /// True when the user changed the text after OCR (or typed it themselves).
-  bool get _hasEditedText {
-    final text = _textController.text;
-    return text.isNotEmpty && text != _recognizedText;
-  }
-
   Future<void> _selectImage() async {
-    if (_isBusy) return;
-    setState(() {
-      _isPicking = true;
-      _errorMessage = null;
-      _infoMessage = null;
-    });
-    XFile? picked;
-    String? error;
+    final candidate = await _controller.pickImage();
+    if (candidate == null) return;
+    var applied = false;
     try {
-      picked = await widget.pickerService.pickFromGallery();
-    } catch (_) {
-      error = 'Görsel seçilemedi. Lütfen tekrar deneyin.';
+      // The picker is opened first, so a cancelled pick never asks anything.
+      if (_controller.hasEditedText) {
+        if (!mounted) return;
+        final confirmed = await _confirm(
+          title: 'Düzenlediğin metin silinsin mi?',
+          content:
+              'Yeni görsel seçilirse düzenlediğin metin silinecek. '
+              'Metin henüz kaydedilmedi.',
+          confirmLabel: 'Metni sil ve değiştir',
+        );
+        if (!confirmed || !mounted) return;
+      }
+      applied = _controller.applyPick(candidate);
+    } finally {
+      if (!applied) _controller.discardPick(candidate);
     }
-    if (!mounted) return;
-
-    // The picker is opened first, so a cancelled pick never asks anything.
-    // The progress state stays on while the dialog is open.
-    if (picked != null && _hasEditedText) {
-      final confirmed = await _confirm(
-        title: 'Düzenlediğin metin silinsin mi?',
-        content:
-            'Yeni görsel seçilirse düzenlediğin metin silinecek. '
-            'Metin henüz kaydedilmedi.',
-        confirmLabel: 'Metni sil ve değiştir',
-      );
-      if (!mounted) return;
-      if (!confirmed) picked = null;
-    }
-
-    setState(() {
-      _isPicking = false;
-      // A cancelled or declined pick keeps the current image and text.
-      if (picked != null) _applySelection(picked);
-      _errorMessage = error;
-    });
   }
 
   Future<void> _removeImage() async {
-    if (_isBusy) return;
-    if (_hasEditedText) {
+    if (_controller.isBusy) return;
+    final revision = _controller.revision;
+    if (_controller.hasEditedText) {
       final confirmed = await _confirm(
         title: 'Düzenlediğin metin silinsin mi?',
         content:
@@ -169,31 +86,41 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
             'Metin henüz kaydedilmedi.',
         confirmLabel: 'Metni sil ve kaldır',
       );
-      if (!confirmed || !mounted || _isBusy) return;
+      if (!confirmed || !mounted) return;
     }
-    // Only drops the reference. File ownership and cleanup are not managed
-    // yet, so nothing is deleted.
-    setState(() {
-      _selection = null;
-      _recognizedText = null;
-      _ocrResult = null;
-      _joinLines = false;
-      _quarterTurns = 0;
-      _textController.clear();
-      _errorMessage = null;
-      _infoMessage = null;
-    });
+    _controller.removeImage(expectedRevision: revision);
   }
 
-  void _onPreviewError(int selectionId) {
-    // Ignore errors that belong to a selection that is no longer active.
-    if (!mounted || _selection?.id != selectionId) return;
-    // The text is kept: the user may have edited it.
-    setState(() {
-      _selection = null;
-      _errorMessage = 'Görsel görüntülenemedi. Lütfen başka bir görsel seçin.';
-      _infoMessage = null;
-    });
+  Future<void> _setJoinLines(bool value) async {
+    if (_controller.isBusy || !_controller.hasRecognizedText) return;
+    final revision = _controller.revision;
+    if (_controller.hasEditedText) {
+      final confirmed = await _confirm(
+        title: 'Düzenlediğin metin silinsin mi?',
+        content:
+            'Satır birleştirme ayarı değiştirilirse düzenlediğin metin '
+            'ham OCR sonucundan yeniden oluşturulacak. Metin henüz '
+            'kaydedilmedi.',
+        confirmLabel: 'Metni sil ve uygula',
+      );
+      if (!confirmed || !mounted) return;
+    }
+    _controller.setJoinLines(value, expectedRevision: revision);
+  }
+
+  Future<void> _extractText() async {
+    if (!_controller.hasImage || _controller.isBusy) return;
+    final revision = _controller.revision;
+    if (_controller.hasEditedText) {
+      final confirmed = await _confirm(
+        title: 'Metnin üzerine yazılsın mı?',
+        content:
+            'Düzenlediğin metin, yeniden çıkarılan metinle değiştirilecek.',
+        confirmLabel: 'Üzerine yaz',
+      );
+      if (!confirmed || !mounted) return;
+    }
+    await _controller.extractText(expectedRevision: revision);
   }
 
   Future<bool> _confirm({
@@ -221,126 +148,21 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     return confirmed ?? false;
   }
 
-  /// Rotates the image used for the preview and for the next OCR run. The
-  /// recognized or edited text is kept.
-  void _rotate(int delta) {
-    if (_selection == null || _isBusy) return;
-    setState(() {
-      _quarterTurns = (_quarterTurns + delta) % 4;
-      _errorMessage = null;
-      _infoMessage = null;
-    });
-  }
-
-  /// Shows the text derived from the raw OCR result, joined or not. Edits are
-  /// replaced, so the user must confirm first. [_recognizedText] follows the
-  /// displayed generated text, which keeps edit detection correct.
-  Future<void> _setJoinLines(bool value) async {
-    if (_isBusy || _ocrResult == null) return;
-    if (_hasEditedText) {
-      final confirmed = await _confirm(
-        title: 'Düzenlediğin metin silinsin mi?',
-        content:
-            'Satır birleştirme ayarı değiştirilirse düzenlediğin metin '
-            'ham OCR sonucundan yeniden oluşturulacak. Metin henüz '
-            'kaydedilmedi.',
-        confirmLabel: 'Metni sil ve uygula',
-      );
-      if (!confirmed || !mounted || _isBusy) return;
-    }
-    final ocr = _ocrResult;
-    if (ocr == null) return;
-    final display = value ? joinOcrResult(ocr) : ocr.text;
-    setState(() {
-      _joinLines = value;
-      _recognizedText = display;
-      _textController.value = TextEditingValue(text: display);
-    });
-  }
-
-  Future<void> _extractText() async {
-    final selection = _selection;
-    if (selection == null || _isBusy) return;
-
-    if (_hasEditedText) {
-      final confirmed = await _confirm(
-        title: 'Metnin üzerine yazılsın mı?',
-        content:
-            'Düzenlediğin metin, yeniden çıkarılan metinle değiştirilecek.',
-        confirmLabel: 'Üzerine yaz',
-      );
-      if (!confirmed || !mounted || _isBusy || _selection?.id != selection.id) {
-        return;
-      }
-    }
-
-    setState(() {
-      _isRecognizing = true;
-      _errorMessage = null;
-      _infoMessage = null;
-    });
-    final quarterTurns = _quarterTurns;
-    OcrResult? ocr;
-    String? error;
-    // Temporary rotated copy owned by this OCR run; deleted only after OCR has
-    // finished, whether it succeeded, failed or the screen was closed.
-    String? rotatedPath;
-    var rotationFailed = false;
-    try {
-      var inputPath = selection.file.path;
-      if (quarterTurns != 0) {
-        try {
-          rotatedPath = await widget.rotationService.createRotatedCopy(
-            inputPath,
-            quarterTurns,
-          );
-        } catch (_) {
-          rotationFailed = true;
-          rethrow;
-        }
-        inputPath = rotatedPath;
-      }
-      // Without rotation the original picked file is used, not the downscaled
-      // preview.
-      ocr = await widget.textRecognitionService.recognizeText(inputPath);
-    } catch (_) {
-      error = rotationFailed
-          ? 'Görsel döndürülemedi. Döndürmeyi değiştirip tekrar deneyebilirsin.'
-          : 'Metin çıkarılamadı. Tekrar denemek için "Metni çıkar" düğmesine bas.';
-    } finally {
-      if (rotatedPath != null) {
-        await widget.rotationService.deleteCopy(rotatedPath);
-      }
-    }
-    if (!mounted) return;
-    if (_selection?.id != selection.id) {
-      // The image went away while OCR was running; drop the result.
-      setState(() => _isRecognizing = false);
-      return;
-    }
-    setState(() {
-      _isRecognizing = false;
-      _errorMessage = error;
-      if (ocr != null) {
-        if (ocr.text.trim().isEmpty) {
-          _infoMessage =
-              'Görselde metin bulunamadı. Daha net veya daha yakın bir '
-              'fotoğrafla "Metni çıkar" düğmesine tekrar basabilirsin.';
-        } else {
-          _recognizedText = ocr.text;
-          _ocrResult = ocr;
-          _joinLines = false;
-          _textController.value = TextEditingValue(text: ocr.text);
-        }
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final selection = _selection;
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => _buildScreen(context),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
+    final controller = _controller;
+    final selection = controller.selection;
     final hasImage = selection != null;
     final colorScheme = Theme.of(context).colorScheme;
+    final errorMessage = controller.errorMessage;
+    final infoMessage = controller.infoMessage;
 
     return Scaffold(
       appBar: AppBar(
@@ -358,34 +180,34 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                 ImagePreview(
                   key: ValueKey(selection.id),
                   image: selection.image,
-                  quarterTurns: _quarterTurns,
-                  onError: () => _onPreviewError(selection.id),
+                  quarterTurns: controller.quarterTurns,
+                  onError: () => controller.onPreviewError(selection.id),
                 )
               else
                 const _EmptyState(),
-              if (_errorMessage != null) ...[
+              if (errorMessage != null) ...[
                 const SizedBox(height: 16),
                 Semantics(
                   liveRegion: true,
                   child: Text(
-                    _errorMessage!,
+                    errorMessage,
                     style: TextStyle(color: colorScheme.error),
                   ),
                 ),
               ],
-              if (_infoMessage != null) ...[
+              if (infoMessage != null) ...[
                 const SizedBox(height: 16),
-                Semantics(liveRegion: true, child: Text(_infoMessage!)),
+                Semantics(liveRegion: true, child: Text(infoMessage)),
               ],
               const SizedBox(height: 16),
-              if (_isBusy)
+              if (controller.isBusy)
                 Center(
                   child: Column(
                     children: [
                       const CircularProgressIndicator(
                         semanticsLabel: 'Yükleniyor',
                       ),
-                      if (_isRecognizing) ...[
+                      if (controller.isRecognizing) ...[
                         const SizedBox(height: 8),
                         const Text('Metin çıkarılıyor…'),
                       ],
@@ -400,23 +222,23 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                     runSpacing: 8,
                     children: [
                       OutlinedButton.icon(
-                        onPressed: () => _rotate(3),
+                        onPressed: () => controller.rotate(3),
                         icon: const Icon(Icons.rotate_left),
                         label: const Text('Sola döndür'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: () => _rotate(1),
+                        onPressed: () => controller.rotate(1),
                         icon: const Icon(Icons.rotate_right),
                         label: const Text('Sağa döndür'),
                       ),
                     ],
                   ),
-                  if (_quarterTurns != 0) ...[
+                  if (controller.quarterTurns != 0) ...[
                     const SizedBox(height: 8),
                     Semantics(
                       liveRegion: true,
                       child: Text(
-                        'Görsel saat yönünde ${_quarterTurns * 90}° döndürüldü. '
+                        'Görsel saat yönünde ${controller.quarterTurns * 90}° döndürüldü. '
                         'Metin çıkarma bu yönle yapılır.',
                         textAlign: TextAlign.center,
                       ),
@@ -447,7 +269,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                     label: const Text('Galeriden görsel seç'),
                   ),
               ],
-              if (_recognizedText != null) ...[
+              if (controller.hasRecognizedText) ...[
                 const SizedBox(height: 24),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -456,14 +278,14 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                     'Satırları birleştirir; paragraf ve başlık ayrımlarını '
                     'tahmin eder.',
                   ),
-                  value: _joinLines,
-                  onChanged: _isBusy ? null : _setJoinLines,
+                  value: controller.joinLines,
+                  onChanged: controller.isBusy ? null : _setJoinLines,
                 ),
                 const SizedBox(height: 8),
                 TextField(
-                  controller: _textController,
+                  controller: controller.textController,
                   textAlign: TextAlign.justify,
-                  readOnly: _isRecognizing,
+                  readOnly: controller.isRecognizing,
                   minLines: 6,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,

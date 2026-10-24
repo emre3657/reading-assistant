@@ -55,6 +55,13 @@ Doğrulanan bilgiler:
 - Android ve iOS dışında web, windows, linux ve macos dizinleri de var; hedef platformlar yalnızca Android ve iOS.
 - Testler: [test/features/image_import/](test/features/image_import) altında ekran, önizleme, döndürme, OCR ve döndürme servisi testleri; gerçek ML Kit çağrısı yapılmaz, servis sahtesi kullanılır (döndürme servisi gerçek dosyalarla test edilir).
 
+## Durum yönetimi ve sahiplik
+
+- `ImageImportController` (Flutter'ın `ChangeNotifier`'ı; ek paket yok) BuildContext, widget veya diyalog bilgisi taşımaz. Ekran onu `initState`'te oluşturur, `dispose`'ta bırakır ve `ListenableBuilder` ile dinler. Servisler hâlâ ekrana enjekte edilir ve controller'a iletilir.
+- `TextEditingController`'ı controller oluşturur, dinler ve dispose eder; metin değişince "düzenlenmiş" durumu güncellenir.
+- Onay gerektiren akışlar iki parçalıdır: ekran `revision` değerini okuyup diyaloğu gösterir, sonra controller'ı çağırır; beklerken durum değiştiyse eski onay yok sayılır. Galeri seçimi `pickImage` → (onay) → `applyPick`/`discardPick` ile ilerler; iptal, hata, vazgeçme ve ekran kapanmasında meşgul durumu serbest bırakılır.
+- `dispose` süren native OCR'yi iptal etmez; sonuç yok sayılır, o çalıştırmanın döndürülmüş geçici kopyası yine silinir.
+
 ## Klasör yapısı
 
 ```text
@@ -64,7 +71,8 @@ lib/
   features/
     image_import/
       presentation/
-        image_import_screen.dart # ekran, OCR akışı ve basit durum yönetimi
+        image_import_controller.dart # ChangeNotifier: seçim/kurtarma, döndürme, OCR, birleştirme, metin durumu, mesajlar
+        image_import_screen.dart     # yalnızca arayüz, diyaloglar ve mounted kontrolleri
         widgets/image_preview.dart
       services/
         image_picker_service.dart
