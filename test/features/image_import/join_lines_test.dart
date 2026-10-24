@@ -67,7 +67,12 @@ void main() {
     expect(_switch, findsOneWidget);
     expect(_isOn(tester), isFalse);
     expect(_fieldText(tester), _raw);
-    expect(find.textContaining('tahmine dayanır'), findsOneWidget);
+    expect(
+      find.text(
+        'Basılı satırları birleştirir. Paragraf ve tire ayrımları hatalı olabilir.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('joins lines from the raw result and restores it when off', (

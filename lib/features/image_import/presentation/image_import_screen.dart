@@ -452,12 +452,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Satırları birleştir'),
                   subtitle: const Text(
-                    'Kitaptaki satır sonlarını boşluğa çevirir; boş satırla '
-                    'ayrılmış paragraflar korunur. Satır sonunda tire ve '
-                    'sonraki satırda küçük harf varsa kelime birleştirilir. '
-                    'Bu tahmine dayanır; gerçek tireli kelimeleri de '
-                    'birleştirebilir. Her seferinde ham OCR sonucundan '
-                    'üretilir.',
+                    'Basılı satırları birleştirir. '
+                    'Paragraf ve tire ayrımları hatalı olabilir.',
                   ),
                   value: _joinLines,
                   onChanged: _isBusy ? null : _setJoinLines,
