@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
+import '../services/ocr_result.dart';
 import '../services/ocr_text_formatter.dart';
 import '../services/text_recognition_service.dart';
 import 'widgets/image_preview.dart';
@@ -57,9 +58,9 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   /// whether the user has edited the text.
   String? _recognizedText;
 
-  /// Unmodified OCR result of the current image; the line-joined text is
-  /// always derived from it.
-  String? _rawText;
+  /// Unmodified OCR result of the current image (text and line layout); the
+  /// line-joined text is always derived from it.
+  OcrResult? _ocrResult;
   bool _joinLines = false;
   String? _errorMessage;
   String? _infoMessage;
@@ -92,7 +93,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       widget.previewImageBuilder(file),
     );
     _recognizedText = null;
-    _rawText = null;
+    _ocrResult = null;
     _joinLines = false;
     _quarterTurns = 0;
     _textController.clear();
@@ -175,7 +176,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     setState(() {
       _selection = null;
       _recognizedText = null;
-      _rawText = null;
+      _ocrResult = null;
       _joinLines = false;
       _quarterTurns = 0;
       _textController.clear();
@@ -235,7 +236,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   /// replaced, so the user must confirm first. [_recognizedText] follows the
   /// displayed generated text, which keeps edit detection correct.
   Future<void> _setJoinLines(bool value) async {
-    if (_isBusy || _rawText == null) return;
+    if (_isBusy || _ocrResult == null) return;
     if (_hasEditedText) {
       final confirmed = await _confirm(
         title: 'Düzenlediğin metin silinsin mi?',
@@ -247,9 +248,9 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       );
       if (!confirmed || !mounted || _isBusy) return;
     }
-    final raw = _rawText;
-    if (raw == null) return;
-    final display = value ? joinOcrLines(raw) : raw;
+    final ocr = _ocrResult;
+    if (ocr == null) return;
+    final display = value ? joinOcrResult(ocr) : ocr.text;
     setState(() {
       _joinLines = value;
       _recognizedText = display;
@@ -279,7 +280,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       _infoMessage = null;
     });
     final quarterTurns = _quarterTurns;
-    String? text;
+    OcrResult? ocr;
     String? error;
     // Temporary rotated copy owned by this OCR run; deleted only after OCR has
     // finished, whether it succeeded, failed or the screen was closed.
@@ -301,7 +302,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       }
       // Without rotation the original picked file is used, not the downscaled
       // preview.
-      text = await widget.textRecognitionService.recognizeText(inputPath);
+      ocr = await widget.textRecognitionService.recognizeText(inputPath);
     } catch (_) {
       error = rotationFailed
           ? 'Görsel döndürülemedi. Döndürmeyi değiştirip tekrar deneyebilirsin.'
@@ -320,16 +321,16 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     setState(() {
       _isRecognizing = false;
       _errorMessage = error;
-      if (text != null) {
-        if (text.trim().isEmpty) {
+      if (ocr != null) {
+        if (ocr.text.trim().isEmpty) {
           _infoMessage =
               'Görselde metin bulunamadı. Daha net veya daha yakın bir '
               'fotoğrafla "Metni çıkar" düğmesine tekrar basabilirsin.';
         } else {
-          _recognizedText = text;
-          _rawText = text;
+          _recognizedText = ocr.text;
+          _ocrResult = ocr;
           _joinLines = false;
-          _textController.value = TextEditingValue(text: text);
+          _textController.value = TextEditingValue(text: ocr.text);
         }
       }
     });
@@ -452,8 +453,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Satırları birleştir'),
                   subtitle: const Text(
-                    'Basılı satırları birleştirir. '
-                    'Paragraf ve tire ayrımları hatalı olabilir.',
+                    'Satırları birleştirir; paragraf ve başlık ayrımlarını '
+                    'tahmin eder.',
                   ),
                   value: _joinLines,
                   onChanged: _isBusy ? null : _setJoinLines,

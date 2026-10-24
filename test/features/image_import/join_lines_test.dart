@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/app.dart';
+import 'package:reading_assistant/features/image_import/services/ocr_result.dart';
 
 import 'test_doubles.dart';
 
@@ -69,7 +70,7 @@ void main() {
     expect(_fieldText(tester), _raw);
     expect(
       find.text(
-        'Basılı satırları birleştirir. Paragraf ve tire ayrımları hatalı olabilir.',
+        'Satırları birleştirir; paragraf ve başlık ayrımlarını tahmin eder.',
       ),
       findsOneWidget,
     );
@@ -202,5 +203,124 @@ void main() {
     await _start(tester, raw: '  \n ');
     await _extract(tester);
     expect(_switch, findsNothing);
+  });
+
+  group('with line layout', () {
+    // Synthetic text; coordinates describe a 40..860 px column.
+    OcrLine line(String text, {int block = 0, double left = 40}) => OcrLine(
+      text: text,
+      blockIndex: block,
+      left: left,
+      top: 0,
+      right: 860,
+      bottom: 40,
+    );
+
+    late OcrResult layout;
+    late String laidOutRaw;
+
+    setUp(() {
+      layout = OcrResult(
+        'birinci paragraf sürer ve biter.\nikinci satır sürer.\n'
+        'ikinci paragraf girintili başlar\nüçüncü satır sürer\n'
+        'dördüncü satır sürer\nbeşinci satır sürer',
+        lines: [
+          line('birinci paragraf sürer ve biter.'),
+          line('ikinci satır sürer.'),
+          line('ikinci paragraf girintili başlar', left: 75),
+          line('üçüncü satır sürer'),
+          line('dördüncü satır sürer'),
+          line('beşinci satır sürer'),
+        ],
+      );
+      laidOutRaw = layout.text;
+    });
+
+    Future<void> startWithLayout(WidgetTester tester) async {
+      await tester.pumpWidget(
+        ReadingAssistantApp(
+          pickerService: FakeImagePickerService(
+            onPick: () async => XFile('/tmp/a.jpg'),
+          ),
+          textRecognitionService: FakeTextRecognitionService.withLayout(
+            (_) async => layout,
+          ),
+          previewImageBuilder: (file) => ControlledImageProvider(),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text(_selectLabel));
+      await tester.pump();
+    }
+
+    testWidgets('shows the raw text first; joining uses the layout and '
+        'toggling back restores the raw text', (tester) async {
+      await startWithLayout(tester);
+      await _extract(tester);
+      expect(_isOn(tester), isFalse);
+      expect(_fieldText(tester), laidOutRaw);
+
+      await _toggle(tester);
+      expect(
+        _fieldText(tester),
+        startsWith('birinci paragraf sürer ve biter. '),
+      );
+      expect(_fieldText(tester), contains('\n\nikinci paragraf'));
+
+      await _toggle(tester);
+      expect(_fieldText(tester), laidOutRaw);
+    });
+
+    testWidgets('edited layout-joined text is still protected', (tester) async {
+      await startWithLayout(tester);
+      await _extract(tester);
+      await _toggle(tester);
+      expect(_fieldText(tester), isNot(laidOutRaw));
+
+      // Only the automatic formatting does not count as an edit.
+      await tester.tap(find.text(_removeLabel));
+      await tester.pump();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(_textField, findsNothing);
+    });
+
+    testWidgets('user edits are kept when the switch change is declined', (
+      tester,
+    ) async {
+      await startWithLayout(tester);
+      await _extract(tester);
+      await _toggle(tester);
+      await tester.enterText(_textField, 'Benim düzeltmem');
+      await tester.pump();
+
+      await tester.tap(find.text(_joinLabel));
+      await _showDialog(tester);
+      await tester.tap(find.text('Vazgeç'));
+      await _showDialog(tester);
+      expect(_fieldText(tester), 'Benim düzeltmem');
+      expect(_isOn(tester), isTrue);
+
+      await tester.tap(find.text(_joinLabel));
+      await _showDialog(tester);
+      await tester.tap(find.text('Metni sil ve uygula'));
+      await _showDialog(tester);
+      expect(_fieldText(tester), laidOutRaw);
+      expect(_isOn(tester), isFalse);
+    });
+
+    testWidgets('a new OCR run resets the option and the layout', (
+      tester,
+    ) async {
+      await startWithLayout(tester);
+      await _extract(tester);
+      await _toggle(tester);
+      expect(_fieldText(tester), isNot(laidOutRaw));
+
+      await _extract(tester);
+      expect(_isOn(tester), isFalse);
+      expect(_fieldText(tester), laidOutRaw);
+      await _toggle(tester);
+      expect(_fieldText(tester), contains('\n\nikinci paragraf'));
+    });
   });
 }

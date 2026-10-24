@@ -6,18 +6,23 @@ import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/image_import/services/image_rotation_service.dart';
+import 'package:reading_assistant/features/image_import/services/ocr_result.dart';
 import 'package:reading_assistant/features/image_import/services/text_recognition_service.dart';
 
 class FakeTextRecognitionService implements TextRecognitionService {
-  FakeTextRecognitionService(this.onRecognize);
+  FakeTextRecognitionService(Future<String> Function(String path) onRecognize)
+    : _onRecognize = ((path) async => OcrResult(await onRecognize(path)));
 
-  final Future<String> Function(String path) onRecognize;
+  /// Returns text together with a line layout.
+  FakeTextRecognitionService.withLayout(this._onRecognize);
+
+  final Future<OcrResult> Function(String path) _onRecognize;
   final List<String> paths = [];
 
   @override
-  Future<String> recognizeText(String imagePath) {
+  Future<OcrResult> recognizeText(String imagePath) {
     paths.add(imagePath);
-    return onRecognize(imagePath);
+    return _onRecognize(imagePath);
   }
 }
 
