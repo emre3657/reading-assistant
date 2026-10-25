@@ -211,6 +211,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     final statusText = switch (status) {
       ListeningStatus.starting => 'Okuma hazırlanıyor…',
       ListeningStatus.speaking => 'Okunuyor…',
+      ListeningStatus.paused => 'Duraklatıldı.',
       ListeningStatus.stopping => 'Durduruluyor…',
       _ => null,
     };
@@ -229,6 +230,37 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               icon: const Icon(Icons.volume_up),
               label: const Text('Sesli oku'),
             ),
+            if (listening.canResume)
+              OutlinedButton.icon(
+                onPressed: _listening.resume,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Devam et'),
+              )
+            else
+              OutlinedButton.icon(
+                onPressed: listening.canPause ? _listening.pause : null,
+                icon: const Icon(Icons.pause),
+                label: const Text('Duraklat'),
+              ),
+            OutlinedButton.icon(
+              onPressed: listening.canGoPrevious
+                  ? _listening.previousSentence
+                  : null,
+              icon: const Icon(Icons.skip_previous),
+              label: const Text('Önceki cümle'),
+            ),
+            OutlinedButton.icon(
+              onPressed: listening.canGoNext ? _listening.nextSentence : null,
+              icon: const Icon(Icons.skip_next),
+              label: const Text('Sonraki cümle'),
+            ),
+            OutlinedButton.icon(
+              onPressed: listening.canRestart
+                  ? _listening.restartFromBeginning
+                  : null,
+              icon: const Icon(Icons.first_page),
+              label: const Text('Başa dön'),
+            ),
             OutlinedButton.icon(
               onPressed: listening.canStop ? _listening.stop : null,
               icon: const Icon(Icons.stop),
@@ -236,6 +268,21 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             ),
           ],
         ),
+        if (listening.sentenceCount > 0) ...[
+          const SizedBox(height: 8),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              'Cümle ${listening.currentSentence} / ${listening.sentenceCount}',
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Text(
+            'Devam et, mevcut cümlenin başından okur.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
         if (statusText != null || message != null) ...[
           const SizedBox(height: 8),
           Semantics(

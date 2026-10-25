@@ -39,6 +39,7 @@ Future<void> _start(WidgetTester tester, {String raw = _raw}) async {
 }
 
 Future<void> _extract(WidgetTester tester) async {
+  await tester.ensureVisible(find.text(_extractLabel));
   await tester.tap(find.text(_extractLabel));
   await tester.pump();
   await tester.pump();
@@ -189,6 +190,7 @@ void main() {
     expect(_fieldText(tester), _raw);
 
     await _toggle(tester);
+    await tester.ensureVisible(find.text(_changeLabel));
     await tester.tap(find.text(_changeLabel));
     await tester.pump();
     await tester.pump();

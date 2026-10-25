@@ -188,6 +188,98 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('sentence controls: states, indicator and pause lock', (
+    tester,
+  ) async {
+    final speech = await _openWithText(tester, text: 'Bir. İki. Üç.');
+    for (final label in [
+      'Duraklat',
+      'Önceki cümle',
+      'Sonraki cümle',
+      'Başa dön',
+    ]) {
+      expect(_enabled(tester, label), isFalse, reason: label);
+    }
+    expect(find.textContaining('Cümle 1'), findsNothing);
+
+    await tester.tap(find.text(_readLabel));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Cümle 1 / 3'), findsOneWidget);
+    expect(
+      find.text('Devam et, mevcut cümlenin başından okur.'),
+      findsOneWidget,
+    );
+    expect(_enabled(tester, 'Duraklat'), isTrue);
+    expect(_enabled(tester, 'Sonraki cümle'), isTrue);
+    expect(_enabled(tester, 'Önceki cümle'), isFalse);
+    expect(_enabled(tester, 'Başa dön'), isTrue);
+
+    await tester.tap(find.text('Sonraki cümle'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Cümle 2 / 3'), findsOneWidget);
+    expect(speech.spoken, ['Bir. ', 'İki. ']);
+    expect(_enabled(tester, 'Önceki cümle'), isTrue);
+    expect(_enabled(tester, 'Başa dön'), isTrue);
+
+    await tester.tap(find.text('Duraklat'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Devam et'), findsOneWidget);
+    expect(find.text('Duraklatıldı.'), findsOneWidget);
+    expect(_enabled(tester, 'Devam et'), isTrue);
+    expect(_enabled(tester, _readLabel), isFalse);
+    expect(tester.widget<TextField>(_fieldFinder).readOnly, isTrue);
+    for (final label in ['Metni çıkar', 'Görseli değiştir', 'Görseli kaldır']) {
+      expect(_enabled(tester, label), isFalse, reason: label);
+    }
+
+    await tester.tap(find.text('Başa dön'));
+    await tester.pump();
+    expect(find.text('Cümle 1 / 3'), findsOneWidget);
+    expect(find.text('Devam et'), findsOneWidget, reason: 'still paused');
+
+    await tester.tap(find.text('Devam et'));
+    await tester.pump();
+    await tester.pump();
+    expect(speech.spoken.last, 'Bir. ');
+    expect(find.text('Duraklat'), findsOneWidget);
+
+    await tester.tap(find.text('Duraklat'));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text(_stopLabel));
+    await tester.pump();
+    await tester.pump();
+    expect(_enabled(tester, _readLabel), isTrue);
+    expect(_enabled(tester, 'Metni çıkar'), isTrue);
+    expect(tester.widget<TextField>(_fieldFinder).readOnly, isFalse);
+    expect(find.textContaining('Cümle 1'), findsNothing);
+  });
+
+  testWidgets('a paused reading stops when the app goes to the background', (
+    tester,
+  ) async {
+    final speech = await _openWithText(tester, text: 'Bir. İki.');
+    await tester.tap(find.text(_readLabel));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Duraklat'));
+    await tester.pump();
+    await tester.pump();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await tester.pump();
+    expect(speech.stopCalls, 2);
+    expect(_enabled(tester, _readLabel), isTrue);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+
   testWidgets('stays usable with large text', (tester) async {
     await _openWithText(tester);
     tester.platformDispatcher.textScaleFactorTestValue = 2.0;

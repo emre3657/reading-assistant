@@ -193,10 +193,9 @@ void main() {
 
     run = controller.start('Birinci cümle. İkinci cümle.');
     await pumpEventQueue();
-    expect(speech.spoken, [
-      'Birinci cümle. İkinci cümle.',
-      'Birinci cümle. İkinci cümle.',
-    ]);
+    expect(speech.spoken, ['Birinci cümle. ', 'Birinci cümle. ']);
+    speech.finishCurrent();
+    await pumpEventQueue();
     speech.finishCurrent();
     await run;
   });
