@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../listening/presentation/listening_controller.dart';
+import '../../listening/services/speech_service.dart';
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
 import '../services/text_recognition_service.dart';
@@ -12,6 +14,10 @@ export 'image_import_controller.dart'
 /// UI and dialogs of the image import flow. State and async flows live in
 /// [ImageImportController]; confirmations are asked here, with the controller
 /// revision read before asking, so a stale answer is ignored.
+///
+/// Reading aloud lives in [ListeningController]. The two controllers do not
+/// know each other; this screen keeps them apart: while one is busy, the
+/// other's actions are disabled.
 class ImageImportScreen extends StatefulWidget {
   const ImageImportScreen({
     super.key,
@@ -19,6 +25,7 @@ class ImageImportScreen extends StatefulWidget {
     this.textRecognitionService = const TextRecognitionService(),
     this.rotationService = const ImageRotationService(),
     this.previewImageBuilder = fileImageProvider,
+    this.speechService,
   });
 
   final ImagePickerService pickerService;
@@ -26,12 +33,19 @@ class ImageImportScreen extends StatefulWidget {
   final ImageRotationService rotationService;
   final PreviewImageBuilder previewImageBuilder;
 
+  /// When null the screen creates (and disposes) the device speech service;
+  /// an injected one stays owned by the caller.
+  final SpeechService? speechService;
+
   @override
   State<ImageImportScreen> createState() => _ImageImportScreenState();
 }
 
-class _ImageImportScreenState extends State<ImageImportScreen> {
+class _ImageImportScreenState extends State<ImageImportScreen>
+    with WidgetsBindingObserver {
   late final ImageImportController _controller;
+  late final ListeningController _listening;
+  SpeechService? _ownedSpeechService;
 
   @override
   void initState() {
@@ -42,17 +56,38 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
       rotationService: widget.rotationService,
       previewImageBuilder: widget.previewImageBuilder,
     )..recoverLostImage();
+    final speechService =
+        widget.speechService ?? (_ownedSpeechService = SpeechService());
+    _listening = ListeningController(speechService: speechService);
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // A running OCR call is not cancelled; the controller drops its result
     // and still deletes the run's temporary copy.
     _controller.dispose();
+    // Stops reading if it is active; the owned service is released after.
+    _listening.dispose();
+    _ownedSpeechService?.dispose();
     super.dispose();
   }
 
+  // `inactive` is not handled: system dialogs and the notification shade
+  // cause it, and reading may go on there. Leaving the app (hidden/paused)
+  // stops it, because the first version has no background listening.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _listening.stop();
+    }
+  }
+
   Future<void> _selectImage() async {
+    if (_listening.isActive) return;
     final candidate = await _controller.pickImage();
     if (candidate == null) return;
     var applied = false;
@@ -76,7 +111,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   }
 
   Future<void> _removeImage() async {
-    if (_controller.isBusy) return;
+    if (_controller.isBusy || _listening.isActive) return;
     final revision = _controller.revision;
     if (_controller.hasEditedText) {
       final confirmed = await _confirm(
@@ -92,7 +127,11 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   }
 
   Future<void> _setJoinLines(bool value) async {
-    if (_controller.isBusy || !_controller.hasRecognizedText) return;
+    if (_controller.isBusy ||
+        _listening.isActive ||
+        !_controller.hasRecognizedText) {
+      return;
+    }
     final revision = _controller.revision;
     if (_controller.hasEditedText) {
       final confirmed = await _confirm(
@@ -109,7 +148,9 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
   }
 
   Future<void> _extractText() async {
-    if (!_controller.hasImage || _controller.isBusy) return;
+    if (!_controller.hasImage || _controller.isBusy || _listening.isActive) {
+      return;
+    }
     final revision = _controller.revision;
     if (_controller.hasEditedText) {
       final confirmed = await _confirm(
@@ -148,11 +189,67 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     return confirmed ?? false;
   }
 
+  Future<void> _startListening() async {
+    if (_controller.isBusy || _listening.isActive) return;
+    // The text currently shown in the field, not the raw OCR result.
+    await _listening.start(_controller.textController.text);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _controller,
+      listenable: Listenable.merge([_controller, _listening]),
       builder: (context, _) => _buildScreen(context),
+    );
+  }
+
+  Widget _buildListeningControls(BuildContext context) {
+    final listening = _listening;
+    final colorScheme = Theme.of(context).colorScheme;
+    final message = listening.message;
+    final status = listening.status;
+    final statusText = switch (status) {
+      ListeningStatus.starting => 'Okuma hazırlanıyor…',
+      ListeningStatus.speaking => 'Okunuyor…',
+      ListeningStatus.stopping => 'Durduruluyor…',
+      _ => null,
+    };
+    final canStart = !listening.isActive && !_controller.isBusy;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: canStart ? _startListening : null,
+              icon: const Icon(Icons.volume_up),
+              label: const Text('Sesli oku'),
+            ),
+            OutlinedButton.icon(
+              onPressed: listening.canStop ? _listening.stop : null,
+              icon: const Icon(Icons.stop),
+              label: const Text('Durdur'),
+            ),
+          ],
+        ),
+        if (statusText != null || message != null) ...[
+          const SizedBox(height: 8),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              statusText ?? message!,
+              textAlign: TextAlign.center,
+              style: status == ListeningStatus.failed
+                  ? TextStyle(color: colorScheme.error)
+                  : null,
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -163,6 +260,7 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final errorMessage = controller.errorMessage;
     final infoMessage = controller.infoMessage;
+    final listeningActive = _listening.isActive;
 
     return Scaffold(
       appBar: AppBar(
@@ -222,12 +320,16 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                     runSpacing: 8,
                     children: [
                       OutlinedButton.icon(
-                        onPressed: () => controller.rotate(3),
+                        onPressed: listeningActive
+                            ? null
+                            : () => controller.rotate(3),
                         icon: const Icon(Icons.rotate_left),
                         label: const Text('Sola döndür'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: () => controller.rotate(1),
+                        onPressed: listeningActive
+                            ? null
+                            : () => controller.rotate(1),
                         icon: const Icon(Icons.rotate_right),
                         label: const Text('Sağa döndür'),
                       ),
@@ -246,25 +348,25 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                   ],
                   const SizedBox(height: 16),
                   FilledButton.icon(
-                    onPressed: _extractText,
+                    onPressed: listeningActive ? null : _extractText,
                     icon: const Icon(Icons.text_snippet),
                     label: const Text('Metni çıkar'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: _selectImage,
+                    onPressed: listeningActive ? null : _selectImage,
                     icon: const Icon(Icons.photo_library),
                     label: const Text('Görseli değiştir'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
-                    onPressed: _removeImage,
+                    onPressed: listeningActive ? null : _removeImage,
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Görseli kaldır'),
                   ),
                 ] else
                   FilledButton.icon(
-                    onPressed: _selectImage,
+                    onPressed: listeningActive ? null : _selectImage,
                     icon: const Icon(Icons.photo_library),
                     label: const Text('Galeriden görsel seç'),
                   ),
@@ -279,13 +381,15 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                     'tahmin eder.',
                   ),
                   value: controller.joinLines,
-                  onChanged: controller.isBusy ? null : _setJoinLines,
+                  onChanged: controller.isBusy || listeningActive
+                      ? null
+                      : _setJoinLines,
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: controller.textController,
                   textAlign: TextAlign.justify,
-                  readOnly: controller.isRecognizing,
+                  readOnly: controller.isRecognizing || listeningActive,
                   minLines: 6,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
@@ -298,6 +402,8 @@ class _ImageImportScreenState extends State<ImageImportScreen> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                const SizedBox(height: 16),
+                _buildListeningControls(context),
               ],
             ],
           ),

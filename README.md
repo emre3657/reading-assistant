@@ -2,7 +2,7 @@
 
 Fotoğraf çekerek, galeriden görsel seçerek veya elle yazarak metin oluşturmayı; bu metinleri düzenleyip cihazda saklamayı ve sesli dinlemeyi sağlayan Flutter mobil uygulaması.
 
-> **Durum:** Geliştirme sırasının 1. adımı (galeriden görsel seçme ve önizleme) ve 2. adımı (cihazda OCR ve metin düzeltme) uygulandı. TTS, veritabanı ve kamera henüz yok; çıkarılan metin kalıcı kaydedilmez.
+> **Durum:** Geliştirme sırasının 1. adımı (galeriden görsel seçme ve önizleme), 2. adımı (cihazda OCR ve metin düzeltme) ve 3. adımı (temel cihaz TTS: "Sesli oku" / "Durdur") uygulandı. Veritabanı ve kamera henüz yok; çıkarılan metin kalıcı kaydedilmez. TTS yalnızca sahte servisle test edildi; gerçek motor, emülatör, iOS ve gerçek cihaz doğrulanmadı.
 
 ## Hedefler
 
@@ -37,7 +37,7 @@ Doğrulanan bilgiler:
 
 - Paket adı: `reading_assistant`, Android `applicationId`: `com.emreekincidev.reading_assistant`.
 - Dart SDK: `^3.13.5` ([pubspec.yaml](pubspec.yaml)).
-- Bağımlılıklar: `flutter`, `cupertino_icons`, `image_picker ^1.2.4` (Android SDK 24+, iOS 13+), `google_mlkit_text_recognition ^0.17.1` (Android minSdk 21, iOS 15.5+), `image ^4.12.0` (saf Dart); geliştirme tarafında `flutter_test` ve `flutter_lints`.
+- Bağımlılıklar: `flutter`, `cupertino_icons`, `image_picker ^1.2.4` (Android SDK 24+, iOS 13+), `google_mlkit_text_recognition ^0.17.1` (Android minSdk 21, iOS 15.5+), `image ^4.12.0` (saf Dart), `flutter_tts ^4.2.5` (Android minSdk 24); geliştirme tarafında `flutter_test` ve `flutter_lints`.
 - Android `minSdk`/`targetSdk`/`compileSdk` değerleri Flutter varsayılanlarından gelir (bu Flutter sürümünde minSdk 24, compile/target 36); ML Kit için değişiklik gerekmedi. Android'de depolama izni istenmez; Android 13+ sistem fotoğraf seçicisi kullanılır. Activity sistem tarafından kapatılırsa seçim `retrieveLostData` ile kurtarılır.
 - iOS: minimum sürüm ML Kit nedeniyle 15.0'dan **15.5'e** yükseltildi ([project.pbxproj](ios/Runner.xcodeproj/project.pbxproj) ve yeni [Podfile](ios/Podfile); armv7 hariç tutuldu). `NSPhotoLibraryUsageDescription` [Info.plist](ios/Runner/Info.plist) içinde tanımlı; `requestFullMetadata: false` ile ek izin istenmez. Kamera yok. **iOS derlemesi Windows'ta doğrulanamadı**; macOS'ta `pod install` ve derleme denenmeli.
 - OCR: Latin script modeli, cihaz üzerinde. Android'de `com.google.mlkit:text-recognition:16.0.1` (paketlenmiş model) kullanılır; debug APK'nın içinde `assets/mlkit-google-ocr-models/...` altında Latin modelleri ve `libmlkit_google_ocr_pipeline.so` bulunduğu doğrulandı, yani ilk kullanımda indirme gerekmez. İnternetsiz gerçek cihaz/emülatör testi henüz yapılmadı (adım 7).
@@ -54,6 +54,19 @@ Doğrulanan bilgiler:
 - Dosya sahipliği (paket kaynağından doğrulandı): `image_picker_android 0.8.13+25` seçilen dosyayı uygulamanın önbelleğine (`cacheDir/{uuid}/{ad}`), `image_picker_ios 0.8.13+13` ise `NSTemporaryDirectory` altına kopyalayıp yolunu döndürür. Bizim kodumuz picker kopyalarını silmez (OCR sonrasında da silinmez); bu kopyaların yaşam döngüsü henüz yönetilmiyor. Tek istisna, döndürme için kendi ürettiğimiz geçici kopyadır (yukarıda).
 - Android ve iOS dışında web, windows, linux ve macos dizinleri de var; hedef platformlar yalnızca Android ve iOS.
 - Testler: [test/features/image_import/](test/features/image_import) altında ekran, önizleme, döndürme, OCR ve döndürme servisi testleri; gerçek ML Kit çağrısı yapılmaz, servis sahtesi kullanılır (döndürme servisi gerçek dosyalarla test edilir).
+
+## Temel seslendirme (adım 3)
+
+Kapsam: metin alanında o an görünen metnin anlık kopyası (ham OCR değil) Türkçe okunur. Yalnızca "Sesli oku" ve "Durdur" vardır; duraklat, ileri/geri, hız, kayıt ve arka planda oynatma yok. Durdurduktan sonra okuma metnin başından başlar. Boş veya yalnızca boşluk içeren metin okunmaz.
+
+- Paket: `flutter_tts ^4.2.5` (pub.dev, 2026-01-05; Dart >=3.4, Android minSdk 24, iOS ek izin gerektirmez). Android'de TTS motorunu görebilmek için [AndroidManifest.xml](android/app/src/main/AndroidManifest.xml) `queries` içine `android.intent.action.TTS_SERVICE` eklendi. INTERNET izni eklenmedi; release kaldırma kuralı ve ProGuard kuralları değişmedi. Derleme sırasında `flutter_tts`'in Kotlin Gradle Plugin kullandığına dair Flutter uyarısı çıkar; derleme başarılıdır.
+- Yapı: `SpeechService` (platform çağrıları, testte sahtesiyle değiştirilir), `ListeningController` (dinleme durumu; `ImageImportController`'a bağımlı değil) ve ekran ikisini koordine eder. Servisi ekran sahiplenir (enjekte edilmediyse kendisi oluşturup dispose eder).
+- Durumlar: hazırlanıyor, okunuyor, durduruluyor, tamamlandı, hata. Çift başlatma ve çakışan başlat/durdur engellenir. Okuma sırasında metin düzenleme, satır birleştirme, OCR ve görsel işlemleri kapalıdır; "Durdur" erişilebilir kalır.
+- Çevrimdışı Türkçe ses (Android): `getVoices` listesinden `tr-TR` yerel ayarlı, `network_required` değeri `0` olan ve `features` içinde `notInstalled` bulunmayan ses seçilir (yüksek kalite ve `embeddedTts` tercih edilir) ve `setVoice` başarılı olmalıdır. Bu bilgiler motorun bildirdiği değerlerdir; Android bundan güçlü bir kanıt sunmaz. Uygun ses yoksa cihazın Metin okuma (TTS) ayarlarından Türkçe ses yüklemesi önerilir; otomatik indirme veya bulut TTS yoktur. iOS'ta ses bayrağı yoktur; yalnızca `tr-TR` dil desteği kontrol edilir ve **iOS çevrimdışı davranışı doğrulanmadı, garanti edilmez**. TTS motoru ayrı bir sistem uygulaması olabileceğinden uygulamanın INTERNET izninin olmaması motorun ağ kullanımını engellediği anlamına gelmez.
+- Uzun metin: metin kayıpsız parçalara bölünür (parça = en fazla 1000 karakter veya platformun `getMaxSpeechInputLength` değeri; hangisi küçükse), tercih sırası satır sonu, cümle sonu, boşluk; gerekirse sert kesim vekil çiftini bölmez. Birleştirilince özgün metni verir. Parçalar sırayla okunur; durdurulunca sıradaki parça başlamaz. Sınır: sert kesim birleştirici işaretleri ayırabilir.
+- Geri çağrı yaklaşımı: `flutter_tts 4.2.5` geri çağrıları okuma kimliği taşımaz. Bu yüzden `speak` dönüşü tamamlanma sayılmaz; `awaitSpeakCompletion(true)` ile beklenen sonuç, hata geri çağrısı ve `stop()` yarıştırılır ve her okuma bir oturum sayacıyla korunur (eski oturumun sonucu yeni oturumu etkilemez). Garanti verilemeyen nokta: Android'de iptal bildirimi `stop()` sonrası eşzamansız gelir; eski bir hata geri çağrısının yeni oturumda görünmesi kuramsal olarak dışlanamaz. Motor hatasında `speak` sonucunun hiç dönmemesi ve iOS'ta iptalde sonucun asılı kalabilmesi de paket kaynağında görüldü; bu yüzden sonuç beklemesi hata/durdurma sinyalleriyle yarıştırılır.
+- Yaşam döngüsü: uygulama `hidden`/`paused`/`detached` olunca okuma durdurulur ve ekran kapanınca durdurulup kaynaklar bırakılır. `inactive` bilinçli olarak yok sayılır (sistem diyalogları ve bildirim paneli bunu tetikler); okuma sırasında galeri seçici zaten açılamaz.
+- Testler: [test/features/listening/](test/features/listening) altında sahte servisle durum geçişleri, uzun metin sırası, durdurma, geç sonuçlar, dispose, bölücü, ses seçimi ve widget kontrol durumları sınanır. Bunlar yalnızca bizim sıralamamızı doğrular; gerçek TTS motoru doğrulanmış sayılmaz.
 
 ## Durum yönetimi ve sahiplik
 
@@ -80,6 +93,12 @@ lib/
         ocr_text_formatter.dart       # saf Dart satır birleştirme (metin + yerleşim)
         ocr_result.dart               # OcrResult / OcrLine veri sınıfları
         text_recognition_service.dart # ML Kit OCR sarmalayıcısı
+    listening/
+      presentation/
+        listening_controller.dart     # ChangeNotifier: oturum korumalı dinleme durumu
+      services/
+        speech_service.dart           # flutter_tts sarmalayıcısı, çevrimdışı Türkçe ses seçimi
+        speech_text_splitter.dart     # kayıpsız metin parçalama
 ```
 
 ## Geliştirme
