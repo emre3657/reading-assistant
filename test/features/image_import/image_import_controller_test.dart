@@ -58,6 +58,29 @@ void main() {
     expect(c.isBusy, isFalse);
   });
 
+  test('recognitionId grows only for a new non-empty result', () async {
+    var result = 'ham metin';
+    ocr = FakeTextRecognitionService((_) async => result);
+    final c = await withImage();
+    addTearDown(c.dispose);
+    expect(c.recognitionId, 0);
+
+    await c.extractText(expectedRevision: c.revision);
+    expect(c.recognitionId, 1);
+
+    c.setJoinLines(true, expectedRevision: c.revision);
+    c.textController.text = 'ham metin!';
+    expect(c.recognitionId, 1, reason: 'toggles and edits are not results');
+
+    result = '   ';
+    await c.extractText(expectedRevision: c.revision);
+    expect(c.recognitionId, 1, reason: 'empty result');
+
+    result = 'ikinci metin';
+    await c.extractText(expectedRevision: c.revision);
+    expect(c.recognitionId, 2);
+  });
+
   test('detects edits and notifies only when the state flips', () async {
     final c = await withImage();
     addTearDown(c.dispose);

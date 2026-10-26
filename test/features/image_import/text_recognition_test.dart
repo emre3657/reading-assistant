@@ -11,12 +11,11 @@ const _extractLabel = 'Metni çıkar';
 const _selectLabel = 'Galeriden görsel seç';
 const _changeLabel = 'Görseli değiştir';
 const _removeLabel = 'Görseli kaldır';
-const _fieldLabel = 'Çıkarılan metin';
 const _noTextMessage = 'Görselde metin bulunamadı',
     _errorPrefix = 'Metin çıkarılamadı';
 const _ocrText = 'Çocuğun ĞÜŞİÖ ığüşö\nİkinci satır\n\nÜçüncü paragraf';
 
-final _textField = find.widgetWithText(TextField, _fieldLabel);
+final _textField = find.byType(TextField);
 
 String _fieldText(WidgetTester tester) =>
     tester.widget<TextField>(_textField).controller!.text;
@@ -90,7 +89,8 @@ void main() {
 
     expect(harness.recognizer.paths, ['/tmp/a.png']);
     expect(_fieldText(tester), _ocrText);
-    expect(find.textContaining('henüz kaydedilmedi'), findsOneWidget);
+    expect(find.textContaining('henüz kaydedilmedi'), findsNothing);
+    expect(find.textContaining('Gerekirse düzeltebilirsin'), findsNothing);
 
     await tester.enterText(_textField, 'Düzeltilmiş\nmetin');
     await tester.pump();
@@ -497,6 +497,7 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 600);
     addTearDown(tester.view.resetViewInsets);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(tester.takeException(), isNull);
     expect(find.byType(SingleChildScrollView), findsOneWidget);

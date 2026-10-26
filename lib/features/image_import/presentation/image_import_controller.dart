@@ -69,6 +69,7 @@ class ImageImportController extends ChangeNotifier {
   int _lastPickId = 0;
   int? _pendingPickId;
   int _revision = 0;
+  int _recognitionId = 0;
   bool _isPicking = false;
   bool _isRecognizing = false;
   bool _disposed = false;
@@ -102,6 +103,11 @@ class ImageImportController extends ChangeNotifier {
   /// Changes whenever the image, rotation or OCR text state changes in a way
   /// that makes an earlier confirmation stale. Typing does not change it.
   int get revision => _revision;
+
+  /// Increases only when a new, non-empty OCR result has been applied to the
+  /// text field. Errors, empty results, joining lines and rebuilds leave it
+  /// unchanged, so the screen can react to new results (e.g. scroll).
+  int get recognitionId => _recognitionId;
 
   /// True when the user changed the text after OCR (or typed it themselves).
   bool get hasEditedText {
@@ -332,6 +338,7 @@ class ImageImportController extends ChangeNotifier {
         _joinLines = false;
         textController.value = TextEditingValue(text: ocr.text);
         _revision++;
+        _recognitionId++;
       }
     }
     _notify();

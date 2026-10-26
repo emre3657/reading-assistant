@@ -378,6 +378,164 @@ void main() {
     expect(slowController.status, ListeningStatus.speaking);
   });
 
+  test('the default speed 1× is applied before the first speech', () async {
+    await startReading();
+    expect(speech.rates, [1.0]);
+    expect(speech.spokenRates, [1.0]);
+    expect(controller.speed, ReadingSpeed.normal);
+  });
+
+  test('idle: the chosen speed is used by the next reading', () async {
+    await controller.setSpeed(ReadingSpeed.faster);
+    expect(controller.speed, ReadingSpeed.faster);
+    expect(speech.rates, isEmpty, reason: 'nothing to apply while idle');
+    expect(speech.stopCalls, 0);
+
+    await startReading();
+    expect(speech.spokenRates, [1.5]);
+  });
+
+  test(
+    'speaking: a new speed cuts the speech and rereads the sentence',
+    () async {
+      await startReading();
+      speech.finishCurrent();
+      await pumpEventQueue();
+      expect(controller.currentSentence, 2);
+
+      await controller.setSpeed(ReadingSpeed.fast);
+      await pumpEventQueue();
+      expect(speech.stopCalls, 1);
+      expect(speech.spoken, [_s[0], _s[1], _s[1]]);
+      expect(speech.spokenRates, [1.0, 1.0, 1.25]);
+      expect(controller.currentSentence, 2);
+      expect(controller.status, ListeningStatus.speaking);
+    },
+  );
+
+  test('paused: only the speed changes; resume uses it', () async {
+    await startReading();
+    await controller.pause();
+    final spoken = speech.spoken.length;
+    final stops = speech.stopCalls;
+
+    await controller.setSpeed(ReadingSpeed.slow);
+    expect(controller.speed, ReadingSpeed.slow);
+    expect(controller.status, ListeningStatus.paused);
+    expect(speech.spoken.length, spoken);
+    expect(speech.stopCalls, stops);
+
+    await controller.resume();
+    await pumpEventQueue();
+    expect(speech.spoken.last, _s[0]);
+    expect(speech.spokenRates.last, 0.75);
+  });
+
+  test('the speed survives stop, completion and a new text', () async {
+    await controller.setSpeed(ReadingSpeed.fast);
+    await startReading('Bir.');
+    speech.finishCurrent();
+    await lastRun;
+    expect(controller.status, ListeningStatus.completed);
+    expect(controller.speed, ReadingSpeed.fast);
+
+    await startReading('Yeni metin.');
+    await controller.stop();
+    expect(controller.speed, ReadingSpeed.fast);
+    await startReading('Başka.');
+    expect(speech.spokenRates.last, 1.25);
+  });
+
+  test('choosing the current speed again does nothing', () async {
+    await startReading();
+    await controller.setSpeed(ReadingSpeed.normal);
+    expect(speech.stopCalls, 0);
+    expect(speech.spoken, [_s[0]]);
+  });
+
+  test('rapid speed changes end on the last speed, read once', () async {
+    await startReading();
+    final a = controller.setSpeed(ReadingSpeed.slow);
+    final b = controller.setSpeed(ReadingSpeed.fast);
+    final c = controller.setSpeed(ReadingSpeed.faster);
+    await Future.wait([a, b, c]);
+    await pumpEventQueue();
+
+    expect(controller.speed, ReadingSpeed.faster);
+    expect(speech.spoken, [_s[0], _s[0]]);
+    expect(speech.spokenRates, [1.0, 1.5]);
+    expect(speech.stopCalls, 1, reason: 'one cut for the whole burst');
+  });
+
+  test(
+    'a speed chosen while the stop is pending is used by the read',
+    () async {
+      final slow = _SlowStopSpeech();
+      final slowController = ListeningController(speechService: slow);
+      addTearDown(slowController.dispose);
+      unawaited(slowController.start(_text));
+      await pumpEventQueue();
+
+      final first = slowController.setSpeed(ReadingSpeed.fast);
+      await pumpEventQueue();
+      expect(slowController.canRestart, isFalse, reason: 'switching');
+      final second = slowController.setSpeed(ReadingSpeed.slow);
+      expect(slow.spoken, [_s[0]], reason: 'stop is still pending');
+
+      slow.stopGate.complete();
+      await Future.wait([first, second]);
+      await pumpEventQueue();
+      expect(slow.spoken, [_s[0], _s[0]]);
+      expect(slow.spokenRates, [1.0, 0.75]);
+    },
+  );
+
+  test('stop right after a speed change wins', () async {
+    final slow = _SlowStopSpeech();
+    final slowController = ListeningController(speechService: slow);
+    addTearDown(slowController.dispose);
+    unawaited(slowController.start(_text));
+    await pumpEventQueue();
+
+    final change = slowController.setSpeed(ReadingSpeed.fast);
+    final stop = slowController.stop();
+    slow.stopGate.complete();
+    await Future.wait([change, stop]);
+    await pumpEventQueue();
+
+    expect(slow.spoken, [_s[0]]);
+    expect(slowController.status, ListeningStatus.idle);
+    expect(slowController.speed, ReadingSpeed.fast);
+  });
+
+  test('a failing rate setting is reported in Turkish', () async {
+    speech.rateError = Exception('rate');
+    await startReading();
+    await lastRun;
+    expect(controller.status, ListeningStatus.failed);
+    expect(controller.message, contains('Okuma hızı ayarlanamadı'));
+    expect(speech.spoken, isEmpty);
+  });
+
+  test('dispose during a speed change touches nothing afterwards', () async {
+    final slow = _SlowStopSpeech();
+    final slowController = ListeningController(speechService: slow);
+    unawaited(slowController.start(_text));
+    await pumpEventQueue();
+    var notified = 0;
+    slowController.addListener(() => notified++);
+
+    final change = slowController.setSpeed(ReadingSpeed.fast);
+    final before = notified;
+    slowController.dispose();
+    slow.stopGate.complete();
+    await change;
+    await pumpEventQueue();
+
+    expect(notified, before);
+    expect(slow.spoken, [_s[0]]);
+  });
+
   test('an engine error ends the session and clears the position', () async {
     await startReading();
     final run = lastRun;

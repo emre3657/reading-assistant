@@ -11,11 +11,10 @@ const _selectLabel = 'Galeriden görsel seç';
 const _changeLabel = 'Görseli değiştir';
 const _removeLabel = 'Görseli kaldır';
 const _joinLabel = 'Satırları birleştir';
-const _fieldLabel = 'Çıkarılan metin';
 const _raw = 'kitap-\nlık burada\nikinci satır\r\n\r\nYeni paragraf\nson';
 const _joined = 'kitaplık burada ikinci satır\n\nYeni paragraf son';
 
-final _textField = find.widgetWithText(TextField, _fieldLabel);
+final _textField = find.byType(TextField);
 final _switch = find.byType(SwitchListTile);
 
 String _fieldText(WidgetTester tester) =>

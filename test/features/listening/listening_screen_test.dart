@@ -12,7 +12,7 @@ import 'fake_speech_service.dart';
 const _readLabel = 'Sesli oku';
 const _stopLabel = 'Durdur';
 
-final _fieldFinder = find.widgetWithText(TextField, 'Çıkarılan metin');
+final _fieldFinder = find.byType(TextField);
 
 Finder _button(String label) => find.ancestor(
   of: find.text(label),
@@ -83,7 +83,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(_enabled(tester, _readLabel), isFalse);
+    expect(find.text(_readLabel), findsNothing, reason: 'replaced by Duraklat');
+    expect(_enabled(tester, 'Duraklat'), isTrue);
     expect(_enabled(tester, _stopLabel), isTrue);
     expect(tester.widget<TextField>(_fieldFinder).readOnly, isTrue);
     for (final label in [
@@ -188,16 +189,153 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('lock icon shows only during a session and explains itself', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await _openWithText(tester);
+    const message = 'Düzenlemek için okumayı durdur';
+    final lock = find.byIcon(Icons.lock_outline);
+    expect(lock, findsNothing);
+
+    await tester.tap(find.text(_readLabel));
+    await tester.pump();
+    await tester.pump();
+    expect(lock, findsOneWidget);
+    // Right next to the label, not inside the field.
+    final label = tester.getRect(find.text('Çıkarılan metin'));
+    final icon = tester.getRect(lock);
+    expect(icon.left, greaterThanOrEqualTo(label.right));
+    expect((icon.center.dy - label.center.dy).abs(), lessThan(30));
+    expect(
+      tester
+          .getSize(
+            find.ancestor(of: lock, matching: find.byType(SizedBox)).first,
+          )
+          .shortestSide,
+      greaterThanOrEqualTo(48),
+    );
+    expect(find.byTooltip(message), findsOneWidget);
+    expect(
+      tester.getSemantics(lock),
+      matchesSemantics(label: 'Düzenleme kilitli. $message'),
+    );
+
+    // Touch: tapping the icon shows the explanation.
+    await tester.tap(lock);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text(message), findsWidgets);
+    // Tapping does not stop reading.
+    expect(find.text('Duraklat'), findsOneWidget);
+
+    await tester.tap(find.text(_stopLabel));
+    await tester.pump();
+    await tester.pump();
+    expect(lock, findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('the old "not saved" helper text is gone', (tester) async {
+    await _openWithText(tester);
+    expect(find.textContaining('kaydedilmedi'), findsNothing);
+    expect(find.textContaining('düzeltebilirsin'), findsNothing);
+  });
+
+  Future<void> expectNoFocusAfter(
+    WidgetTester tester,
+    Future<void> Function() endSession,
+  ) async {
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    // Touching the locked field neither focuses it nor stops the reading.
+    await tester.tap(_fieldFinder);
+    await tester.pump();
+    expect(editable.widget.focusNode.hasFocus, isFalse);
+    expect(
+      find.text('Okunuyor…').evaluate().isNotEmpty ||
+          find.text('Duraklatıldı.').evaluate().isNotEmpty,
+      isTrue,
+    );
+
+    await endSession();
+    expect(editable.widget.focusNode.hasFocus, isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+  }
+
+  testWidgets('touching the locked field then Stop does not focus or open '
+      'the keyboard; editing works again afterwards', (tester) async {
+    await _openWithText(tester);
+    await tester.tap(find.text(_readLabel));
+    await tester.pump();
+    await tester.pump();
+
+    await expectNoFocusAfter(tester, () async {
+      await tester.tap(find.text(_stopLabel));
+      await tester.pump();
+      await tester.pump();
+    });
+
+    // After the session a new tap edits normally.
+    await tester.tap(_fieldFinder);
+    await tester.pump();
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    expect(editable.widget.focusNode.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+  });
+
+  testWidgets('same behaviour while paused', (tester) async {
+    await _openWithText(tester);
+    await tester.tap(find.text(_readLabel));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('Duraklat'));
+    await tester.pump();
+    await tester.pump();
+
+    await expectNoFocusAfter(tester, () async {
+      await tester.tap(find.text(_stopLabel));
+      await tester.pump();
+      await tester.pump();
+    });
+  });
+
+  testWidgets('no auto focus after completion or an error', (tester) async {
+    final speech = await _openWithText(tester);
+    await tester.tap(find.text(_readLabel));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(_fieldFinder);
+    await tester.pump();
+    speech.finishCurrent();
+    await tester.pump();
+    await tester.pump();
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    expect(editable.widget.focusNode.hasFocus, isFalse);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('starting to read removes an existing focus', (tester) async {
+    await _openWithText(tester);
+    await tester.tap(_fieldFinder);
+    await tester.pump();
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    expect(editable.widget.focusNode.hasFocus, isTrue);
+
+    await tester.tap(find.text(_readLabel));
+    await tester.pump();
+    await tester.pump();
+    expect(editable.widget.focusNode.hasFocus, isFalse);
+  });
+
   testWidgets('sentence controls: states, indicator and pause lock', (
     tester,
   ) async {
     final speech = await _openWithText(tester, text: 'Bir. İki. Üç.');
-    for (final label in [
-      'Duraklat',
-      'Önceki cümle',
-      'Sonraki cümle',
-      'Başa dön',
-    ]) {
+    expect(find.text('Duraklat'), findsNothing);
+    expect(find.text('Devam et'), findsNothing);
+    expect(find.text('Önceki cümle'), findsNothing, reason: 'collapsed');
+    await tester.tap(find.text('Diğer kontroller'));
+    await tester.pump();
+    for (final label in ['Önceki cümle', 'Sonraki cümle', 'Başa dön']) {
       expect(_enabled(tester, label), isFalse, reason: label);
     }
     expect(find.textContaining('Cümle 1'), findsNothing);
@@ -206,6 +344,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Cümle 1 / 3'), findsOneWidget);
+    expect(find.text('Hız 1×'), findsOneWidget);
     expect(
       find.text('Devam et, mevcut cümlenin başından okur.'),
       findsOneWidget,
@@ -229,7 +368,7 @@ void main() {
     expect(find.text('Devam et'), findsOneWidget);
     expect(find.text('Duraklatıldı.'), findsOneWidget);
     expect(_enabled(tester, 'Devam et'), isTrue);
-    expect(_enabled(tester, _readLabel), isFalse);
+    expect(find.text(_readLabel), findsNothing);
     expect(tester.widget<TextField>(_fieldFinder).readOnly, isTrue);
     for (final label in ['Metni çıkar', 'Görseli değiştir', 'Görseli kaldır']) {
       expect(_enabled(tester, label), isFalse, reason: label);

@@ -14,9 +14,8 @@ const _changeLabel = 'Görseli değiştir';
 const _removeLabel = 'Görseli kaldır';
 const _leftLabel = 'Sola döndür';
 const _rightLabel = 'Sağa döndür';
-const _fieldLabel = 'Çıkarılan metin';
 
-final _textField = find.widgetWithText(TextField, _fieldLabel);
+final _textField = find.byType(TextField);
 
 String _fieldText(WidgetTester tester) =>
     tester.widget<TextField>(_textField).controller!.text;

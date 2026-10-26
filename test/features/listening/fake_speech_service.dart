@@ -33,9 +33,25 @@ class FakeSpeechService implements SpeechService {
     return setup;
   }
 
+  /// Every multiplier passed to [setSpeechRate], in order.
+  final List<double> rates = [];
+
+  /// The multiplier in effect when each text of [spoken] was spoken.
+  final List<double?> spokenRates = [];
+  Object? rateError;
+  double? _rate;
+
+  @override
+  Future<void> setSpeechRate(double multiplier) async {
+    if (rateError != null) throw rateError!;
+    rates.add(multiplier);
+    _rate = multiplier;
+  }
+
   @override
   Future<SpeechOutcome> speak(String text) {
     spoken.add(text);
+    spokenRates.add(_rate);
     final completer = Completer<SpeechOutcome>();
     _current = completer;
     return completer.future;

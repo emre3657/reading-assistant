@@ -6,6 +6,21 @@ import '../services/sentence_splitter.dart';
 import '../services/speech_service.dart';
 import '../services/speech_text_splitter.dart';
 
+/// Reading speed choices, relative to the app's base speed (1×). The values
+/// are mapped to the engine by [speechRateFor]; they are not exact duration
+/// ratios.
+enum ReadingSpeed {
+  slow(0.75, '0.75×'),
+  normal(1, '1×'),
+  fast(1.25, '1.25×'),
+  faster(1.5, '1.5×');
+
+  const ReadingSpeed(this.multiplier, this.label);
+
+  final double multiplier;
+  final String label;
+}
+
 enum ListeningStatus {
   idle,
   starting,
@@ -60,7 +75,13 @@ class ListeningController extends ChangeNotifier {
   int _chunkLength = preferredChunkLength;
   int _index = 0;
 
+  ReadingSpeed _speed = ReadingSpeed.normal;
+
   ListeningStatus get status => _status;
+
+  /// Chosen speed. It belongs to the controller, not to a session, so it
+  /// survives stop, completion and new texts (not the app restart).
+  ReadingSpeed get speed => _speed;
 
   /// Turkish message for the user: an error, a hint or a short result.
   String? get message => _message;
@@ -175,6 +196,23 @@ class ListeningController extends ChangeNotifier {
     unawaited(_play(run));
   }
 
+  /// Chooses the reading speed.
+  /// - Speaking: cuts the speech and reads the same sentence again from its
+  ///   beginning at the new speed.
+  /// - Paused or idle (or starting/stopping): only remembers the speed; the
+  ///   next reading or resume uses it.
+  /// - While a jump is already cutting the speech: only remembers the speed,
+  ///   because that jump has not applied the rate yet and will pick it up.
+  Future<void> setSpeed(ReadingSpeed speed) async {
+    if (_disposed || speed == _speed) return;
+    _speed = speed;
+    if (_status == ListeningStatus.speaking && _switchingRun != _run) {
+      await _jump(_index);
+      return;
+    }
+    notifyListeners();
+  }
+
   Future<void> previousSentence() => _jump(_index - 1);
 
   Future<void> nextSentence() => _jump(_index + 1);
@@ -243,6 +281,21 @@ class ListeningController extends ChangeNotifier {
   Future<void> _play(int run) async {
     // A speak never starts while an earlier stop is still running.
     await _stopTail;
+    if (_disposed || run != _run) return;
+    // The speed is read here, after the stop, so a speed chosen while a jump
+    // was waiting for its stop is used. Every speed change opens a new run,
+    // so the rate stays the same for the whole run.
+    try {
+      await speechService.setSpeechRate(_speed.multiplier);
+    } catch (_) {
+      if (_disposed || run != _run) return;
+      _clearDocument();
+      _setState(
+        ListeningStatus.failed,
+        'Okuma hızı ayarlanamadı. Tekrar deneyebilirsin.',
+      );
+      return;
+    }
     while (!_disposed && run == _run && _index < _sentences.length) {
       final span = _sentences[_index];
       final sentence = _text.substring(span.start, span.end);

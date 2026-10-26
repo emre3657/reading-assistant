@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../listening/presentation/listening_controller.dart';
+import '../../listening/presentation/listening_controls.dart';
 import '../../listening/services/speech_service.dart';
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
@@ -11,13 +14,7 @@ import 'widgets/image_preview.dart';
 export 'image_import_controller.dart'
     show PreviewImageBuilder, fileImageProvider;
 
-/// UI and dialogs of the image import flow. State and async flows live in
-/// [ImageImportController]; confirmations are asked here, with the controller
-/// revision read before asking, so a stale answer is ignored.
-///
-/// Reading aloud lives in [ListeningController]. The two controllers do not
-/// know each other; this screen keeps them apart: while one is busy, the
-/// other's actions are disabled.
+/// UI and dialogs of the image import flow. Controllers own processing state.
 class ImageImportScreen extends StatefulWidget {
   const ImageImportScreen({
     super.key,
@@ -33,8 +30,7 @@ class ImageImportScreen extends StatefulWidget {
   final ImageRotationService rotationService;
   final PreviewImageBuilder previewImageBuilder;
 
-  /// When null the screen creates (and disposes) the device speech service;
-  /// an injected one stays owned by the caller.
+  /// An injected service remains owned by its caller.
   final SpeechService? speechService;
 
   @override
@@ -45,56 +41,150 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     with WidgetsBindingObserver {
   late final ImageImportController _controller;
   late final ListeningController _listening;
+
   SpeechService? _ownedSpeechService;
+
+  final _joinSectionKey = GlobalKey();
+
+  int _lastRecognitionId = 0;
+  int _scrollToken = 0;
+  bool _moreControlsOpen = false;
+
+  OverlayEntry? _editLockNotice;
+  Timer? _editLockNoticeTimer;
 
   @override
   void initState() {
     super.initState();
+
     _controller = ImageImportController(
       pickerService: widget.pickerService,
       textRecognitionService: widget.textRecognitionService,
       rotationService: widget.rotationService,
       previewImageBuilder: widget.previewImageBuilder,
     )..recoverLostImage();
+
+    _controller.addListener(_onImportChanged);
+
     final speechService =
         widget.speechService ?? (_ownedSpeechService = SpeechService());
+
     _listening = ListeningController(speechService: speechService);
+    _listening.addListener(_onListeningChanged);
+
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // A running OCR call is not cancelled; the controller drops its result
-    // and still deletes the run's temporary copy.
+    _hideEditLockNotice();
+    _scrollToken++;
+
+    _controller.removeListener(_onImportChanged);
     _controller.dispose();
-    // Stops reading if it is active; the owned service is released after.
+
+    _listening.removeListener(_onListeningChanged);
     _listening.dispose();
     _ownedSpeechService?.dispose();
+
     super.dispose();
   }
 
-  // `inactive` is not handled: system dialogs and the notification shade
-  // cause it, and reading may go on there. Leaving the app (hidden/paused)
-  // stops it, because the first version has no background listening.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Temporary inactive states, such as system dialogs, do not stop reading.
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _hideEditLockNotice();
       _listening.stop();
     }
   }
 
+  void _onListeningChanged() {
+    if (!_listening.isActive) {
+      _hideEditLockNotice();
+    }
+  }
+
+  void _hideEditLockNotice() {
+    _editLockNoticeTimer?.cancel();
+    _editLockNoticeTimer = null;
+
+    final notice = _editLockNotice;
+    _editLockNotice = null;
+
+    if (notice != null) {
+      notice.remove();
+      notice.dispose();
+    }
+  }
+
+  void _showEditLockNotice() {
+    if (!mounted || !_listening.isActive) return;
+
+    // Repeated taps extend the notice instead of stacking messages.
+    _editLockNoticeTimer?.cancel();
+
+    if (_editLockNotice == null) {
+      final overlay = Overlay.of(context);
+      final colorScheme = Theme.of(context).colorScheme;
+
+      _editLockNotice = OverlayEntry(
+        builder: (overlayContext) => Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            minimum: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: IgnorePointer(
+              child: Semantics(
+                liveRegion: true,
+                child: Material(
+                  elevation: 6,
+                  borderRadius: BorderRadius.circular(12),
+                  color: colorScheme.inverseSurface,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      'Metni düzenlemek için okumayı durdur.',
+                      style: TextStyle(color: colorScheme.onInverseSurface),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      overlay.insert(_editLockNotice!);
+    }
+
+    _editLockNoticeTimer = Timer(
+      const Duration(seconds: 3),
+      _hideEditLockNotice,
+    );
+  }
+
   Future<void> _selectImage() async {
     if (_listening.isActive) return;
+
     final candidate = await _controller.pickImage();
     if (candidate == null) return;
+
     var applied = false;
+
     try {
-      // The picker is opened first, so a cancelled pick never asks anything.
+      // A cancelled picker never asks for confirmation.
       if (_controller.hasEditedText) {
         if (!mounted) return;
+
         final confirmed = await _confirm(
           title: 'Düzenlediğin metin silinsin mi?',
           content:
@@ -102,8 +192,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               'Metin henüz kaydedilmedi.',
           confirmLabel: 'Metni sil ve değiştir',
         );
+
         if (!confirmed || !mounted) return;
       }
+
       applied = _controller.applyPick(candidate);
     } finally {
       if (!applied) _controller.discardPick(candidate);
@@ -112,7 +204,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
   Future<void> _removeImage() async {
     if (_controller.isBusy || _listening.isActive) return;
+
     final revision = _controller.revision;
+
     if (_controller.hasEditedText) {
       final confirmed = await _confirm(
         title: 'Düzenlediğin metin silinsin mi?',
@@ -121,8 +215,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             'Metin henüz kaydedilmedi.',
         confirmLabel: 'Metni sil ve kaldır',
       );
+
       if (!confirmed || !mounted) return;
     }
+
     _controller.removeImage(expectedRevision: revision);
   }
 
@@ -132,7 +228,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         !_controller.hasRecognizedText) {
       return;
     }
+
     final revision = _controller.revision;
+
     if (_controller.hasEditedText) {
       final confirmed = await _confirm(
         title: 'Düzenlediğin metin silinsin mi?',
@@ -142,8 +240,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             'kaydedilmedi.',
         confirmLabel: 'Metni sil ve uygula',
       );
+
       if (!confirmed || !mounted) return;
     }
+
     _controller.setJoinLines(value, expectedRevision: revision);
   }
 
@@ -151,7 +251,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     if (!_controller.hasImage || _controller.isBusy || _listening.isActive) {
       return;
     }
+
     final revision = _controller.revision;
+
     if (_controller.hasEditedText) {
       final confirmed = await _confirm(
         title: 'Metnin üzerine yazılsın mı?',
@@ -159,8 +261,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             'Düzenlediğin metin, yeniden çıkarılan metinle değiştirilecek.',
         confirmLabel: 'Üzerine yaz',
       );
+
       if (!confirmed || !mounted) return;
     }
+
     await _controller.extractText(expectedRevision: revision);
   }
 
@@ -186,13 +290,45 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         ],
       ),
     );
+
     return confirmed ?? false;
   }
 
   Future<void> _startListening() async {
     if (_controller.isBusy || _listening.isActive) return;
-    // The text currently shown in the field, not the raw OCR result.
+
+    FocusManager.instance.primaryFocus?.unfocus();
+
     await _listening.start(_controller.textController.text);
+  }
+
+  void _onImportChanged() {
+    final id = _controller.recognitionId;
+    if (id == _lastRecognitionId) return;
+
+    _lastRecognitionId = id;
+    _scheduleScrollToText();
+  }
+
+  /// Scrolls to formatting options without requesting input focus.
+  void _scheduleScrollToText() {
+    final token = ++_scrollToken;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || token != _scrollToken) return;
+
+      final sectionContext = _joinSectionKey.currentContext;
+      if (sectionContext == null) return;
+
+      final animate = !MediaQuery.disableAnimationsOf(context);
+
+      Scrollable.ensureVisible(
+        sectionContext,
+        alignment: 0,
+        duration: animate ? const Duration(milliseconds: 250) : Duration.zero,
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
@@ -203,100 +339,27 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     );
   }
 
-  Widget _buildListeningControls(BuildContext context) {
-    final listening = _listening;
-    final colorScheme = Theme.of(context).colorScheme;
-    final message = listening.message;
-    final status = listening.status;
-    final statusText = switch (status) {
-      ListeningStatus.starting => 'Okuma hazırlanıyor…',
-      ListeningStatus.speaking => 'Okunuyor…',
-      ListeningStatus.paused => 'Duraklatıldı.',
-      ListeningStatus.stopping => 'Durduruluyor…',
-      _ => null,
-    };
-    final canStart = !listening.isActive && !_controller.isBusy;
+  Widget _buildListeningPanel(BuildContext context) {
+    final hasText =
+        _controller.hasRecognizedText &&
+        _controller.textController.text.isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.icon(
-              onPressed: canStart ? _startListening : null,
-              icon: const Icon(Icons.volume_up),
-              label: const Text('Sesli oku'),
-            ),
-            if (listening.canResume)
-              OutlinedButton.icon(
-                onPressed: _listening.resume,
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Devam et'),
-              )
-            else
-              OutlinedButton.icon(
-                onPressed: listening.canPause ? _listening.pause : null,
-                icon: const Icon(Icons.pause),
-                label: const Text('Duraklat'),
-              ),
-            OutlinedButton.icon(
-              onPressed: listening.canGoPrevious
-                  ? _listening.previousSentence
-                  : null,
-              icon: const Icon(Icons.skip_previous),
-              label: const Text('Önceki cümle'),
-            ),
-            OutlinedButton.icon(
-              onPressed: listening.canGoNext ? _listening.nextSentence : null,
-              icon: const Icon(Icons.skip_next),
-              label: const Text('Sonraki cümle'),
-            ),
-            OutlinedButton.icon(
-              onPressed: listening.canRestart
-                  ? _listening.restartFromBeginning
-                  : null,
-              icon: const Icon(Icons.first_page),
-              label: const Text('Başa dön'),
-            ),
-            OutlinedButton.icon(
-              onPressed: listening.canStop ? _listening.stop : null,
-              icon: const Icon(Icons.stop),
-              label: const Text('Durdur'),
-            ),
-          ],
-        ),
-        if (listening.sentenceCount > 0) ...[
-          const SizedBox(height: 8),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              'Cümle ${listening.currentSentence} / ${listening.sentenceCount}',
-              textAlign: TextAlign.center,
-            ),
-          ),
-          Text(
-            'Devam et, mevcut cümlenin başından okur.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-        if (statusText != null || message != null) ...[
-          const SizedBox(height: 8),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              statusText ?? message!,
-              textAlign: TextAlign.center,
-              style: status == ListeningStatus.failed
-                  ? TextStyle(color: colorScheme.error)
-                  : null,
-            ),
-          ),
-        ],
-      ],
+    if (!hasText) return const SizedBox.shrink();
+
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final visible = !(keyboardOpen && !_listening.isActive);
+
+    return _AnimatedPanel(
+      visible: visible,
+      child: ListeningControls(
+        key: const ValueKey('listening-panel'),
+        listening: _listening,
+        canStart: !_listening.isActive && !_controller.isBusy,
+        onStart: _startListening,
+        expanded: _moreControlsOpen,
+        onToggleExpanded: () =>
+            setState(() => _moreControlsOpen = !_moreControlsOpen),
+      ),
     );
   }
 
@@ -316,6 +379,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          key: const ValueKey('content-scroll'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -387,7 +451,8 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                     Semantics(
                       liveRegion: true,
                       child: Text(
-                        'Görsel saat yönünde ${controller.quarterTurns * 90}° döndürüldü. '
+                        'Görsel saat yönünde '
+                        '${controller.quarterTurns * 90}° döndürüldü. '
                         'Metin çıkarma bu yönle yapılır.',
                         textAlign: TextAlign.center,
                       ),
@@ -421,6 +486,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               if (controller.hasRecognizedText) ...[
                 const SizedBox(height: 24),
                 SwitchListTile(
+                  key: _joinSectionKey,
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Satırları birleştir'),
                   subtitle: const Text(
@@ -433,29 +499,117 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                       : _setJoinLines,
                 ),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: controller.textController,
-                  textAlign: TextAlign.justify,
-                  readOnly: controller.isRecognizing || listeningActive,
-                  minLines: 6,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
-                    labelText: 'Çıkarılan metin',
-                    helperText: 'Bu metin henüz kaydedilmedi. Gerekirse düzeltebilirsin.',
-                    helperMaxLines: 3,
-                    alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        'Çıkarılan metin',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                    if (listeningActive) const _EditLockIcon(),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Semantics(
+                  label: listeningActive
+                      ? 'Çıkarılan metin, düzenleme kilitli. '
+                            'Düzenlemek için okumayı durdur'
+                      : 'Çıkarılan metin',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: listeningActive ? _showEditLockNotice : null,
+                    child: TextField(
+                      controller: controller.textController,
+                      textAlign: TextAlign.justify,
+                      readOnly: controller.isRecognizing || listeningActive,
+                      canRequestFocus: !listeningActive,
+                      enableInteractiveSelection: !listeningActive,
+                      // While locked, the parent handles taps.
+                      ignorePointers: listeningActive,
+                      minLines: 6,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
+                      decoration: const InputDecoration(
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                _buildListeningControls(context),
               ],
             ],
           ),
         ),
       ),
+      bottomNavigationBar: ListenableBuilder(
+        listenable: _controller.textController,
+        builder: (context, _) => _buildListeningPanel(context),
+      ),
+    );
+  }
+}
+
+/// Original lock icon and tap-triggered tooltip.
+class _EditLockIcon extends StatelessWidget {
+  const _EditLockIcon();
+
+  static const message = 'Düzenlemek için okumayı durdur';
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Düzenleme kilitli. $message',
+      excludeSemantics: true,
+      child: Tooltip(
+        message: message,
+        triggerMode: TooltipTriggerMode.tap,
+        excludeFromSemantics: true,
+        child: const SizedBox(
+          width: 48,
+          height: 48,
+          child: Icon(Icons.lock_outline, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+/// Animates keyboard-driven visibility while immediately disabling interaction.
+class _AnimatedPanel extends StatelessWidget {
+  const _AnimatedPanel({required this.visible, required this.child});
+
+  final bool visible;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final animate = !MediaQuery.disableAnimationsOf(context);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(end: visible ? 1.0 : 0.0),
+      duration: animate ? const Duration(milliseconds: 220) : Duration.zero,
+      curve: Curves.easeOut,
+      child: child,
+      builder: (context, factor, child) {
+        if (factor == 0 && !visible) return const SizedBox.shrink();
+
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: factor,
+            child: IgnorePointer(
+              key: const ValueKey('listening-panel-guard'),
+              ignoring: !visible,
+              child: ExcludeFocus(
+                excluding: !visible,
+                child: ExcludeSemantics(excluding: !visible, child: child),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

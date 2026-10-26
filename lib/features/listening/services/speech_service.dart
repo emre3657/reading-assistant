@@ -28,6 +28,22 @@ enum SpeechOutcome {
   failed,
 }
 
+/// `flutter_tts` rate value that stands for the app's base speed (1×).
+///
+/// In `flutter_tts 4.2.5` the Dart value is not the engine value: Android
+/// multiplies it by 2 (so 0.5 becomes the engine's normal rate 1.0) and iOS
+/// passes it as `AVSpeechUtterance.rate`, whose default is 0.5. The app never
+/// set a rate before, so 0.5 matches the previous default on both platforms.
+const baseSpeechRate = 0.5;
+
+/// Maps a speed multiplier (0.75, 1, 1.25, 1.5 …) to a `flutter_tts` rate by
+/// scaling the base value, never by passing the multiplier itself.
+///
+/// The result is only a relative setting: engines and voices (and iOS's
+/// non-linear rate scale) do not guarantee an exact duration ratio.
+double speechRateFor(double multiplier) =>
+    (baseSpeechRate * multiplier).clamp(0.0, 1.0);
+
 /// Thin wrapper over `flutter_tts` (the device speech engine). Tests replace
 /// it with a fake that `implements` this class.
 ///
@@ -74,6 +90,12 @@ class SpeechService {
       default:
         return const SpeechSetup(SpeechAvailability.noOfflineTurkishVoice);
     }
+  }
+
+  /// Sets the speech rate for the following [speak] calls. [multiplier] is
+  /// relative to the app's base rate (1 = base); see [speechRateFor].
+  Future<void> setSpeechRate(double multiplier) async {
+    await _tts.setSpeechRate(speechRateFor(multiplier));
   }
 
   /// Speaks one piece of text. The returned future completes when the
