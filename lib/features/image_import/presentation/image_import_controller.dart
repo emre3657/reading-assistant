@@ -85,6 +85,7 @@ class ImageImportController extends ChangeNotifier {
   String? _errorMessage;
   String? _infoMessage;
   bool _lastHasEditedText = false;
+  bool _lastHasText = false;
 
   ImageSelection? get selection => _selection;
   bool get hasImage => _selection != null;
@@ -121,10 +122,17 @@ class ImageImportController extends ChangeNotifier {
   }
 
   void _onTextChanged() {
+    if (_disposed) return;
+
     final edited = hasEditedText;
-    if (edited == _lastHasEditedText) return;
+    final hasText = textController.text.trim().isNotEmpty;
+
+    final changed = edited != _lastHasEditedText || hasText != _lastHasText;
+
     _lastHasEditedText = edited;
-    _notify();
+    _lastHasText = hasText;
+
+    if (changed) _notify();
   }
 
   /// Replaces the image and drops everything tied to the old one: rotation,

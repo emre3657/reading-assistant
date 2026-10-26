@@ -5,9 +5,14 @@ import 'package:flutter/material.dart';
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/services/speech_service.dart';
+
+import '../../library/presentation/library_screen.dart';
+import '../../library/presentation/save_document_dialog.dart';
+
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
 import '../services/text_recognition_service.dart';
+
 import 'image_import_controller.dart';
 import 'widgets/image_preview.dart';
 
@@ -52,6 +57,8 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
   OverlayEntry? _editLockNotice;
   Timer? _editLockNoticeTimer;
+
+  bool _saveDialogOpen = false;
 
   @override
   void initState() {
@@ -331,6 +338,42 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     });
   }
 
+  Future<void> _saveDocument() async {
+    if (_saveDialogOpen || _controller.isBusy || _listening.isActive) return;
+
+    final text = _controller.textController.text;
+    if (text.trim().isEmpty) return;
+
+    _saveDialogOpen = true;
+
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+
+      final saved = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => SaveDocumentDialog(text: text),
+      );
+
+      if (!mounted || saved != true) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Metin kaydedildi.')));
+    } finally {
+      _saveDialogOpen = false;
+    }
+  }
+
+  Future<void> _openLibrary() async {
+    if (_controller.isBusy || _listening.isActive || _saveDialogOpen) return;
+
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (context) => const LibraryScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -376,6 +419,25 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       appBar: AppBar(
         backgroundColor: colorScheme.inversePrimary,
         title: const Text('Reading Assistant'),
+        actions: [
+          IconButton(
+            tooltip: 'Metni kaydet',
+            icon: const Icon(Icons.save_outlined),
+            onPressed:
+                controller.isBusy ||
+                    listeningActive ||
+                    controller.textController.text.trim().isEmpty
+                ? null
+                : _saveDocument,
+          ),
+          IconButton(
+            tooltip: 'Kayıtlarım',
+            icon: const Icon(Icons.library_books_outlined),
+            onPressed: controller.isBusy || listeningActive
+                ? null
+                : _openLibrary,
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
