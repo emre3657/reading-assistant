@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../listening/services/speech_service.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
+import 'saved_document_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key});
+  const LibraryScreen({super.key, this.store, this.speechService});
+
+  final DocumentStore? store;
+
+  /// An injected service remains owned by its caller. Only the top reading
+  /// screen may use it; navigation back awaits the saved screen's stop.
+  final SpeechService? speechService;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -12,17 +20,41 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   late Future<List<SavedDocument>> _documents;
+  bool _opening = false;
+
+  DocumentStore get _store => widget.store ?? DocumentStore.instance;
 
   @override
   void initState() {
     super.initState();
-    _documents = DocumentStore.instance.list();
+    _documents = _store.list();
   }
 
   void _reload() {
     setState(() {
-      _documents = DocumentStore.instance.list();
+      _documents = _store.list();
     });
+  }
+
+  Future<void> _open(SavedDocument document) async {
+    if (_opening) return;
+    _opening = true;
+    var changed = false;
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (context) => SavedDocumentScreen(
+            document: document,
+            store: _store,
+            speechService: widget.speechService,
+            onUpdated: () => changed = true,
+          ),
+        ),
+      );
+    } finally {
+      _opening = false;
+    }
+    if (mounted && changed) _reload();
   }
 
   @override
@@ -45,7 +77,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
             if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
             }
-
             if (snapshot.hasError) {
               return Center(
                 child: Padding(
@@ -64,9 +95,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
               );
             }
-
             final documents = snapshot.data ?? const <SavedDocument>[];
-
             if (documents.isEmpty) {
               return const Center(
                 child: Padding(
@@ -78,65 +107,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
               );
             }
-
             return ListView.separated(
               itemCount: documents.length,
               separatorBuilder: (context, index) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final document = documents[index];
-
                 return ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: Text(document.title),
                   subtitle: Text(document.category.label),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.of(context).push<void>(
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            SavedDocumentScreen(document: document),
-                      ),
-                    );
-                  },
+                  onTap: () => _open(document),
                 );
               },
             );
           },
-        ),
-      ),
-    );
-  }
-}
-
-class SavedDocumentScreen extends StatelessWidget {
-  const SavedDocumentScreen({super.key, required this.document});
-
-  final SavedDocument document;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(document.title)),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                document.category.label,
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-              const SizedBox(height: 16),
-              SelectableText(
-                document.text,
-                textAlign: document.category == DocumentCategory.book
-                    ? TextAlign.justify
-                    : TextAlign.start,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            ],
-          ),
         ),
       ),
     );

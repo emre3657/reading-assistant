@@ -1,4 +1,4 @@
-# Reading Assistant – Copilot Talimatları
+# Okuma Asistanı – Copilot Talimatları
 
 Flutter mobil uygulaması (Android + iOS). Ürün amacı ve geliştirme sırası için [README.md](../README.md) dosyasına bak.
 

@@ -370,7 +370,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     FocusManager.instance.primaryFocus?.unfocus();
 
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (context) => const LibraryScreen()),
+      MaterialPageRoute(
+        builder: (context) =>
+            LibraryScreen(speechService: _listening.speechService),
+      ),
     );
   }
 
@@ -418,7 +421,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     return Scaffold(
       appBar: AppBar(
         backgroundColor: colorScheme.inversePrimary,
-        title: const Text('Reading Assistant'),
+        title: const Text('Okuma Asistanı'),
         actions: [
           IconButton(
             tooltip: 'Metni kaydet',
