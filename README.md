@@ -83,6 +83,8 @@ Mevcut akış:
 - Başlık, kategori ve metni düzenleme.
 - Düzenlemeyi aynı kayıt üzerinde güncelleme.
 - Kayıt güncellendiğinde listeyi yenileme.
+- Kayıt menüsünden onay alarak silme.
+- Silme başarısız olduğunda kaydı listede koruma ve tekrar deneme.
 
 Yeni kayıt oluşturma her seferinde ayrı bir kayıt ekler. Kayıtlı içeriğin düzenleme ekranındaki Kaydet işlemi ise aynı kimlikli kaydı günceller ve oluşturulma tarihini korur.
 
@@ -270,9 +272,10 @@ iOS ve gerçek cihaz doğrulaması henüz yapılmamıştır.
 
 ## Sonraki adımlar
 
-- Kayıtlı metin düzenleme ve dinleme akışının doğrulamasını tamamlama.
-- İçerik silme ve kayıtlar içinde arama.
-- Çok sayfalı kitap oluşturma ve sayfa yönetimi.
+- Kayıtlar içinde arama.
+- Tüm kategoriler için çok sayfalı içerik yapısı ve mevcut kayıtların taşınması.
+- Sayfa ekleme, sıralama, değiştirme ve silme.
+- Sayfalar arasında geçiş ve ardışık seslendirme.
 - Kameradan fotoğraf çekme.
 - Son okuma konumunu ve tercihleri saklama.
 - Yazı boyutu, hizalama, satır aralığı ve tema seçenekleri.

@@ -17,6 +17,7 @@ class DocumentStore {
     try {
       final opener = databaseOpener;
       if (opener != null) return await opener();
+
       return await openDatabase(
         'reading_assistant.db',
         version: 1,
@@ -44,10 +45,13 @@ class DocumentStore {
     required String text,
   }) async {
     final cleanTitle = title.trim();
+
     if (cleanTitle.isEmpty || text.trim().isEmpty) {
       throw ArgumentError('Title and text must not be empty.');
     }
+
     final database = await _database;
+
     return database.insert('documents', {
       'title': cleanTitle,
       'category': category.name,
@@ -64,25 +68,45 @@ class DocumentStore {
     required String text,
   }) async {
     final cleanTitle = title.trim();
+
     if (cleanTitle.isEmpty || text.trim().isEmpty) {
       throw ArgumentError('Title and text must not be empty.');
     }
+
     final database = await _database;
+
     final count = await database.update(
       'documents',
       {'title': cleanTitle, 'category': category.name, 'text': text},
       where: 'id = ?',
       whereArgs: [id],
     );
+
+    return count > 0;
+  }
+
+  /// Deletes only the requested record.
+  /// Returns false if the record no longer exists.
+  Future<bool> delete(int id) async {
+    final database = await _database;
+
+    final count = await database.delete(
+      'documents',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
     return count > 0;
   }
 
   Future<List<SavedDocument>> list() async {
     final database = await _database;
+
     final rows = await database.query(
       'documents',
       orderBy: 'created_at DESC, id DESC',
     );
+
     return rows.map(SavedDocument.fromMap).toList(growable: false);
   }
 }
