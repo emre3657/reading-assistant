@@ -28,6 +28,7 @@ class ImageImportScreen extends StatefulWidget {
     this.rotationService = const ImageRotationService(),
     this.previewImageBuilder = fileImageProvider,
     this.speechService,
+    this.returnText = false,
   });
 
   final ImagePickerService pickerService;
@@ -37,6 +38,9 @@ class ImageImportScreen extends StatefulWidget {
 
   /// An injected service remains owned by its caller.
   final SpeechService? speechService;
+
+  /// When true, returns the visible text to the calling page editor.
+  final bool returnText;
 
   @override
   State<ImageImportScreen> createState() => _ImageImportScreenState();
@@ -344,6 +348,12 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     final text = _controller.textController.text;
     if (text.trim().isEmpty) return;
 
+    if (widget.returnText) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      Navigator.of(context).pop(text);
+      return;
+    }
+
     _saveDialogOpen = true;
 
     try {
@@ -421,25 +431,38 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     return Scaffold(
       appBar: AppBar(
         backgroundColor: colorScheme.inversePrimary,
-        title: const Text('Okuma Asistanı'),
+        title: Text(widget.returnText ? 'Metin Çıkar' : 'Okuma Asistanı'),
         actions: [
-          IconButton(
-            tooltip: 'Metni kaydet',
-            icon: const Icon(Icons.save_outlined),
-            onPressed:
-                controller.isBusy ||
-                    listeningActive ||
-                    controller.textController.text.trim().isEmpty
-                ? null
-                : _saveDocument,
-          ),
-          IconButton(
-            tooltip: 'Kayıtlarım',
-            icon: const Icon(Icons.library_books_outlined),
-            onPressed: controller.isBusy || listeningActive
-                ? null
-                : _openLibrary,
-          ),
+          if (widget.returnText)
+            TextButton(
+              key: const ValueKey('use-ocr-text'),
+              onPressed:
+                  controller.isBusy ||
+                      listeningActive ||
+                      controller.textController.text.trim().isEmpty
+                  ? null
+                  : _saveDocument,
+              child: const Text('Metni kullan'),
+            )
+          else
+            IconButton(
+              tooltip: 'Metni kaydet',
+              icon: const Icon(Icons.save_outlined),
+              onPressed:
+                  controller.isBusy ||
+                      listeningActive ||
+                      controller.textController.text.trim().isEmpty
+                  ? null
+                  : _saveDocument,
+            ),
+          if (!widget.returnText)
+            IconButton(
+              tooltip: 'Kayıtlarım',
+              icon: const Icon(Icons.library_books_outlined),
+              onPressed: controller.isBusy || listeningActive
+                  ? null
+                  : _openLibrary,
+            ),
         ],
       ),
       body: SafeArea(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
+import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/library_screen.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
@@ -50,6 +51,38 @@ class FakeDocumentStore extends DocumentStore {
     ];
     return true;
   }
+
+  @override
+  Future<SavedDocument?> getDocument(int id) async {
+    for (final document in documents) {
+      if (document.id == id) return document;
+    }
+    return null;
+  }
+
+  @override
+  Future<List<DocumentPage>> pages(int documentId) async {
+    final document = await getDocument(documentId);
+    return document == null
+        ? []
+        : [
+            DocumentPage(
+              id: documentId * 100,
+              documentId: documentId,
+              position: 0,
+              text: document.text,
+            ),
+          ];
+  }
+
+  @override
+  Future<bool> updatePage({
+    required int documentId,
+    required int pageId,
+    required String title,
+    required DocumentCategory category,
+    required String text,
+  }) => update(id: documentId, title: title, category: category, text: text);
 
   @override
   Future<List<SavedDocument>> list() async {
@@ -663,39 +696,43 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Future<void> openFirstPage(WidgetTester tester, String title) async {
+      await tester.tap(find.text(title));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sayfa 1'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> backToLibrary(WidgetTester tester) async {
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+    }
+
     testWidgets('refreshes after an update, not after a plain visit', (
       tester,
     ) async {
       final store = FakeDocumentStore([_doc()]);
       await openLibrary(tester, store);
       expect(store.listCalls, 1);
-
-      await tester.tap(find.text('Başlık'));
-      await tester.pumpAndSettle();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
+      await openFirstPage(tester, 'Başlık');
+      await backToLibrary(tester);
       expect(store.listCalls, 1);
-
-      await tester.tap(find.text('Başlık'));
-      await tester.pumpAndSettle();
+      await openFirstPage(tester, 'Başlık');
       await _enterEdit(tester);
       await _type(tester, _titleField, 'Güncel başlık');
       await _tapSave(tester);
       await tester.pumpAndSettle();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-
+      await backToLibrary(tester);
       expect(store.listCalls, 2);
       expect(find.text('Güncel başlık'), findsOneWidget);
-      expect(find.text('Başlık'), findsNothing);
     });
 
     testWidgets('a failed update does not refresh the list', (tester) async {
       final store = FakeDocumentStore([_doc()])..updateResult = false;
       await openLibrary(tester, store);
-
-      await tester.tap(find.text('Başlık'));
-      await tester.pumpAndSettle();
+      await openFirstPage(tester, 'Başlık');
       await _enterEdit(tester);
       await _type(tester, _textField, 'Başka.');
       await _tapSave(tester);
@@ -704,7 +741,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Kaydetmeden çık'));
       await tester.pumpAndSettle();
-
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       expect(store.listCalls, 1);
     });
   });

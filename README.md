@@ -85,6 +85,10 @@ Mevcut akış:
 - Kayıt güncellendiğinde listeyi yenileme.
 - Kayıt menüsünden onay alarak silme.
 - Silme başarısız olduğunda kaydı listede koruma ve tekrar deneme.
+- Tüm kategorilerde sıralı sayfaları listeleme, açma ve aynı içeriğe yeni sayfa ekleme.
+- Sayfa metnini elle/yapıştırarak veya mevcut galeri OCR akışından oluşturma.
+- Açık sayfayı dinleme ve diğer sayfaları değiştirmeden düzenleme.
+- Başlık ve kategori içerik düzeyinde, metin sayfa düzeyinde güncellenir.
 
 Yeni kayıt oluşturma her seferinde ayrı bir kayıt ekler. Kayıtlı içeriğin düzenleme ekranındaki Kaydet işlemi ise aynı kimlikli kaydı günceller ve oluşturulma tarihini korur.
 
@@ -97,6 +101,8 @@ Düzenleme ekranında Kaydet düğmesi AppBar'dadır. Kaydedilmemiş değişikli
 Kaydetme başarısız olursa veya alanlar geçersizse düzenlemeler korunur ve ekran kapanmaz.
 
 Kayıtlı kitap metinleri iki yana, diğer kategoriler başlangıç yönüne hizalanır. Düzenleme alanları başlangıç yönüne hizalıdır.
+
+İçerikler birden fazla sayfa içerebilir. Sayfa sıralama/silme ve sayfalar arasında ardışık seslendirme henüz eklenmemiştir.
 
 ## Çevrimdışı çalışma ve ağ erişimi
 
@@ -278,7 +284,7 @@ iOS ve gerçek cihaz doğrulaması henüz yapılmamıştır.
 ## Sonraki adımlar
 
 - Kayıtlar içinde arama.
-- Sayfa ekleme, sıralama, değiştirme ve silme.
+- Sayfa sıralama, değiştirme ve silme.
 - Sayfalar arasında geçiş ve ardışık seslendirme.
 - Kameradan fotoğraf çekme.
 - Son okuma konumunu ve tercihleri saklama.

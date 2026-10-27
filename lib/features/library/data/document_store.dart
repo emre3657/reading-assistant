@@ -135,6 +135,99 @@ class DocumentStore {
     return rows.map(SavedDocument.fromMap).toList(growable: false);
   }
 
+  Future<SavedDocument?> getDocument(int id) async {
+    final database = await _database;
+    final rows = await database.rawQuery(
+      '''
+      SELECT d.id, d.title, d.category, d.created_at,
+        COALESCE((
+          SELECT p.text FROM pages p WHERE p.document_id = d.id
+          ORDER BY p.position, p.id LIMIT 1
+        ), '') AS text
+      FROM documents d WHERE d.id = ?
+    ''',
+      [id],
+    );
+    return rows.isEmpty ? null : SavedDocument.fromMap(rows.single);
+  }
+
+  /// Appends to this content, never creating a separate document.
+  Future<DocumentPage> appendPage({
+    required int documentId,
+    required String text,
+  }) async {
+    if (text.trim().isEmpty) {
+      throw ArgumentError('Page text must not be empty.');
+    }
+    final database = await _database;
+    return database.transaction((transaction) async {
+      final owner = await transaction.query(
+        'documents',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [documentId],
+      );
+      if (owner.isEmpty) throw StateError('Document not found.');
+      final rows = await transaction.rawQuery(
+        'SELECT COALESCE(MAX(position), -1) + 1 AS next_position '
+        'FROM pages WHERE document_id = ?',
+        [documentId],
+      );
+      final position = rows.single['next_position'] as int;
+      final id = await transaction.insert('pages', {
+        'document_id': documentId,
+        'position': position,
+        'text': text,
+      });
+      return DocumentPage(
+        id: id,
+        documentId: documentId,
+        position: position,
+        text: text,
+      );
+    });
+  }
+
+  /// Updates the selected page and shared metadata atomically. Other pages
+  /// and the document creation date are left untouched.
+  Future<bool> updatePage({
+    required int documentId,
+    required int pageId,
+    required String title,
+    required DocumentCategory category,
+    required String text,
+  }) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty || text.trim().isEmpty) {
+      throw ArgumentError('Title and text must not be empty.');
+    }
+    final database = await _database;
+    return database.transaction((transaction) async {
+      final page = await transaction.query(
+        'pages',
+        columns: ['id'],
+        where: 'id = ? AND document_id = ?',
+        whereArgs: [pageId, documentId],
+      );
+      if (page.isEmpty) return false;
+      final count = await transaction.update(
+        'documents',
+        {'title': cleanTitle, 'category': category.name},
+        where: 'id = ?',
+        whereArgs: [documentId],
+      );
+      if (count != 1) throw StateError('Document update failed.');
+      final updated = await transaction.update(
+        'pages',
+        {'text': text},
+        where: 'id = ? AND document_id = ?',
+        whereArgs: [pageId, documentId],
+      );
+      if (updated != 1) throw StateError('Page update failed.');
+      return true;
+    });
+  }
+
   Future<List<DocumentPage>> pages(int documentId) async {
     final database = await _database;
     final rows = await database.query(

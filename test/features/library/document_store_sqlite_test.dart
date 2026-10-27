@@ -248,6 +248,165 @@ void main() {
       expect(document.category, DocumentCategory.book);
       expect(document.text, 'Eski metin');
     });
+
+    test(
+      'append keeps one document and adds ordered pages with exact text',
+      () async {
+        final id = await store.save(
+          title: 'Kitap',
+          category: DocumentCategory.book,
+          text: 'İlk sayfa',
+        );
+        final second = await store.appendPage(
+          documentId: id,
+          text: '  İkinci\n\nsayfa  ',
+        );
+        final third = await store.appendPage(documentId: id, text: 'Üçüncü');
+        expect(await store.list(), hasLength(1));
+        expect(second.position, 1);
+        expect(third.position, 2);
+        expect((await store.pages(id)).map((page) => page.text), [
+          'İlk sayfa',
+          '  İkinci\n\nsayfa  ',
+          'Üçüncü',
+        ]);
+        expect((await store.getDocument(id))!.text, 'İlk sayfa');
+        expect(await store.getDocument(999), isNull);
+      },
+    );
+
+    test('append validates input and requires an existing owner', () async {
+      await expectLater(
+        store.appendPage(documentId: 999, text: ' '),
+        throwsArgumentError,
+      );
+      await expectLater(
+        store.appendPage(documentId: 999, text: 'Metin'),
+        throwsStateError,
+      );
+      expect(await database.query('pages'), isEmpty);
+      expect(await database.query('documents'), isEmpty);
+    });
+
+    test('concurrent append calls cannot reuse the same position', () async {
+      final id = await store.save(
+        title: 'Not',
+        category: DocumentCategory.note,
+        text: 'İlk',
+      );
+      await Future.wait([
+        store.appendPage(documentId: id, text: 'A'),
+        store.appendPage(documentId: id, text: 'B'),
+      ]);
+      final pages = await store.pages(id);
+      expect(pages.map((page) => page.position), [0, 1, 2]);
+      expect(
+        pages.skip(1).map((page) => page.text),
+        unorderedEquals(['A', 'B']),
+      );
+    });
+
+    test('update targets the selected page, not the first one', () async {
+      final id = await store.save(
+        title: 'Eski',
+        category: DocumentCategory.note,
+        text: 'İlk',
+      );
+      final before = (await store.getDocument(id))!;
+      final page = await store.appendPage(documentId: id, text: 'İkinci');
+      expect(
+        await store.updatePage(
+          documentId: id,
+          pageId: page.id,
+          title: 'Yeni',
+          category: DocumentCategory.book,
+          text: 'Düzenlenmiş ikinci',
+        ),
+        isTrue,
+      );
+      expect((await store.pages(id)).map((page) => page.text), [
+        'İlk',
+        'Düzenlenmiş ikinci',
+      ]);
+      final after = (await store.getDocument(id))!;
+      expect(after.title, 'Yeni');
+      expect(after.category, DocumentCategory.book);
+      expect(after.createdAt, before.createdAt);
+    });
+
+    test(
+      'a foreign page cannot change another content or its metadata',
+      () async {
+        final first = await store.save(
+          title: 'Bir',
+          category: DocumentCategory.note,
+          text: 'Bir',
+        );
+        final second = await store.save(
+          title: 'İki',
+          category: DocumentCategory.note,
+          text: 'İki',
+        );
+        final foreignPage = (await store.pages(second)).single;
+        expect(
+          await store.updatePage(
+            documentId: first,
+            pageId: foreignPage.id,
+            title: 'Bozulmasın',
+            category: DocumentCategory.book,
+            text: 'Yanlış',
+          ),
+          isFalse,
+        );
+        expect((await store.getDocument(first))!.title, 'Bir');
+        expect((await store.pages(second)).single.text, 'İki');
+      },
+    );
+
+    test('failed append preserves every existing page', () async {
+      final id = await store.save(
+        title: 'Not',
+        category: DocumentCategory.note,
+        text: 'İlk',
+      );
+      await database.execute(
+        "CREATE TRIGGER reject_append BEFORE INSERT ON pages "
+        "BEGIN SELECT RAISE(ABORT, 'test'); END",
+      );
+      await expectLater(
+        store.appendPage(documentId: id, text: 'Yeni'),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await store.pages(id)).single.text, 'İlk');
+    });
+
+    test('page update failure rolls back metadata', () async {
+      final id = await store.save(
+        title: 'Eski',
+        category: DocumentCategory.note,
+        text: 'İlk',
+      );
+      final page = await store.appendPage(documentId: id, text: 'İkinci');
+      await database.execute(
+        "CREATE TRIGGER reject_selected_update BEFORE UPDATE ON pages "
+        "BEGIN SELECT RAISE(ABORT, 'test'); END",
+      );
+      await expectLater(
+        store.updatePage(
+          documentId: id,
+          pageId: page.id,
+          title: 'Yeni',
+          category: DocumentCategory.book,
+          text: 'Yeni',
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await store.getDocument(id))!.title, 'Eski');
+      expect((await store.pages(id)).map((page) => page.text), [
+        'İlk',
+        'İkinci',
+      ]);
+    });
   });
 
   group('real file migration from v1 to v2', () {

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
-import 'saved_document_screen.dart';
+import 'document_contents_screen.dart';
 
 enum _DocumentAction { delete }
 
@@ -21,13 +21,11 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   late Future<List<SavedDocument>> _documents;
-
   bool _opening = false;
   bool _deleting = false;
   int? _deletingId;
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
-
   bool get _busy => _opening || _deleting;
 
   @override
@@ -43,23 +41,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   void _showMessage(String message) {
-    final messenger = ScaffoldMessenger.of(context);
-
-    messenger
+    ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _open(SavedDocument document) async {
     if (_busy) return;
-
     setState(() => _opening = true);
     var changed = false;
-
     try {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (context) => SavedDocumentScreen(
+          builder: (context) => DocumentContentsScreen(
             document: document,
             store: _store,
             speechService: widget.speechService,
@@ -68,31 +62,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _opening = false);
-      }
+      if (mounted) setState(() => _opening = false);
     }
-
     if (mounted && changed) _reload();
   }
 
   Future<void> _deleteDocument(SavedDocument document) async {
     if (_busy) return;
-
-    // Lock other actions during both confirmation and deletion.
     setState(() => _deleting = true);
-
     try {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
           final colors = Theme.of(dialogContext).colorScheme;
-
           return AlertDialog(
             title: const Text('Kayıt silinsin mi?'),
             content: Text(
-              '“${document.title}” silinecek.\n\n'
-              'Bu işlem geri alınamaz.',
+              '“${document.title}” silinecek.\n\nBu işlem geri alınamaz.',
             ),
             actions: [
               TextButton(
@@ -111,27 +97,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
           );
         },
       );
-
       if (!mounted || confirmed != true) return;
-
       setState(() => _deletingId = document.id);
-
       final deleted = await _store.delete(document.id);
-
       if (!mounted) return;
-
       _reload();
-
       _showMessage(
         deleted
             ? 'Kayıt silindi.'
             : 'Kayıt zaten kaldırılmış. Liste yenilendi.',
       );
     } catch (_) {
-      if (!mounted) return;
-
-      // Keep the existing list on failure.
-      _showMessage('Kayıt silinemedi. Tekrar deneyebilirsin.');
+      if (mounted) _showMessage('Kayıt silinemedi. Tekrar deneyebilirsin.');
     } finally {
       if (mounted) {
         setState(() {
@@ -159,7 +136,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       );
     }
-
     return PopupMenuButton<_DocumentAction>(
       key: ValueKey('document-menu-${document.id}'),
       tooltip: 'Kayıt seçenekleri',
@@ -210,7 +186,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
             if (snapshot.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
             }
-
             if (snapshot.hasError) {
               return Center(
                 child: Padding(
@@ -229,28 +204,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
               );
             }
-
             final documents = snapshot.data ?? const <SavedDocument>[];
-
             if (documents.isEmpty) {
               return const Center(
                 child: Padding(
                   padding: EdgeInsets.all(24),
                   child: Text(
-                    'Henüz kayıt yok. Çıkardığın metni '
-                    'kaydederek başlayabilirsin.',
+                    'Henüz kayıt yok. Çıkardığın metni kaydederek başlayabilirsin.',
                     textAlign: TextAlign.center,
                   ),
                 ),
               );
             }
-
             return ListView.separated(
               itemCount: documents.length,
               separatorBuilder: (context, index) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final document = documents[index];
-
                 return ListTile(
                   key: ValueKey('document-${document.id}'),
                   leading: const Icon(Icons.description_outlined),

@@ -14,12 +14,18 @@ class SavedDocumentScreen extends StatefulWidget {
   const SavedDocumentScreen({
     super.key,
     required this.document,
+    this.pageId,
+    this.pageNumber,
     this.store,
     this.speechService,
     this.onUpdated,
   });
 
   final SavedDocument document;
+
+  /// Present when this reader was opened for a specific stored page.
+  final int? pageId;
+  final int? pageNumber;
 
   /// Defaults to [DocumentStore.instance].
   final DocumentStore? store;
@@ -241,12 +247,23 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
     final bool updated;
     try {
-      updated = await _store.update(
-        id: _saved.id,
-        title: title,
-        category: category,
-        text: text,
-      );
+      final pageId = widget.pageId;
+      if (pageId == null) {
+        updated = await _store.update(
+          id: _saved.id,
+          title: title,
+          category: category,
+          text: text,
+        );
+      } else {
+        updated = await _store.updatePage(
+          documentId: _saved.id,
+          pageId: pageId,
+          title: title,
+          category: category,
+          text: text,
+        );
+      }
     } catch (_) {
       if (!mounted) return false;
       setState(() {
@@ -330,6 +347,10 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                 document.category.label,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
+              if (widget.pageNumber != null) ...[
+                const SizedBox(height: 8),
+                Text('Sayfa ${widget.pageNumber}'),
+              ],
               const SizedBox(height: 16),
               SelectableText(
                 document.text,
@@ -423,6 +444,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                         },
                 ),
                 const SizedBox(height: 16),
+                if (widget.pageId != null) ...[
+                  const Text(
+                    'Başlık ve kategori içeriğin tamamına, metin yalnızca bu sayfaya uygulanır.',
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextFormField(
                   key: const ValueKey('document-text'),
                   controller: _textController,
