@@ -1,9 +1,11 @@
 import 'package:sqflite/sqflite.dart';
 
+import 'document_page.dart';
+import 'document_schema.dart';
 import 'saved_document.dart';
 
 class DocumentStore {
-  /// An optional opener allows database-boundary tests without native plugins.
+  /// An injected opener must return an already configured v2 database.
   DocumentStore({this.databaseOpener});
 
   static final instance = DocumentStore();
@@ -17,21 +19,12 @@ class DocumentStore {
     try {
       final opener = databaseOpener;
       if (opener != null) return await opener();
-
       return await openDatabase(
         'reading_assistant.db',
-        version: 1,
-        onCreate: (database, version) async {
-          await database.execute('''
-            CREATE TABLE documents (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              title TEXT NOT NULL,
-              category TEXT NOT NULL,
-              text TEXT NOT NULL,
-              created_at INTEGER NOT NULL
-            )
-          ''');
-        },
+        version: documentDatabaseVersion,
+        onConfigure: configureDocumentDatabase,
+        onCreate: createDocumentSchema,
+        onUpgrade: upgradeDocumentSchema,
       );
     } catch (_) {
       _databaseFuture = null;
@@ -45,22 +38,28 @@ class DocumentStore {
     required String text,
   }) async {
     final cleanTitle = title.trim();
-
     if (cleanTitle.isEmpty || text.trim().isEmpty) {
       throw ArgumentError('Title and text must not be empty.');
     }
-
     final database = await _database;
-
-    return database.insert('documents', {
-      'title': cleanTitle,
-      'category': category.name,
-      'text': text,
-      'created_at': DateTime.now().toUtc().millisecondsSinceEpoch,
+    // Metadata and the first page must either both exist or neither exist.
+    return database.transaction((transaction) async {
+      final id = await transaction.insert('documents', {
+        'title': cleanTitle,
+        'category': category.name,
+        'created_at': DateTime.now().toUtc().millisecondsSinceEpoch,
+      });
+      await transaction.insert('pages', {
+        'document_id': id,
+        'position': 0,
+        'text': text,
+      });
+      return id;
     });
   }
 
-  /// Updates the existing id without changing its creation date.
+  /// Compatibility method for the current single-page editing screen.
+  /// Multi-page editing will use explicit page operations in the next step.
   Future<bool> update({
     required int id,
     required String title,
@@ -68,45 +67,82 @@ class DocumentStore {
     required String text,
   }) async {
     final cleanTitle = title.trim();
-
     if (cleanTitle.isEmpty || text.trim().isEmpty) {
       throw ArgumentError('Title and text must not be empty.');
     }
-
     final database = await _database;
+    return database.transaction((transaction) async {
+      final documents = await transaction.query(
+        'documents',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (documents.isEmpty) return false;
 
-    final count = await database.update(
-      'documents',
-      {'title': cleanTitle, 'category': category.name, 'text': text},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-
-    return count > 0;
+      final pages = await transaction.query(
+        'pages',
+        columns: ['id'],
+        where: 'document_id = ?',
+        whereArgs: [id],
+      );
+      if (pages.length != 1) {
+        // Never silently overwrite a multi-page document through the old UI.
+        throw StateError('Single-page update requires exactly one page.');
+      }
+      await transaction.update(
+        'documents',
+        {'title': cleanTitle, 'category': category.name},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      final updated = await transaction.update(
+        'pages',
+        {'text': text},
+        where: 'id = ?',
+        whereArgs: [pages.single['id']],
+      );
+      if (updated != 1) throw StateError('Page update failed.');
+      return true;
+    });
   }
 
-  /// Deletes only the requested record.
-  /// Returns false if the record no longer exists.
+  /// Foreign-key cascade removes every page belonging to this document.
   Future<bool> delete(int id) async {
     final database = await _database;
-
-    final count = await database.delete(
-      'documents',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-
-    return count > 0;
+    return await database.delete(
+          'documents',
+          where: 'id = ?',
+          whereArgs: [id],
+        ) >
+        0;
   }
 
+  /// Temporary adapter for the existing single-page UI. At this stage all
+  /// app-created documents have exactly one page; the next UI will read pages.
   Future<List<SavedDocument>> list() async {
     final database = await _database;
-
-    final rows = await database.query(
-      'documents',
-      orderBy: 'created_at DESC, id DESC',
-    );
-
+    final rows = await database.rawQuery('''
+      SELECT d.id, d.title, d.category, d.created_at,
+        COALESCE((
+          SELECT p.text FROM pages p
+          WHERE p.document_id = d.id
+          ORDER BY p.position, p.id LIMIT 1
+        ), '') AS text
+      FROM documents d
+      ORDER BY d.created_at DESC, d.id DESC
+    ''');
     return rows.map(SavedDocument.fromMap).toList(growable: false);
+  }
+
+  Future<List<DocumentPage>> pages(int documentId) async {
+    final database = await _database;
+    final rows = await database.query(
+      'pages',
+      where: 'document_id = ?',
+      whereArgs: [documentId],
+      orderBy: 'position ASC, id ASC',
+    );
+    return rows.map(DocumentPage.fromMap).toList(growable: false);
   }
 }

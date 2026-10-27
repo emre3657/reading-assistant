@@ -126,7 +126,12 @@ iOS'ta Türkçe dil desteği kontrol edilir; çevrimdışı davranış henüz do
 
 ## Veri ve dosya yönetimi
 
-- Kayıtlı içeriklerin başlık, kategori, metin ve oluşturulma tarihi SQLite'ta tutulur.
+- Veritabanı sürümü 2'dir. Başlık, kategori ve oluşturulma tarihi
+  `documents`; sayfa metinleri ve sıraları `pages` tablosunda tutulur.
+- Eski tek metinli kayıtlar, aynı içerik kimliği korunarak ilk sayfaya taşınır.
+- İçerik silindiğinde bağlı sayfaları da silinir.
+- Mevcut ekranlar tek sayfalı akışla çalışır; çok sayfalı veri temeli hazırdır,
+  sayfa yönetimi arayüzü henüz eklenmemiştir.
 - Fotoğraflar kayıtlı içeriğin parçası olarak veritabanına eklenmez.
 - Kullanıcının galerisindeki orijinal dosyalar silinmez.
 - `image_picker` geçici kopyalar oluşturabilir; bu kopyaların temizliği henüz uygulama tarafından yönetilmez.
@@ -273,7 +278,6 @@ iOS ve gerçek cihaz doğrulaması henüz yapılmamıştır.
 ## Sonraki adımlar
 
 - Kayıtlar içinde arama.
-- Tüm kategoriler için çok sayfalı içerik yapısı ve mevcut kayıtların taşınması.
 - Sayfa ekleme, sıralama, değiştirme ve silme.
 - Sayfalar arasında geçiş ve ardışık seslendirme.
 - Kameradan fotoğraf çekme.
