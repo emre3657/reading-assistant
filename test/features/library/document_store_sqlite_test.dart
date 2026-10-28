@@ -41,6 +41,113 @@ void main() {
 
     tearDown(() async => database.close());
 
+    test(
+      'details edit preserves every page, position and creation date',
+      () async {
+        final id = await store.save(
+          title: 'Eski',
+          category: DocumentCategory.note,
+          text: 'İlk\n\nsayfa.',
+        );
+        await store.appendPage(documentId: id, text: ' İkinci sayfa. ');
+        final before = await database.query('pages', orderBy: 'position');
+        final date = (await store.getDocument(id))!.createdAt;
+        expect(
+          await store.updateDetails(
+            id: id,
+            title: ' Yeni ',
+            category: DocumentCategory.book,
+          ),
+          isTrue,
+        );
+        final document = (await store.getDocument(id))!;
+        expect(document.title, 'Yeni');
+        expect(document.category, DocumentCategory.book);
+        expect(document.createdAt, date);
+        expect(await database.query('pages', orderBy: 'position'), before);
+      },
+    );
+
+    test('details validation and missing record do not touch data', () async {
+      final id = await store.save(
+        title: 'Eski',
+        category: DocumentCategory.note,
+        text: 'Metin.',
+      );
+      await expectLater(
+        store.updateDetails(
+          id: id,
+          title: ' ',
+          category: DocumentCategory.book,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        await store.updateDetails(
+          id: id + 100,
+          title: 'Yeni',
+          category: DocumentCategory.book,
+        ),
+        isFalse,
+      );
+      expect((await store.getDocument(id))!.title, 'Eski');
+    });
+
+    test('page text edit cannot overwrite newer content details', () async {
+      final id = await store.save(
+        title: 'Eski',
+        category: DocumentCategory.note,
+        text: 'İlk.',
+      );
+      final second = await store.appendPage(documentId: id, text: 'İkinci.');
+      await store.updateDetails(
+        id: id,
+        title: 'Güncel',
+        category: DocumentCategory.book,
+      );
+      final before = await database.query('documents');
+      expect(
+        await store.updatePageText(
+          documentId: id,
+          pageId: second.id,
+          text: ' Yeni\n\nmetin. ',
+        ),
+        isTrue,
+      );
+      expect(await database.query('documents'), before);
+      final pages = await store.pages(id);
+      expect(pages.first.text, 'İlk.');
+      expect(pages.last.text, ' Yeni\n\nmetin. ');
+      expect(pages.last.position, second.position);
+    });
+
+    test('page text edit rejects foreign page and blank text', () async {
+      final first = await store.save(
+        title: 'Bir',
+        category: DocumentCategory.note,
+        text: 'Bir.',
+      );
+      final second = await store.save(
+        title: 'İki',
+        category: DocumentCategory.note,
+        text: 'İki.',
+      );
+      final page = (await store.pages(second)).single;
+      expect(
+        await store.updatePageText(
+          documentId: first,
+          pageId: page.id,
+          text: 'Yanlış',
+        ),
+        isFalse,
+      );
+      await expectLater(
+        store.updatePageText(documentId: second, pageId: page.id, text: '  '),
+        throwsArgumentError,
+      );
+      expect((await store.pages(second)).single.text, 'İki.');
+    });
+
     test('new database has v2 tables and foreign keys enabled', () async {
       expect(await database.getVersion(), 2);
       final columns = await database.rawQuery('PRAGMA table_info(documents)');

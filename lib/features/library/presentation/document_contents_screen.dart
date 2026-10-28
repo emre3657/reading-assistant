@@ -6,6 +6,7 @@ import '../data/document_store.dart';
 import '../data/saved_document.dart';
 import 'add_page_screen.dart';
 import 'saved_document_screen.dart';
+import 'document_details_dialog.dart';
 
 /// Shows pages for every category; it does not own a speech engine.
 class DocumentContentsScreen extends StatefulWidget {
@@ -108,6 +109,26 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     if (mounted && changed) await _load();
   }
 
+  Future<void> _editDetails() async {
+    if (_busy || _error != null) return;
+    setState(() => _opening = true);
+    try {
+      final updated = await showDocumentDetailsDialog(
+        context: context,
+        document: _document,
+        store: _store,
+      );
+      if (!mounted || updated == null) return;
+      setState(() => _document = updated);
+      widget.onUpdated?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('İçerik bilgileri güncellendi.')),
+      );
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
   Future<void> _addPage() async {
     if (_busy || _error != null) return;
     setState(() => _opening = true);
@@ -144,6 +165,15 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
             onPressed: _busy || _error != null ? null : _addPage,
             icon: const Icon(Icons.add),
             label: const Text('Sayfa ekle'),
+          ),
+          PopupMenuButton<String>(
+            key: const ValueKey('content-options'),
+            tooltip: 'İçerik seçenekleri',
+            enabled: !_busy && _error == null,
+            onSelected: (_) => _editDetails(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+            ],
           ),
         ],
       ),

@@ -58,8 +58,8 @@ class DocumentStore {
     });
   }
 
-  /// Compatibility method for the current single-page editing screen.
-  /// Multi-page editing will use explicit page operations in the next step.
+  /// Legacy combined update retained for compatibility. New editors use
+  /// updateDetails and updatePageText separately.
   Future<bool> update({
     required int id,
     required String title,
@@ -107,6 +107,45 @@ class DocumentStore {
     });
   }
 
+  /// Changes content metadata without writing to any page.
+  Future<bool> updateDetails({
+    required int id,
+    required String title,
+    required DocumentCategory category,
+  }) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty || cleanTitle.length > 120) {
+      throw ArgumentError('Title must contain between 1 and 120 characters.');
+    }
+    final database = await _database;
+    return await database.update(
+          'documents',
+          {'title': cleanTitle, 'category': category.name},
+          where: 'id = ?',
+          whereArgs: [id],
+        ) >
+        0;
+  }
+
+  /// Changes one page only; stale reader metadata can never overwrite details.
+  Future<bool> updatePageText({
+    required int documentId,
+    required int pageId,
+    required String text,
+  }) async {
+    if (text.trim().isEmpty) {
+      throw ArgumentError('Page text must not be empty.');
+    }
+    final database = await _database;
+    return await database.update(
+          'pages',
+          {'text': text},
+          where: 'id = ? AND document_id = ?',
+          whereArgs: [pageId, documentId],
+        ) >
+        0;
+  }
+
   /// Foreign-key cascade removes every page belonging to this document.
   Future<bool> delete(int id) async {
     final database = await _database;
@@ -118,8 +157,7 @@ class DocumentStore {
         0;
   }
 
-  /// Temporary adapter for the existing single-page UI. At this stage all
-  /// app-created documents have exactly one page; the next UI will read pages.
+  /// Lists content metadata with the first page as a preview adapter.
   Future<List<SavedDocument>> list() async {
     final database = await _database;
     final rows = await database.rawQuery('''
@@ -188,8 +226,7 @@ class DocumentStore {
     });
   }
 
-  /// Updates the selected page and shared metadata atomically. Other pages
-  /// and the document creation date are left untouched.
+  /// Legacy combined operation; the page editor uses updatePageText instead.
   Future<bool> updatePage({
     required int documentId,
     required int pageId,

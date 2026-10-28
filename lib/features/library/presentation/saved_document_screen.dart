@@ -8,8 +8,8 @@ import '../../listening/services/speech_service.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
 
-/// Shows one saved document in reading mode (with listening) and lets the user
-/// edit and update the same record. Listening and editing lock each other.
+/// Reads and edits one page. Shared title/category are edited separately
+/// at content level. Listening and editing lock each other.
 class SavedDocumentScreen extends StatefulWidget {
   const SavedDocumentScreen({
     super.key,
@@ -50,12 +50,10 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   SpeechService? _ownedSpeechService;
 
   // Owned here; created once and disposed in dispose().
-  final _titleController = TextEditingController();
   final _textController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   late SavedDocument _saved;
-  DocumentCategory _category = DocumentCategory.note;
 
   bool _editing = false;
   bool _saving = false;
@@ -70,10 +68,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
 
-  bool get _hasChanges =>
-      _titleController.text.trim() != _saved.title ||
-      _category != _saved.category ||
-      _textController.text != _saved.text;
+  bool get _hasChanges => _textController.text != _saved.text;
 
   @override
   void initState() {
@@ -92,7 +87,6 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     WidgetsBinding.instance.removeObserver(this);
     _listening.dispose();
     _ownedSpeechService?.dispose();
-    _titleController.dispose();
     _textController.dispose();
     super.dispose();
   }
@@ -121,9 +115,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       _editSession++;
       _editing = true;
       _error = null;
-      _titleController.text = _saved.title;
       _textController.text = _saved.text;
-      _category = _saved.category;
     });
   }
 
@@ -237,8 +229,6 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       return false;
     }
 
-    final title = _titleController.text.trim();
-    final category = _category;
     final text = _textController.text;
     setState(() {
       _saving = true;
@@ -247,23 +237,20 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
     final bool updated;
     try {
-      final pageId = widget.pageId;
+      // Legacy callers without a page id are safe only for single-page content.
+      var pageId = widget.pageId;
       if (pageId == null) {
-        updated = await _store.update(
-          id: _saved.id,
-          title: title,
-          category: category,
-          text: text,
-        );
-      } else {
-        updated = await _store.updatePage(
-          documentId: _saved.id,
-          pageId: pageId,
-          title: title,
-          category: category,
-          text: text,
-        );
+        final pages = await _store.pages(_saved.id);
+        if (pages.length != 1) {
+          throw StateError('An explicit page id is required.');
+        }
+        pageId = pages.single.id;
       }
+      updated = await _store.updatePageText(
+        documentId: _saved.id,
+        pageId: pageId,
+        text: text,
+      );
     } catch (_) {
       if (!mounted) return false;
       setState(() {
@@ -285,8 +272,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     setState(() {
       _saved = SavedDocument(
         id: _saved.id,
-        title: title,
-        category: category,
+        title: _saved.title,
+        category: _saved.category,
         text: text,
         createdAt: _saved.createdAt,
       );
@@ -302,11 +289,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([
-        _listening,
-        _titleController,
-        _textController,
-      ]),
+      listenable: Listenable.merge([_listening, _textController]),
       builder: (context, _) {
         return PopScope(
           canPop: _allowPop,
@@ -382,7 +365,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kaydı düzenle'),
+        title: const Text('Sayfa metnini düzenle'),
         leading: BackButton(
           onPressed: _saving ? null : () => unawaited(_requestExit()),
         ),
@@ -404,52 +387,6 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextFormField(
-                  key: const ValueKey('document-title'),
-                  controller: _titleController,
-                  enabled: !_saving,
-                  maxLength: 120,
-                  textAlign: TextAlign.start,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    labelText: 'Başlık',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Bir başlık yaz.'
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<DocumentCategory>(
-                  key: ValueKey(_editSession),
-                  initialValue: _category,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Kategori',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final category in DocumentCategory.values)
-                      DropdownMenuItem(
-                        value: category,
-                        child: Text(category.label),
-                      ),
-                  ],
-                  onChanged: _saving
-                      ? null
-                      : (value) {
-                          if (value != null) {
-                            setState(() => _category = value);
-                          }
-                        },
-                ),
-                const SizedBox(height: 16),
-                if (widget.pageId != null) ...[
-                  const Text(
-                    'Başlık ve kategori içeriğin tamamına, metin yalnızca bu sayfaya uygulanır.',
-                  ),
-                  const SizedBox(height: 12),
-                ],
                 TextFormField(
                   key: const ValueKey('document-text'),
                   controller: _textController,

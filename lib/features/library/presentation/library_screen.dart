@@ -4,8 +4,9 @@ import '../../listening/services/speech_service.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
 import 'document_contents_screen.dart';
+import 'document_details_dialog.dart';
 
-enum _DocumentAction { delete }
+enum _DocumentAction { edit, delete }
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key, this.store, this.speechService});
@@ -65,6 +66,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (mounted) setState(() => _opening = false);
     }
     if (mounted && changed) _reload();
+  }
+
+  Future<void> _editDetails(SavedDocument document) async {
+    if (_busy) return;
+    setState(() => _opening = true);
+    try {
+      final updated = await showDocumentDetailsDialog(
+        context: context,
+        document: document,
+        store: _store,
+      );
+      if (!mounted || updated == null) return;
+      _reload();
+      _showMessage('İçerik bilgileri güncellendi.');
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
   }
 
   Future<void> _deleteDocument(SavedDocument document) async {
@@ -143,11 +161,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
       icon: const Icon(Icons.more_vert),
       onSelected: (action) {
         switch (action) {
+          case _DocumentAction.edit:
+            _editDetails(document);
           case _DocumentAction.delete:
             _deleteDocument(document);
         }
       },
       itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _DocumentAction.edit,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.edit_outlined),
+              SizedBox(width: 12),
+              Text('Düzenle'),
+            ],
+          ),
+        ),
         PopupMenuItem(
           value: _DocumentAction.delete,
           child: Row(

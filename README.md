@@ -65,7 +65,7 @@ Dinleme paneli ekranın altında sabittir. Ana kontroller görünür; cümle gez
 
 ### Yerel kayıt ve kayıt yönetimi
 
-Metinler SQLite veritabanında başlık ve kategoriyle saklanır.
+İçerikler SQLite veritabanında başlık ve kategoriyle saklanır. Her içerik birden fazla sıralı metin sayfası içerebilir.
 
 Kategoriler:
 
@@ -77,32 +77,33 @@ Kategoriler:
 
 Mevcut akış:
 
-- Görünen metni yeni kayıt olarak kaydetme.
-- “Kayıtlarım” ekranında kayıtları listeleme ve açma.
-- Kayıtlı metni seslendirme.
-- Başlık, kategori ve metni düzenleme.
-- Düzenlemeyi aynı kayıt üzerinde güncelleme.
-- Kayıt güncellendiğinde listeyi yenileme.
-- Kayıt menüsünden onay alarak silme.
-- Silme başarısız olduğunda kaydı listede koruma ve tekrar deneme.
-- Tüm kategorilerde sıralı sayfaları listeleme, açma ve aynı içeriğe yeni sayfa ekleme.
-- Sayfa metnini elle/yapıştırarak veya mevcut galeri OCR akışından oluşturma.
-- Açık sayfayı dinleme ve diğer sayfaları değiştirmeden düzenleme.
-- Başlık ve kategori içerik düzeyinde, metin sayfa düzeyinde güncellenir.
+- Görünen metni yeni içerik olarak ilk sayfasıyla birlikte kaydetme.
+- “Kayıtlarım” ekranında içerikleri listeleme ve açma.
+- İçeriğin sayfalarını listeleme ve seçilen sayfayı açma.
+- Tüm kategorilerde aynı içeriğe yeni sayfa ekleme.
+- Yeni sayfanın metnini elle yazarak, yapıştırarak veya galeri OCR akışından oluşturma.
+- Açık sayfayı seslendirme ve metnini diğer sayfaları değiştirmeden düzenleme.
+- İçerik başlığını ve kategorisini “Kayıtlarım” ekranındaki kayıt menüsünden veya içeriğin sayfalar ekranındaki menüden düzenleme.
+- Başlık ve kategori değişikliklerini sayfa metinlerinden bağımsız kaydetme.
+- Güncelleme sonrasında ilgili ekranları yenileme.
+- Kayıt menüsünden onay alarak içeriği tüm sayfalarıyla birlikte silme.
+- Silme başarısız olduğunda içeriği listede koruma ve tekrar deneme.
 
-Yeni kayıt oluşturma her seferinde ayrı bir kayıt ekler. Kayıtlı içeriğin düzenleme ekranındaki Kaydet işlemi ise aynı kimlikli kaydı günceller ve oluşturulma tarihini korur.
+Yeni içerik kaydetmek ayrı bir kayıt oluşturur. Mevcut içeriğe sayfa eklemek ise aynı kayda yeni bir sayfa ekler.
 
-Düzenleme ekranında Kaydet düğmesi AppBar'dadır. Kaydedilmemiş değişikliklerle çıkışta şu seçenekler sunulur:
+Başlık ve kategori içerik düzeyindedir. Bunların düzenleme diyaloğunda yalnızca bu iki alan bulunur; Kaydet ve Vazgeç seçenekleri sunulur. Değişiklikler hiçbir sayfanın metnine veya sırasına dokunmaz.
+
+Sayfanın düzenleme ekranında yalnızca açık sayfanın metni düzenlenir. Kaydet düğmesi AppBar'dadır. Kaydedilmemiş metin değişiklikleriyle çıkışta şu seçenekler sunulur:
 
 - Düzenlemeye devam et.
 - Kaydetmeden çık.
 - Kaydet ve çık.
 
-Kaydetme başarısız olursa veya alanlar geçersizse düzenlemeler korunur ve ekran kapanmaz.
+Güncellemeler mevcut içerik ve sayfa kimliklerini, içeriğin oluşturulma tarihini korur. Kaydetme başarısız olursa veya alanlar geçersizse girilen değerler korunur ve düzenleme ekranı ya da diyaloğu kapanmaz.
 
 Kayıtlı kitap metinleri iki yana, diğer kategoriler başlangıç yönüne hizalanır. Düzenleme alanları başlangıç yönüne hizalıdır.
 
-İçerikler birden fazla sayfa içerebilir. Sayfa sıralama/silme ve sayfalar arasında ardışık seslendirme henüz eklenmemiştir.
+Sayfaların sırasını değiştirme, tek sayfa silme ve sayfalar arasında ardışık seslendirme henüz eklenmemiştir.
 
 ## Çevrimdışı çalışma ve ağ erişimi
 

@@ -63,11 +63,9 @@ class _PageStore extends DocumentStore {
   }
 
   @override
-  Future<bool> updatePage({
+  Future<bool> updatePageText({
     required int documentId,
     required int pageId,
-    required String title,
-    required DocumentCategory category,
     required String text,
   }) async {
     final index = storedPages.indexWhere(
@@ -84,8 +82,8 @@ class _PageStore extends DocumentStore {
       );
     document = SavedDocument(
       id: document.id,
-      title: title,
-      category: category,
+      title: document.title,
+      category: document.category,
       text: storedPages.first.text,
       createdAt: document.createdAt,
     );

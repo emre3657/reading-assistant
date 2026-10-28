@@ -76,13 +76,19 @@ class FakeDocumentStore extends DocumentStore {
   }
 
   @override
-  Future<bool> updatePage({
+  Future<bool> updatePageText({
     required int documentId,
     required int pageId,
-    required String title,
-    required DocumentCategory category,
     required String text,
-  }) => update(id: documentId, title: title, category: category, text: text);
+  }) async {
+    final document = (await getDocument(documentId))!;
+    return update(
+      id: documentId,
+      title: document.title,
+      category: document.category,
+      text: text,
+    );
+  }
 
   @override
   Future<List<SavedDocument>> list() async {
@@ -269,8 +275,13 @@ void main() {
       await _enterEdit(tester);
 
       expect(_panel, findsNothing);
-      expect(_titleField, findsOneWidget);
+      expect(_titleField, findsNothing);
       expect(_textField, findsOneWidget);
+      expect(
+        find.byType(DropdownButtonFormField<DocumentCategory>),
+        findsNothing,
+      );
+      expect(find.byType(TextFormField), findsOneWidget);
       final field = tester.widget<TextField>(
         find.descendant(of: _textField, matching: find.byType(TextField)),
       );
@@ -304,7 +315,7 @@ void main() {
   });
 
   group('saving', () {
-    testWidgets('updates the same id, trims title, returns to reading mode', (
+    testWidgets('updates page text without changing content details', (
       tester,
     ) async {
       final store = FakeDocumentStore([_doc(), _doc(id: 8, title: 'Diğer')]);
@@ -313,55 +324,43 @@ void main() {
       await _show(tester, store, speech, onUpdated: () => updated++);
       await _enterEdit(tester);
 
-      await _type(tester, _titleField, '  Yeni başlık  ');
       await _type(tester, _textField, 'Yeni metin.\n\nİkinci paragraf.');
-      await tester.tap(find.byType(DropdownButtonFormField<DocumentCategory>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Kitap').last);
-      await tester.pumpAndSettle();
 
       await _tapSave(tester);
       await tester.pumpAndSettle();
 
       expect(store.updates, hasLength(1));
       expect(store.updates.single.id, 7);
-      expect(store.updates.single.title, 'Yeni başlık');
-      expect(store.updates.single.category, DocumentCategory.book);
+      expect(store.updates.single.title, 'Başlık');
+      expect(store.updates.single.category, DocumentCategory.note);
       expect(store.updates.single.text, 'Yeni metin.\n\nİkinci paragraf.');
       expect(store.documents, hasLength(2));
       expect(store.documents.first.createdAt, _created);
       expect(updated, 1);
 
       expect(_titleField, findsNothing);
-      expect(find.text('Yeni başlık'), findsOneWidget);
+      expect(find.text('Başlık'), findsOneWidget);
       expect(find.text('Kayıt güncellendi.'), findsOneWidget);
 
       expect(
         tester.widget<SelectableText>(find.byType(SelectableText)).textAlign,
-        TextAlign.justify,
+        TextAlign.start,
       );
       await _startReading(tester);
       expect(speech.spoken.first, contains('Yeni metin.'));
     });
 
-    testWidgets('rejects an empty title and a whitespace-only text', (
-      tester,
-    ) async {
+    testWidgets('rejects whitespace-only page text', (tester) async {
       final store = FakeDocumentStore([_doc()]);
       await _show(tester, store, FakeSpeechService());
       await _enterEdit(tester);
 
-      await _type(tester, _titleField, '   ');
-      await _tapSave(tester);
-      expect(find.text('Bir başlık yaz.'), findsOneWidget);
-
-      await _type(tester, _titleField, 'Başlık 2');
       await _type(tester, _textField, ' \n  ');
       await _tapSave(tester);
       expect(find.text('Metin boş olamaz.'), findsOneWidget);
 
       expect(store.updates, isEmpty);
-      expect(_titleField, findsOneWidget);
+      expect(_titleField, findsNothing);
     });
 
     testWidgets('does not update when nothing changed', (tester) async {
@@ -551,12 +550,12 @@ void main() {
       final store = FakeDocumentStore([_doc()]);
       await _show(tester, store, FakeSpeechService());
       await _enterEdit(tester);
-      await _type(tester, _titleField, ' ');
+      await _type(tester, _textField, ' ');
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       await tester.tap(find.text('Kaydet ve çık'));
       await tester.pumpAndSettle();
-      expect(find.text('Bir başlık yaz.'), findsOneWidget);
+      expect(find.text('Metin boş olamaz.'), findsOneWidget);
       expect(find.byType(SavedDocumentScreen), findsOneWidget);
       expect(store.updates, isEmpty);
     });
@@ -721,12 +720,13 @@ void main() {
       expect(store.listCalls, 1);
       await openFirstPage(tester, 'Başlık');
       await _enterEdit(tester);
-      await _type(tester, _titleField, 'Güncel başlık');
+      await _type(tester, _textField, 'Güncel metin.');
       await _tapSave(tester);
       await tester.pumpAndSettle();
       await backToLibrary(tester);
       expect(store.listCalls, 2);
-      expect(find.text('Güncel başlık'), findsOneWidget);
+      expect(find.text('Başlık'), findsOneWidget);
+      expect(store.documents.single.text, 'Güncel metin.');
     });
 
     testWidgets('a failed update does not refresh the list', (tester) async {
