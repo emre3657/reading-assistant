@@ -63,6 +63,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   Timer? _editLockNoticeTimer;
 
   bool _saveDialogOpen = false;
+  bool _manualEntry = false;
 
   @override
   void initState() {
@@ -208,6 +209,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       }
 
       applied = _controller.applyPick(candidate);
+      if (applied && mounted) setState(() => _manualEntry = false);
     } finally {
       if (!applied) _controller.discardPick(candidate);
     }
@@ -396,9 +398,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   }
 
   Widget _buildListeningPanel(BuildContext context) {
-    final hasText =
-        _controller.hasRecognizedText &&
-        _controller.textController.text.isNotEmpty;
+    final hasText = _controller.textController.text.trim().isNotEmpty;
 
     if (!hasText) return const SizedBox.shrink();
 
@@ -571,27 +571,48 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                     label: const Text('Galeriden görsel seç'),
                   ),
               ],
-              if (controller.hasRecognizedText) ...[
-                const SizedBox(height: 24),
-                SwitchListTile(
-                  key: _joinSectionKey,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Satırları birleştir'),
-                  subtitle: const Text(
-                    'Satırları birleştirir; paragraf ve başlık ayrımlarını '
-                    'tahmin eder.',
-                  ),
-                  value: controller.joinLines,
-                  onChanged: controller.isBusy || listeningActive
+              if (!widget.returnText &&
+                  !hasImage &&
+                  !controller.hasRecognizedText &&
+                  !_manualEntry) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const ValueKey('create-text'),
+                  onPressed: controller.isBusy || listeningActive
                       ? null
-                      : _setJoinLines,
+                      : () {
+                          setState(() => _manualEntry = true);
+                          _scheduleScrollToText();
+                        },
+                  icon: const Icon(Icons.edit_note),
+                  label: const Text('Metin yaz veya yapıştır'),
                 ),
+              ],
+              if (controller.hasRecognizedText || _manualEntry) ...[
+                const SizedBox(height: 24),
+                if (controller.hasRecognizedText)
+                  SwitchListTile(
+                    key: _joinSectionKey,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Satırları birleştir'),
+                    subtitle: const Text(
+                      'Satırları birleştirir; paragraf ve başlık ayrımlarını '
+                      'tahmin eder.',
+                    ),
+                    value: controller.joinLines,
+                    onChanged: controller.isBusy || listeningActive
+                        ? null
+                        : _setJoinLines,
+                  ),
                 const SizedBox(height: 8),
                 Row(
+                  key: controller.hasRecognizedText ? null : _joinSectionKey,
                   children: [
                     Flexible(
                       child: Text(
-                        'Çıkarılan metin',
+                        controller.hasRecognizedText
+                            ? 'Çıkarılan metin'
+                            : 'Metin',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                     ),
@@ -601,13 +622,16 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                 const SizedBox(height: 4),
                 Semantics(
                   label: listeningActive
-                      ? 'Çıkarılan metin, düzenleme kilitli. '
+                      ? 'Metin, düzenleme kilitli. '
                             'Düzenlemek için okumayı durdur'
-                      : 'Çıkarılan metin',
+                      : (controller.hasRecognizedText
+                            ? 'Çıkarılan metin'
+                            : 'Metin'),
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onTap: listeningActive ? _showEditLockNotice : null,
                     child: TextField(
+                      key: const ValueKey('import-text'),
                       controller: controller.textController,
                       textAlign: TextAlign.justify,
                       readOnly: controller.isRecognizing || listeningActive,
@@ -619,7 +643,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
                       textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
+                        hintText: controller.hasRecognizedText
+                            ? null
+                            : 'Metnini yaz veya buraya yapıştır.',
                         alignLabelWithHint: true,
                         border: OutlineInputBorder(),
                       ),

@@ -140,14 +140,15 @@ void main() {
     expect(_enabled(tester, _readLabel), isTrue);
   });
 
-  testWidgets('does not read whitespace-only text', (tester) async {
+  testWidgets('hides playback for whitespace-only text', (tester) async {
     final speech = await _openWithText(tester, text: 'x');
-    await tester.enterText(_fieldFinder, '   ');
-    await tester.tap(find.text(_readLabel));
-    await tester.pump();
 
+    await tester.enterText(_fieldFinder, '   ');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('listening-panel')), findsNothing);
+    expect(find.text(_readLabel), findsNothing);
     expect(speech.prepareCalls, 0);
-    expect(find.text('Okunacak metin yok.'), findsOneWidget);
   });
 
   testWidgets('stops reading when the app goes to the background', (

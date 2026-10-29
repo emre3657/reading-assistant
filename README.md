@@ -77,7 +77,7 @@ Kategoriler:
 
 Mevcut akış:
 
-- Görünen metni yeni içerik olarak ilk sayfasıyla birlikte kaydetme.
+- İlk ekrandan görsel seçmeden metin yazma veya yapıştırma, dinleme ve yeni içerik olarak kaydetme.
 - “Kayıtlarım” ekranında içerikleri listeleme ve açma.
 - İçeriğin sayfalarını listeleme ve seçilen sayfayı açma.
 - Tüm kategorilerde aynı içeriğe yeni sayfa ekleme.
