@@ -265,6 +265,22 @@ class DocumentStore {
     });
   }
 
+  /// Removes only the selected page belonging to this content. Remaining
+  /// positions stay stable; the UI numbers pages by their current list order.
+  /// An empty content remains available for adding new pages.
+  Future<bool> deletePage({
+    required int documentId,
+    required int pageId,
+  }) async {
+    final database = await _database;
+    return await database.delete(
+          'pages',
+          where: 'id = ? AND document_id = ?',
+          whereArgs: [pageId, documentId],
+        ) >
+        0;
+  }
+
   Future<List<DocumentPage>> pages(int documentId) async {
     final database = await _database;
     final rows = await database.query(

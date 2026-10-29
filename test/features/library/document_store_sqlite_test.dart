@@ -148,6 +148,86 @@ void main() {
       expect((await store.pages(second)).single.text, 'İki.');
     });
 
+    test(
+      'deletePage preserves other pages, metadata and stable positions',
+      () async {
+        final id = await store.save(
+          title: 'Kitap',
+          category: DocumentCategory.book,
+          text: 'Birinci.',
+        );
+        final second = await store.appendPage(documentId: id, text: 'İkinci.');
+        final third = await store.appendPage(documentId: id, text: 'Üçüncü.');
+        final metadata = await database.query('documents');
+        expect(
+          await store.deletePage(documentId: id, pageId: second.id),
+          isTrue,
+        );
+        final pages = await store.pages(id);
+        expect(pages.map((p) => p.text), ['Birinci.', 'Üçüncü.']);
+        expect(pages.last.id, third.id);
+        expect(pages.map((p) => p.position), [0, 2]);
+        expect(await database.query('documents'), metadata);
+        final next = await store.appendPage(documentId: id, text: 'Yeni.');
+        expect(next.position, 3);
+      },
+    );
+
+    test(
+      'deletePage rejects foreign ownership and repeated deletion',
+      () async {
+        final first = await store.save(
+          title: 'Bir',
+          category: DocumentCategory.note,
+          text: 'Bir.',
+        );
+        final other = await store.save(
+          title: 'İki',
+          category: DocumentCategory.note,
+          text: 'İki.',
+        );
+        final page = (await store.pages(other)).single;
+        expect(
+          await store.deletePage(documentId: first, pageId: page.id),
+          isFalse,
+        );
+        expect((await store.pages(other)).single.text, 'İki.');
+        expect(
+          await store.deletePage(documentId: other, pageId: page.id),
+          isTrue,
+        );
+        expect(
+          await store.deletePage(documentId: other, pageId: page.id),
+          isFalse,
+        );
+        expect(await store.getDocument(other), isNotNull);
+        expect((await store.getDocument(other))!.text, '');
+        expect(await store.list(), hasLength(2));
+        expect(
+          (await store.appendPage(documentId: other, text: 'Tekrar.')).position,
+          0,
+        );
+      },
+    );
+
+    test('failed page deletion leaves page and content intact', () async {
+      final id = await store.save(
+        title: 'Kayıt',
+        category: DocumentCategory.note,
+        text: 'Metin.',
+      );
+      final page = (await store.pages(id)).single;
+      await database.execute(
+        "CREATE TRIGGER block_page_delete BEFORE DELETE ON pages BEGIN SELECT RAISE(ABORT, 'blocked'); END",
+      );
+      await expectLater(
+        store.deletePage(documentId: id, pageId: page.id),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await store.pages(id)).single.text, 'Metin.');
+      expect(await store.getDocument(id), isNotNull);
+    });
+
     test('new database has v2 tables and foreign keys enabled', () async {
       expect(await database.getVersion(), 2);
       final columns = await database.rawQuery('PRAGMA table_info(documents)');

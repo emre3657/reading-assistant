@@ -32,11 +32,13 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   List<DocumentPage> _pages = const [];
   bool _loading = true;
   bool _opening = false;
+  bool _deleting = false;
+  int? _deletingPageId;
   String? _error;
   int _loadId = 0;
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
-  bool get _busy => _loading || _opening;
+  bool get _busy => _loading || _opening || _deleting;
 
   @override
   void initState() {
@@ -154,30 +156,150 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     await _load();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_document.title),
-        actions: [
-          TextButton.icon(
-            key: const ValueKey('add-page'),
-            onPressed: _busy || _error != null ? null : _addPage,
-            icon: const Icon(Icons.add),
-            label: const Text('Sayfa ekle'),
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _deletePage(DocumentPage page, int number) async {
+    if (_busy || _error != null) return;
+    setState(() => _deleting = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return AlertDialog(
+            title: Text('Sayfa $number silinsin mi?'),
+            content: const Text(
+              'Bu işlem geri alınamaz. İçeriğin diğer sayfaları korunur.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.error,
+                  foregroundColor: colors.onError,
+                ),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Sil'),
+              ),
+            ],
+          );
+        },
+      );
+      if (!mounted || confirmed != true) return;
+      setState(() => _deletingPageId = page.id);
+      final deleted = await _store.deletePage(
+        documentId: _document.id,
+        pageId: page.id,
+      );
+      if (!mounted) return;
+      if (deleted) {
+        setState(() {
+          _pages = _pages
+              .where((item) => item.id != page.id)
+              .toList(growable: false);
+          _document = SavedDocument(
+            id: _document.id,
+            title: _document.title,
+            category: _document.category,
+            text: _pages.isEmpty ? '' : _pages.first.text,
+            createdAt: _document.createdAt,
+          );
+        });
+        widget.onUpdated?.call();
+        _showMessage('Sayfa silindi.');
+      } else {
+        // Another operation already removed it; reload authoritative data.
+        widget.onUpdated?.call();
+        await _load();
+        if (mounted) _showMessage('Sayfa zaten kaldırılmış. Liste yenilendi.');
+      }
+    } catch (_) {
+      if (mounted) _showMessage('Sayfa silinemedi. Tekrar deneyebilirsin.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deleting = false;
+          _deletingPageId = null;
+        });
+      }
+    }
+  }
+
+  Widget _pageMenu(DocumentPage page, int number) {
+    if (_deletingPageId == page.id) {
+      return const SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              semanticsLabel: 'Sayfa siliniyor',
+            ),
           ),
-          PopupMenuButton<String>(
-            key: const ValueKey('content-options'),
-            tooltip: 'İçerik seçenekleri',
-            enabled: !_busy && _error == null,
-            onSelected: (_) => _editDetails(),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+        ),
+      );
+    }
+    return PopupMenuButton<String>(
+      key: ValueKey('page-menu-${page.id}'),
+      tooltip: 'Sayfa $number seçenekleri',
+      enabled: !_busy,
+      onSelected: (_) => _deletePage(page, number),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.delete_outline,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(width: 12),
+              const Text('Sil'),
             ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _deletingPageId == null,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_document.title),
+          actions: [
+            TextButton.icon(
+              key: const ValueKey('add-page'),
+              onPressed: _busy || _error != null ? null : _addPage,
+              icon: const Icon(Icons.add),
+              label: const Text('Sayfa ekle'),
+            ),
+            PopupMenuButton<String>(
+              key: const ValueKey('content-options'),
+              tooltip: 'İçerik seçenekleri',
+              enabled: !_busy && _error == null,
+              onSelected: (_) => _editDetails(),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+              ],
+            ),
+          ],
+        ),
+        body: SafeArea(child: _buildBody(context)),
       ),
-      body: SafeArea(child: _buildBody(context)),
     );
   }
 
@@ -230,7 +352,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: const Icon(Icons.chevron_right),
+                      trailing: _pageMenu(page, index + 1),
                       onTap: _busy ? null : () => _openPage(page, index + 1),
                     );
                   },

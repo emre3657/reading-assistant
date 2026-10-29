@@ -88,6 +88,8 @@ Mevcut akış:
 - Güncelleme sonrasında ilgili ekranları yenileme.
 - Kayıt menüsünden onay alarak içeriği tüm sayfalarıyla birlikte silme.
 - Silme başarısız olduğunda içeriği listede koruma ve tekrar deneme.
+- Sayfa menüsünden onay alarak tek sayfa silme; diğer sayfaları ve içerik bilgilerini koruma.
+- Son sayfa silindiğinde içeriği boş olarak koruma ve yeniden sayfa ekleyebilme.
 
 Yeni içerik kaydetmek ayrı bir kayıt oluşturur. Mevcut içeriğe sayfa eklemek ise aynı kayda yeni bir sayfa ekler.
 
@@ -103,7 +105,7 @@ Güncellemeler mevcut içerik ve sayfa kimliklerini, içeriğin oluşturulma tar
 
 Kayıtlı kitap metinleri iki yana, diğer kategoriler başlangıç yönüne hizalanır. Düzenleme alanları başlangıç yönüne hizalıdır.
 
-Sayfaların sırasını değiştirme, tek sayfa silme ve sayfalar arasında ardışık seslendirme henüz eklenmemiştir.
+Sayfaların sırasını değiştirme ve sayfalar arasında ardışık seslendirme henüz eklenmemiştir.
 
 ## Çevrimdışı çalışma ve ağ erişimi
 
