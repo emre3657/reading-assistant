@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
@@ -10,6 +12,15 @@ import 'package:reading_assistant/features/library/presentation/document_content
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
 
 import '../listening/fake_speech_service.dart';
+
+// Page-management tests must never wait for native Android picker recovery.
+class _NoPicker extends ImagePickerService {
+  @override
+  bool get canRecoverLostImage => false;
+
+  @override
+  Future<XFile?> pickFromGallery() async => null;
+}
 
 class _PageStore extends DocumentStore {
   SavedDocument document = SavedDocument(
@@ -104,6 +115,7 @@ Future<void> _show(
     MaterialApp(
       home: DocumentContentsScreen(
         document: store.document,
+        pickerService: _NoPicker(),
         store: store,
         speechService: speech ?? FakeSpeechService(),
         onUpdated: onUpdated,
@@ -115,6 +127,8 @@ Future<void> _show(
 
 Future<void> _add(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('add-page')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Metin yaz veya yapıştır'));
   await tester.pumpAndSettle();
 }
 
@@ -200,7 +214,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Sayfa eklenemedi'), findsOneWidget);
     expect(
-      tester.widget<TextFormField>(_newText).controller!.text,
+      tester.widget<TextField>(_newText).controller!.text,
       'Korunan taslak.',
     );
     store.appendError = null;
@@ -221,7 +235,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Düzenlemeye devam et'));
     await tester.pumpAndSettle();
-    expect(tester.widget<TextFormField>(_newText).controller!.text, 'Taslak.');
+    expect(tester.widget<TextField>(_newText).controller!.text, 'Taslak.');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Kaydetmeden çık'));

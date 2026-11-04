@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../image_import/services/image_picker_service.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
@@ -16,12 +17,14 @@ class DocumentContentsScreen extends StatefulWidget {
     this.store,
     this.speechService,
     this.onUpdated,
+    this.pickerService = const ImagePickerService(),
   });
 
   final SavedDocument document;
   final DocumentStore? store;
   final SpeechService? speechService;
   final VoidCallback? onUpdated;
+  final ImagePickerService pickerService;
 
   @override
   State<DocumentContentsScreen> createState() => _DocumentContentsScreenState();
@@ -143,6 +146,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
             documentTitle: _document.title,
             store: _store,
             speechService: widget.speechService,
+            pickerService: widget.pickerService,
           ),
         ),
       );

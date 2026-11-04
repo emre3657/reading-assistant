@@ -1,228 +1,66 @@
 # Okuma Asistanı
 
-Görsellerden metin çıkaran, metinleri cihazda saklayan ve Türkçe seslendiren Flutter mobil uygulaması.
+Görsellerden metin çıkaran, yazılan veya yapıştırılan metinleri seslendiren ve içerikleri cihazda saklayan Flutter mobil uygulaması.
 
-Android ve iOS hedeflenir. Geliştirme ve manuel kontroller şu ana kadar Android Pixel 5 emülatöründe yapılmıştır. iOS ve gerçek cihaz doğrulaması henüz tamamlanmamıştır.
+Android ve iOS hedeflenir. Geliştirme ve manuel kontroller Android Pixel 5 emülatöründe yapılmaktadır. Gerçek cihaz ve iOS doğrulaması henüz tamamlanmamıştır.
 
-## Mevcut özellikler
+## Özellikler
 
-### Görsel seçme ve OCR
+### Metin oluşturma ve OCR
 
-- Galeriden tek görsel seçme, önizleme, değiştirme ve kaldırma.
-- Seçim iptal edildiğinde mevcut görselin ve metnin korunması.
-- Android'de sistem tarafından kesilen görsel seçiminin kurtarılması.
+- Galeriden görsel seçme, önizleme, değiştirme ve kaldırma.
 - Görseli sola veya sağa 90° döndürme.
-- Latin karakter modeliyle cihaz üzerinde metin tanıma.
-- Çıkarılan metni elle düzenleme.
-- Başarılı OCR sonrasında “Satırları birleştir” bölümüne otomatik kaydırma.
-- Düzenlenmiş metni değiştirecek işlemlerden önce onay isteme.
+- Latin karakter modeliyle cihaz üzerinde metin çıkarma.
+- Görsel kullanmadan metin yazma veya yapıştırma.
+- Metni elle düzeltme ve düzenlenmiş metni değiştiren işlemlerden önce onay isteme.
+- Başarılı OCR sonrasında metin biçimlendirme bölümüne otomatik kaydırma.
 
-OCR orijinal çözünürlükteki görselle çalışır; önizleme için kullanılan küçültülmüş görüntü OCR girdisi değildir.
-
-### Metin biçimlendirme
-
-“Satırları birleştir” isteğe bağlıdır ve varsayılan olarak kapalıdır.
-
-Açıldığında:
-
-- Basılı satır sonları birleştirilir.
-- Satır sonunda tireyle bölünmüş kelimeler sezgisel olarak birleştirilir.
-- OCR satırlarının konumlarından paragraf ve başlık sınırları tahmin edilir.
-- Liste başlangıçları mümkün olduğunca korunur.
-
-Ham OCR sonucu bellekte ayrıca tutulur. Seçenek kapatıldığında ham sonuç geri gelir. Kullanıcı metni elle değiştirmişse biçim değiştirmeden önce onay istenir.
-
-Bu özellik düz yazı için tasarlanmıştır. Şiir, şarkı sözü, tablo veya sütunlu metinlerde kapalı bırakılması daha uygun olabilir.
+“Satırları birleştir” seçeneği basılı satır sonlarını birleştirir; paragraf, başlık ve satır sonunda tireyle bölünmüş kelimeleri tahmin eder. Varsayılan olarak kapalıdır. Kapatıldığında oturumdaki ham OCR sonucu geri gelir; elle düzenleme varsa önce onay istenir.
 
 ### Sesli okuma
 
-Metin alanında görünen veya kayıttan açılan metin, cihazın TTS motoruyla Türkçe okunur.
+Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 
-Kontroller:
+- Başlatma, duraklatma, devam etme ve durdurma.
+- Önceki/sonraki cümle ve başa dönme.
+- 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
+- Ekranın altında kompakt dinleme paneli.
 
-- Sesli oku.
-- Duraklat ve devam et.
-- Önceki ve sonraki cümle.
-- Başa dön.
-- Durdur.
-- 0.75×, 1×, 1.25× ve 1.5× okuma hızı.
+Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirilirse aynı cümle yeni hızla yeniden başlar. Aktif ve duraklatılmış oturumlarda metin düzenleme kilitlidir; düzenlemek için okuma durdurulmalıdır.
 
-Duraklatma uygulamanın takip ettiği cümle konumunu kullanır. Devam edildiğinde mevcut cümle baştan okunur; kelime seviyesinde devam edilmez.
+### İçerikler ve sayfalar
 
-Okuma sırasında hız değiştirilirse mevcut cümle yeni hızla baştan okunur. Duraklatılmışken hız değiştirmek okumayı başlatmaz.
+İçerikler **Kitap, Not, Yemek tarifi, Ders notu ve Şarkı sözü** kategorilerinde SQLite veritabanında saklanır. Her içerik birden fazla sıralı sayfa içerebilir.
 
-Dinleme paneli ekranın altında sabittir. Ana kontroller görünür; cümle gezinmesi ve hız seçenekleri “Diğer kontroller” bölümündedir.
-
-### Düzenleme ve odak davranışı
-
-- Aktif veya duraklatılmış dinleme oturumunda düzenleme kilitlidir.
-- OCR ekranında metin etiketinin yanında kilit ikonu görünür.
-- Kilide dokunulduğunda açıklama gösterilir.
-- Kilitli metne dokunulduğunda üstte geçici bir bilgilendirme görünür.
-- Durdurma sonrasında klavye kendiliğinden açılmaz.
-- Oturum bittikten sonra kullanıcı metne yeniden dokunarak düzenlemeye başlayabilir.
-- Dinleme oturumu yokken klavye açılırsa OCR ekranındaki alt panel gizlenir.
-
-### Yerel kayıt ve kayıt yönetimi
-
-İçerikler SQLite veritabanında başlık ve kategoriyle saklanır. Her içerik birden fazla sıralı metin sayfası içerebilir.
-
-Kategoriler:
-
-- Kitap.
-- Not.
-- Yemek tarifi.
-- Ders notu.
-- Şarkı sözü.
-
-Mevcut akış:
-
-- İlk ekrandan görsel seçmeden metin yazma veya yapıştırma, dinleme ve yeni içerik olarak kaydetme.
+- İlk ekrandaki metni yeni içeriğin ilk sayfası olarak kaydetme.
 - “Kayıtlarım” ekranında içerikleri listeleme ve açma.
-- İçeriğin sayfalarını listeleme ve seçilen sayfayı açma.
-- Tüm kategorilerde aynı içeriğe yeni sayfa ekleme.
-- Yeni sayfanın metnini elle yazarak, yapıştırarak veya galeri OCR akışından oluşturma.
-- Açık sayfayı seslendirme ve metnini diğer sayfaları değiştirmeden düzenleme.
-- İçerik başlığını ve kategorisini “Kayıtlarım” ekranındaki kayıt menüsünden veya içeriğin sayfalar ekranındaki menüden düzenleme.
-- Başlık ve kategori değişikliklerini sayfa metinlerinden bağımsız kaydetme.
-- Güncelleme sonrasında ilgili ekranları yenileme.
-- Kayıt menüsünden onay alarak içeriği tüm sayfalarıyla birlikte silme.
-- Silme başarısız olduğunda içeriği listede koruma ve tekrar deneme.
-- Sayfa menüsünden onay alarak tek sayfa silme; diğer sayfaları ve içerik bilgilerini koruma.
-- Son sayfa silindiğinde içeriği boş olarak koruma ve yeniden sayfa ekleyebilme.
+- Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
+- Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
+- Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
+- Onay alarak tek sayfayı veya içeriğin tamamını silme.
 
-Yeni içerik kaydetmek ayrı bir kayıt oluşturur. Mevcut içeriğe sayfa eklemek ise aynı kayda yeni bir sayfa ekler.
+Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Silme sonrasında kalan sayfalar ekranda kesintisiz numaralanır.
 
-Başlık ve kategori içerik düzeyindedir. Bunların düzenleme diyaloğunda yalnızca bu iki alan bulunur; Kaydet ve Vazgeç seçenekleri sunulur. Değişiklikler hiçbir sayfanın metnine veya sırasına dokunmaz.
+Sayfa ekleme ve metin düzenleme ekranlarından kaydedilmemiş metinle çıkarken düzenlemeye devam etme, kaydetmeden çıkma veya kaydedip çıkma seçenekleri sunulur. Kaydetme hatasında taslak korunur.
 
-Sayfanın düzenleme ekranında yalnızca açık sayfanın metni düzenlenir. Kaydet düğmesi AppBar'dadır. Kaydedilmemiş metin değişiklikleriyle çıkışta şu seçenekler sunulur:
+Kayıtlı kitap metinleri iki yana, diğer kategoriler ve sayfa düzenleme alanları başlangıç yönüne hizalanır.
 
-- Düzenlemeye devam et.
-- Kaydetmeden çık.
-- Kaydet ve çık.
+## Çevrimdışı çalışma ve veriler
 
-Güncellemeler mevcut içerik ve sayfa kimliklerini, içeriğin oluşturulma tarihini korur. Kaydetme başarısız olursa veya alanlar geçersizse girilen değerler korunur ve düzenleme ekranı ya da diyaloğu kapanmaz.
+- Hesap, backend, bulut OCR/TTS servisi veya API anahtarı kullanılmaz.
+- Metinler yerel SQLite veritabanında tutulur. İçerik bilgileri `documents`, sayfalar `pages` tablosundadır.
+- Fotoğraflar kayıtlı içeriğin parçası olarak saklanmaz; kullanıcının galerisindeki orijinaller silinmez.
+- Ham OCR ve yerleşim bilgisi yalnızca mevcut oturumda tutulur. Veritabanına görünen metin kaydedilir.
 
-Kayıtlı kitap metinleri iki yana, diğer kategoriler başlangıç yönüne hizalanır. Düzenleme alanları başlangıç yönüne hizalıdır.
+Android OCR modeli uygulamayla paketlenir; ilk kullanımda model indirmek gerekmez. Android **release** derlemesinde `INTERNET` izni kaldırılmıştır ve bu yapılandırmayla OCR emülatörde doğrulanmıştır. Debug/profile sürümleri geliştirme için internet izni taşıyabilir.
 
-Sayfaların sırasını değiştirme ve sayfalar arasında ardışık seslendirme henüz eklenmemiştir.
+ML Kit telemetri bileşenleri içerir. Release internet izninin kaldırılması, bu bileşenlerin SDK içinde kapatılması anlamına gelmez.
 
-## Çevrimdışı çalışma ve ağ erişimi
-
-### OCR
-
-Android'de OCR modeli uygulamayla paketlenir. İlk kullanım için model indirilmesi gerekmez.
-
-Android release APK'da:
-
-- `INTERNET` izni manifest birleştirme kuralıyla kaldırılır.
-- Nihai APK izinlerinde `INTERNET` bulunmadığı kontrol edilmiştir.
-- Bu yapılandırmayla OCR'nin Pixel 5 emülatöründe çalıştığı doğrulanmıştır.
-
-ML Kit bağımlılıkları telemetri bileşenleri içerir. Release internet izninin kaldırılması bu bileşenleri SDK içinde kapatmaz; uygulamanın standart ağ erişimini engeller.
-
-Debug ve profile sürümleri geliştirme araçları için internet izni taşıyabilir. Release davranışı bu sürümlere genellenmemelidir.
-
-### TTS
-
-Android'de kurulu ve ağ gerektirmediğini bildiren `tr-TR` sesi seçilir. Uygun ses bulunamazsa kullanıcıdan cihazın TTS ayarlarından Türkçe ses verisini yüklemesi istenir.
-
-Ses verilerinin ilk kurulumu internet gerektirebilir. Uygulama bulut TTS servisi veya API anahtarı kullanmaz.
-
-TTS motoru ayrı bir sistem uygulaması olabilir. Bu nedenle uygulamanın internet izninin olmaması, motorun ağ erişimini de engellediği anlamına gelmez.
-
-iOS'ta Türkçe dil desteği kontrol edilir; çevrimdışı davranış henüz doğrulanmamıştır.
-
-## Veri ve dosya yönetimi
-
-- Veritabanı sürümü 2'dir. Başlık, kategori ve oluşturulma tarihi
-  `documents`; sayfa metinleri ve sıraları `pages` tablosunda tutulur.
-- Eski tek metinli kayıtlar, aynı içerik kimliği korunarak ilk sayfaya taşınır.
-- İçerik silindiğinde bağlı sayfaları da silinir.
-- Mevcut ekranlar tek sayfalı akışla çalışır; çok sayfalı veri temeli hazırdır,
-  sayfa yönetimi arayüzü henüz eklenmemiştir.
-- Fotoğraflar kayıtlı içeriğin parçası olarak veritabanına eklenmez.
-- Kullanıcının galerisindeki orijinal dosyalar silinmez.
-- `image_picker` geçici kopyalar oluşturabilir; bu kopyaların temizliği henüz uygulama tarafından yönetilmez.
-- Döndürme için uygulamanın oluşturduğu geçici kopyalar, ilgili OCR işlemi tamamlandıktan sonra temizlenir.
-- OCR sırasında uygulama sonlandırılırsa geçici dosya kalabilir; açılışta genel temizlik henüz yoktur.
-- Ham OCR sonucu ve yerleşim bilgisi mevcut düzenleme oturumunda tutulur; kayda görünen metin yazılır.
-- Hesap, sunucu, bulut senkronizasyonu ve uygulama içi yedekleme henüz yoktur.
-
-## Teknik yapı
-
-- Flutter ve Dart.
-- `ChangeNotifier` tabanlı controller'lar.
-- `image_picker`: galeri erişimi.
-- `google_mlkit_text_recognition`: cihaz üzerinde OCR.
-- `image`: görsel döndürme.
-- `flutter_tts`: cihaz seslendirmesi.
-- `sqflite`: yerel SQLite veritabanı.
-
-Bağımlılık sürümleri için [pubspec.yaml](pubspec.yaml) ve [pubspec.lock](pubspec.lock) dosyalarına bakın.
-
-### Uygulama kimlikleri
-
-- Görünen ad: `Okuma Asistanı`.
-- Flutter paket adı: `reading_assistant`.
-- Android applicationId: `com.emreekincidev.reading_assistant`.
-
-### Platform gereksinimleri
-
-- Android: mevcut proje minimum API 24 hedefler.
-- iOS: ML Kit nedeniyle minimum iOS 15.5.
-- Windows geliştirme ortamında Android emülatörü kullanılır.
-- iOS derleme ve cihaz kontrolleri macOS/Xcode ortamında yapılmalıdır.
-- Diğer platform klasörlerinin bulunması, bu platformların desteklendiği anlamına gelmez.
-
-### Sorumluluklar
-
-- `ImageImportController`: görsel seçimi, döndürme, OCR ve metin durumu.
-- `ListeningController`: dinleme oturumu, cümle konumu ve hız.
-- `SpeechService`: cihaz TTS motoruyla iletişim.
-- `DocumentStore`: yerel kayıt ve sorgular.
-- Ekranlar: arayüz, kullanıcı etkileşimi ve onay diyalogları.
-
-Native OCR çağrısı ekran kapanınca gerçekten iptal edilmez. Sonuç yok sayılır ve uygulamanın oluşturduğu geçici döndürülmüş kopya işlem tamamlandıktan sonra temizlenir.
-
-## Klasör yapısı
-
-```text
-lib/
-  main.dart
-  app.dart
-  features/
-    image_import/
-      presentation/
-        image_import_controller.dart
-        image_import_screen.dart
-        widgets/
-          image_preview.dart
-      services/
-        image_picker_service.dart
-        image_rotation_service.dart
-        ocr_result.dart
-        ocr_text_formatter.dart
-        text_recognition_service.dart
-    listening/
-      presentation/
-        listening_controller.dart
-        listening_controls.dart
-      services/
-        sentence_splitter.dart
-        speech_service.dart
-        speech_text_splitter.dart
-    library/
-      data/
-        saved_document.dart
-        document_store.dart
-      presentation/
-        library_screen.dart
-        saved_document_screen.dart
-        save_document_dialog.dart
-```
+Android'de kurulu ve ağ gerektirmediğini bildiren Türkçe TTS sesi seçilir. Ses verilerinin ilk kurulumu internet gerektirebilir. TTS motoru ayrı bir sistem uygulaması olabileceğinden uygulamanın internet izni, motorun ağ erişimini belirlemez. iOS'ta çevrimdışı çalışma henüz doğrulanmamıştır.
 
 ## Geliştirme
+
+Flutter SDK ve hedef platformun geliştirme araçları gereklidir. Mevcut minimum sürümler Android API 24 ve iOS 15.5'tir. iOS derlemesi için macOS/Xcode gerekir.
 
 ```bash
 flutter pub get
@@ -232,73 +70,24 @@ flutter test
 flutter run
 ```
 
-Yeni native paket eklendiğinde hot reload yerine uygulamayı tamamen yeniden başlatın.
-
-Release APK oluşturmak için:
+Android release APK:
 
 ```bash
 flutter build apk --release
 ```
 
-Android release derlemesinde ML Kit'in reflection ile oluşturduğu registrar constructor'larını koruyan dar kapsamlı ProGuard kuralları bulunur. Kullanılmayan Latin dışı tanıyıcı sınıfları için sınıfa özel uyarı bastırma kuralları vardır.
+Temel bağımlılıklar: `image_picker`, `google_mlkit_text_recognition`, `image`, `flutter_tts` ve `sqflite`. Sürümler için [pubspec.yaml](pubspec.yaml) ve [pubspec.lock](pubspec.lock) dosyalarına bakın.
 
-`flutter_tts` için Kotlin Gradle Plugin geçiş uyarısı görülebilir. Mevcut derlemeler başarılıdır; gelecekte Flutter/paket yükseltmelerinde uyumluluk yeniden kontrol edilmelidir.
+Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölmeyi ve gerçek SQLite üzerinde veritabanı işlemlerini kapsar. Sahte OCR/TTS servisleriyle geçen testler, gerçek motor veya cihaz davranışının doğrulandığı anlamına gelmez.
 
-## Test ve doğrulama
+## Sınırlamalar
 
-Otomatik testler controller durumlarını, arayüz akışlarını, metin biçimlendirmeyi, cümle bölmeyi ve servis sınırlarını kapsar.
+- OCR, Türkçe karakterleri, dipnotları ve kaynak numaralarını yanlış okuyabilir. Otomatik yazım düzeltme yoktur.
+- Görsel yönü kullanıcı tarafından düzeltilir. Çok sütunlu metin ve tablolarda okuma sırası garanti edilmez.
+- Satır birleştirme ve cümle bölme sezgiseldir; şiir ve şarkı sözlerinde satır birleştirme kapalı bırakılabilir.
+- Sayfa sıralamasını değiştirme ve sayfalar arasında ardışık seslendirme henüz yoktur.
+- Arka planda/ekran kilitliyken dinleme, son okuma konumunu ve hız tercihini kalıcı saklama desteklenmez.
+- Metin sürüm geçmişi, uygulama içi yedekleme ve bulut senkronizasyonu yoktur.
+- Galeri eklentisinin geçici kopyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
 
-Sahte servis testleri gerçek OCR veya TTS motorunun doğruluğunu kanıtlamaz. Veritabanı API taklidi kullanan testler de gerçek SQLite dosyasını çalıştırmaz.
-
-Pixel 5 emülatöründe manuel olarak denenen alanlar:
-
-- Galeri seçimi ve önizleme.
-- OCR ve elle metin düzeltme.
-- Görsel döndürme.
-- Satır birleştirme ve paragraf tahmini.
-- Temel TTS ve cümle kontrolleri.
-- Okuma hızı ve kompakt panel.
-- Düzenleme kilidi ve odak davranışı.
-- Yerel kayıt, listeleme ve yeniden açma.
-- İnternet izni kaldırılmış Android release sürümünde OCR.
-
-Kayıtlı metin düzenleme/dinleme ve son çıkış diyaloğu değişiklikleri için güncel analiz, otomatik test ve manuel regresyon kontrolleri tamamlanmalıdır.
-
-iOS ve gerçek cihaz doğrulaması henüz yapılmamıştır.
-
-## Bilinen sınırlamalar
-
-- OCR Türkçe harfleri, eski kelimeleri, dipnotları ve kaynak numaralarını yanlış tanıyabilir.
-- Otomatik yazım düzeltme veya dil modeli kullanılmaz.
-- Görsel yönü kullanıcı tarafından düzeltilir; otomatik yön algılama yoktur.
-- Paragraf, başlık ve tire birleştirme kuralları sezgiseldir; her sayfa düzeninde doğru çalışmaz.
-- Çok sütunlu sayfaların ve tabloların okuma sırası garanti edilmez.
-- Cümle bölme bilinmeyen kısaltmalarda veya alışılmadık noktalama kullanımında hata yapabilir.
-- Devam et mevcut cümlenin başından okur.
-- Hız seçenekleri göreli motor ayarlarıdır; tam süre oranı garanti edilmez.
-- `flutter_tts` callback'leri okuma kimliği taşımadığından geç native callback'ler tamamen ayırt edilemez.
-- Uzun metinlerin sert bölünmesi bazı birleşik Unicode karakterlerini ayırabilir.
-- Emülatörde sistem TTS örneğinde de ses bozulması gözlenmiştir; Cold Boot sonrasında düzelmiştir. Gerçek cihazda ayrıca değerlendirilmelidir.
-- Şu an her kayıt tek metin gövdesidir; çok sayfalı kitap yönetimi yoktur.
-- Son okuma konumu ve hız tercihi uygulama yeniden açıldığında saklanmaz.
-- Arka planda ve ekran kilitliyken dinleme desteklenmez.
-- Kaydedilen metnin önceki sürümleri ve ham OCR'ye kalıcı geri dönüş henüz tutulmaz.
-
-## Sonraki adımlar
-
-- Kayıtlar içinde arama.
-- Sayfa sıralama, değiştirme ve silme.
-- Sayfalar arasında geçiş ve ardışık seslendirme.
-- Kameradan fotoğraf çekme.
-- Son okuma konumunu ve tercihleri saklama.
-- Yazı boyutu, hizalama, satır aralığı ve tema seçenekleri.
-- Okunan cümleyi vurgulama ve isteğe bağlı otomatik kaydırma.
-- Gerçek Android cihazda ve iOS'ta doğrulama.
-- Dışa aktarma ve yedekleme.
-
-## Proje kuralları
-
-Kod ve çalışma kuralları için
-[Copilot talimatları](.github/copilot-instructions.md) dosyasına bakın.
-
-Commit ve push işlemleri manuel yapılır.
+Kod ve çalışma kuralları için [Copilot talimatlarına](.github/copilot-instructions.md) bakın.
