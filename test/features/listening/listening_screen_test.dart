@@ -340,6 +340,11 @@ void main() {
       expect(_enabled(tester, label), isFalse, reason: label);
     }
     expect(find.textContaining('Cümle 1'), findsNothing);
+    expect(
+      find.text('Sonraki sayfayı otomatik oku'),
+      findsNothing,
+      reason: 'the OCR / new page screen has no automatic page switch',
+    );
 
     await tester.tap(find.text(_readLabel));
     await tester.pump();

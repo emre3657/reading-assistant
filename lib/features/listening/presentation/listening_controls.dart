@@ -14,9 +14,23 @@ class ListeningControls extends StatelessWidget {
     required this.onStart,
     required this.expanded,
     required this.onToggleExpanded,
+    this.onAutoNextPageChanged,
+    this.autoNextPage = false,
+    this.nextPagePending = false,
+    this.onCancelNextPage,
   });
 
   final ListeningController listening;
+
+  /// Only screens that read multi-page saved content pass a handler; without
+  /// it the "Sonraki sayfayı otomatik oku" switch is not shown.
+  final ValueChanged<bool>? onAutoNextPageChanged;
+  final bool autoNextPage;
+
+  /// True while the screen is moving on to the next page after a finished
+  /// page. Stop stays enabled and cancels that move.
+  final bool nextPagePending;
+  final VoidCallback? onCancelNextPage;
 
   /// Whether the secondary section is open; owned by the screen so it
   /// survives the panel being hidden (e.g. while the keyboard is open).
@@ -32,13 +46,15 @@ class ListeningControls extends StatelessWidget {
     final theme = Theme.of(context);
     final status = listening.status;
     final message = listening.message;
-    final statusText = switch (status) {
-      ListeningStatus.starting => 'Okuma hazırlanıyor…',
-      ListeningStatus.speaking => 'Okunuyor…',
-      ListeningStatus.paused => 'Duraklatıldı.',
-      ListeningStatus.stopping => 'Durduruluyor…',
-      _ => null,
-    };
+    final statusText = nextPagePending
+        ? 'Sonraki sayfa açılıyor…'
+        : switch (status) {
+            ListeningStatus.starting => 'Okuma hazırlanıyor…',
+            ListeningStatus.speaking => 'Okunuyor…',
+            ListeningStatus.paused => 'Duraklatıldı.',
+            ListeningStatus.stopping => 'Durduruluyor…',
+            _ => null,
+          };
     // A tall panel (large text, narrow screen) scrolls inside its own limit
     // instead of squeezing the text above it.
     final maxHeight = MediaQuery.sizeOf(context).height * 0.45;
@@ -83,7 +99,11 @@ class ListeningControls extends StatelessWidget {
                           label: const Text('Sesli oku'),
                         ),
                       OutlinedButton.icon(
-                        onPressed: listening.canStop ? listening.stop : null,
+                        onPressed: nextPagePending
+                            ? onCancelNextPage
+                            : listening.canStop
+                            ? listening.stop
+                            : null,
                         icon: const Icon(Icons.stop),
                         label: const Text('Durdur'),
                       ),
@@ -173,6 +193,17 @@ class ListeningControls extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (onAutoNextPageChanged != null)
+                    SwitchListTile(
+                      key: const ValueKey('auto-next-page'),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10),
+                      title: const Text(
+                        'Sonraki sayfayı otomatik oku',
+                        style: TextStyle(fontSize: 16.5),
+                      ),
+                      value: autoNextPage,
+                      onChanged: onAutoNextPageChanged,
+                    ),
                   if (listening.sentenceCount > 0)
                     Text(
                       'Devam et, mevcut cümlenin başından okur.',

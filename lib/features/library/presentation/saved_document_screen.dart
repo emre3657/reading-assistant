@@ -69,6 +69,15 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   bool _exitInProgress = false;
   bool _allowPop = false;
   bool _moreControlsOpen = false;
+
+  /// Screen-session preference only; never saved.
+  bool _autoNextPage = false;
+  bool _autoPending = false;
+  ListeningStatus _lastStatus = ListeningStatus.idle;
+
+  /// Identifies the current automatic move; cancel, dispose and background
+  /// change it so late results are ignored.
+  int _autoToken = 0;
   String? _error;
 
   /// Changes whenever edit mode starts or ends, so an answer to an older
@@ -94,13 +103,16 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     final speechService =
         widget.speechService ?? (_ownedSpeechService = SpeechService());
     _listening = ListeningController(speechService: speechService);
+    _listening.addListener(_onListeningChanged);
 
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    _autoToken++;
     WidgetsBinding.instance.removeObserver(this);
+    _listening.removeListener(_onListeningChanged);
     _listening.dispose();
     _ownedSpeechService?.dispose();
     _textController.dispose();
@@ -173,34 +185,137 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         setState(() => _pages = pages);
         return;
       }
-      final target = pages[targetIndex];
-
-      setState(() {
-        _pages = pages;
-        _pageId = target.id;
-        _pageNumber = targetIndex + 1;
-        _saved = SavedDocument(
-          id: _saved.id,
-          title: _saved.title,
-          category: _saved.category,
-          text: target.text,
-          createdAt: _saved.createdAt,
-        );
-        _editing = false;
-        _error = null;
-        _editSession++;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _scrollController.hasClients) {
-          _scrollController.jumpTo(0);
-        }
-      });
+      _applyPage(pages, targetIndex);
     } catch (_) {
       if (mounted) {
         _showMessage('Sayfa açılamadı. Mevcut sayfa korundu.');
       }
     } finally {
       if (mounted) setState(() => _transitioning = false);
+    }
+  }
+
+  /// Shows the page at [index] of [pages] and scrolls its text to the top.
+  /// Does not touch the database.
+  void _applyPage(
+    List<DocumentPage> pages,
+    int index, {
+    VoidCallback? alsoSet,
+  }) {
+    final target = pages[index];
+    setState(() {
+      _pages = pages;
+      _pageId = target.id;
+      _pageNumber = index + 1;
+      _saved = SavedDocument(
+        id: _saved.id,
+        title: _saved.title,
+        category: _saved.category,
+        text: target.text,
+        createdAt: _saved.createdAt,
+      );
+      _editing = false;
+      _error = null;
+      _editSession++;
+      alsoSet?.call();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
+    });
+  }
+
+  void _onListeningChanged() {
+    final status = _listening.status;
+    final finishedNow =
+        status == ListeningStatus.completed &&
+        _lastStatus != ListeningStatus.completed;
+    _lastStatus = status;
+    // Only a natural end of the last sentence reaches `completed`; stop,
+    // pause, errors and jumps end in other states.
+    if (finishedNow &&
+        _autoNextPage &&
+        !_editing &&
+        !_saving &&
+        !_transitioning &&
+        !_exitInProgress) {
+      unawaited(_advanceToNextPage());
+    }
+  }
+
+  /// Cancels a pending automatic move. A late result of the cancelled move
+  /// compares its token and does nothing.
+  void _cancelAutoAdvance() {
+    _autoToken++;
+    if (_autoPending && mounted) {
+      setState(() {
+        _autoPending = false;
+        _transitioning = false;
+      });
+    }
+  }
+
+  void _setAutoNextPage(bool value) {
+    if (value == _autoNextPage) return;
+    if (!value) _cancelAutoAdvance();
+    setState(() => _autoNextPage = value);
+  }
+
+  /// Opens the next stored page and reads it from its first sentence after the
+  /// previous page was read to its end.
+  Future<void> _advanceToNextPage() async {
+    final current = _pageIndex;
+    // No page list (or already the last page): the session simply ends.
+    if (current < 0 || current >= _pages!.length - 1) return;
+
+    final token = ++_autoToken;
+    setState(() {
+      _autoPending = true;
+      _transitioning = true;
+    });
+
+    bool stale() => !mounted || token != _autoToken;
+
+    try {
+      final pages = await _store.pages(_saved.id);
+      if (stale()) return;
+      final index = pages.indexWhere((page) => page.id == _pageId);
+      if (index < 0) {
+        _showMessage('Bu sayfa bulunamadı. Otomatik devam durdu.');
+        return;
+      }
+      if (index >= pages.length - 1) {
+        setState(() => _pages = pages);
+        return;
+      }
+
+      final text = pages[index + 1].text;
+      final readable = text.trim().isNotEmpty;
+      _applyPage(
+        pages,
+        index + 1,
+        alsoSet: () {
+          _autoPending = false;
+          _transitioning = false;
+        },
+      );
+      if (readable) {
+        unawaited(_listening.start(text));
+      } else {
+        _showMessage('Bu sayfa boş olduğu için otomatik okuma durdu.');
+      }
+    } catch (_) {
+      if (!stale()) {
+        _showMessage('Sonraki sayfa açılamadı. Otomatik okuma durdu.');
+      }
+    } finally {
+      if (!stale() && _autoPending) {
+        setState(() {
+          _autoPending = false;
+          _transitioning = false;
+        });
+      }
     }
   }
 
@@ -226,6 +341,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _cancelAutoAdvance();
       _listening.stop();
     }
   }
@@ -495,6 +611,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             expanded: _moreControlsOpen,
             onToggleExpanded: () =>
                 setState(() => _moreControlsOpen = !_moreControlsOpen),
+            autoNextPage: _autoNextPage,
+            onAutoNextPageChanged: _hasPageNavigation && _pages!.length > 1
+                ? _setAutoNextPage
+                : null,
+            nextPagePending: _autoPending,
+            onCancelNextPage: _cancelAutoAdvance,
           );
     if (pageNavigation == null) return controls;
     if (controls == null) return SafeArea(child: pageNavigation);
