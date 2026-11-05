@@ -179,7 +179,14 @@ void main() {
       isFalse,
     );
     expect(
-      tester.widget<ListTile>(find.byKey(const ValueKey('page-70'))).onTap,
+      tester
+          .widget<ListTile>(
+            find.descendant(
+              of: find.byKey(const ValueKey('page-70')),
+              matching: find.byType(ListTile),
+            ),
+          )
+          .onTap,
       isNull,
     );
     await tester.binding.handlePopRoute();

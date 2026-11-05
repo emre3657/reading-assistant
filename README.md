@@ -38,6 +38,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Onay alarak tek sayfayı veya içeriğin tamamını silme.
+- Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.
 
 Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Silme sonrasında kalan sayfalar ekranda kesintisiz numaralanır.
 

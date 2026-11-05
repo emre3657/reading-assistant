@@ -1,6 +1,6 @@
 # Okuma Asistanı – Copilot Talimatları
 
-Flutter mobil uygulaması (Android + iOS). Ürün amacı ve geliştirme sırası için [README.md](../README.md) dosyasına bak.
+Flutter mobil uygulaması (Android + iOS).
 
 ## Ürün özeti
 
@@ -12,12 +12,12 @@ Kullanıcı fotoğraf çekerek, galeriden görsel seçerek veya elle yazarak met
 - Çevrimdışı çalışma hedeflenir; OCR modeli ve TTS seslerinin kurulu olduğu kontrol edilir, eksikse kullanıcıya Türkçe açıklama gösterilir.
 - Veriler yerel SQLite'ta tutulur.
 - Fotoğraflar kalıcı saklanmaz. Metin onaylanınca veya işlem iptal edilince yalnızca uygulamanın oluşturduğu geçici dosyalar silinir; kullanıcının galerisindeki orijinalleri ve sahipliği belirsiz dosyaları asla silme.
-- Dinleme: oynat, duraklat/devam et, durdur, önceki/sonraki cümle, sayfa başına dön, hız ayarı. Son okuma konumu saklanır. İlk sürümde arka planda dinleme yok.
+- Dinleme: oynat, duraklat/devam et, durdur, önceki/sonraki cümle, sayfa başına dön, hız ayarı. İlk sürümde arka planda dinleme yok.
 - Backend, bulut servisi, hesap sistemi veya API anahtarı ekleme.
 
 ## Geliştirme kuralları
 
-- Küçük, çalışan adımlarla ilerle; README'deki sırayı izle.
+- Küçük, çalışan adımlarla ilerle.
 - Değiştirmeden önce mevcut kodu incele; incelemeden yeniden yazma.
 - Basit yapı kullan. İhtiyaç oluşmadan soyutlama, katman veya paket ekleme.
 - Paket eklerken güncel sürümü, bakım durumunu ve Android/iOS gereksinimlerini (minSdk, iOS sürümü, izinler) kontrol et.
@@ -51,4 +51,7 @@ flutter analyze
 flutter test   # değişiklikle ilgili testler
 ```
 
-Çalıştırılamayan kontrolleri (örn. gerçek cihaz, OCR/TTS testleri) son özette açıkça belirt. Davranış değişince ilgili testi ve README'yi güncelle.
+Çalıştırılamayan kontrolleri (örn. gerçek cihaz, OCR/TTS testleri) son özette açıkça belirt.
+
+Davranış değişince ilgili testleri güncelle.
+Kullanıcıya görünen özellikler, kurulum veya kullanım değiştiğinde README'yi güncelle; kısa tut, mevcut bilgiyi düzelt ve tekrar ekleme.

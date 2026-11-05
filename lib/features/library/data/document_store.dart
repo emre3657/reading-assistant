@@ -281,6 +281,72 @@ class DocumentStore {
         0;
   }
 
+  /// Saves a new page order for one content. [orderedPageIds] must contain
+  /// every page of [documentId] exactly once. Returns false (and writes
+  /// nothing) when the order and the 0..n-1 positions are already as given.
+  ///
+  /// Positions are first moved above the current maximum, so the unique
+  /// (document_id, position) constraint never collides, then renumbered
+  /// 0..n-1 (which also closes gaps left by deleted pages). Any failure rolls
+  /// the whole transaction back.
+  Future<bool> reorderPages({
+    required int documentId,
+    required List<int> orderedPageIds,
+  }) async {
+    final database = await _database;
+    return database.transaction((transaction) async {
+      final rows = await transaction.query(
+        'pages',
+        columns: ['id', 'position'],
+        where: 'document_id = ?',
+        whereArgs: [documentId],
+        orderBy: 'position ASC, id ASC',
+      );
+      final currentIds = [for (final row in rows) row['id'] as int];
+
+      if (orderedPageIds.length != currentIds.length ||
+          orderedPageIds.toSet().length != orderedPageIds.length ||
+          !currentIds.toSet().containsAll(orderedPageIds)) {
+        throw ArgumentError(
+          'Page ids must list every page of the document exactly once.',
+        );
+      }
+      if (rows.isEmpty) return false;
+
+      var unchanged = true;
+      for (var i = 0; i < rows.length; i++) {
+        if (currentIds[i] != orderedPageIds[i] || rows[i]['position'] != i) {
+          unchanged = false;
+          break;
+        }
+      }
+      if (unchanged) return false;
+
+      final maxPosition = rows
+          .map((row) => row['position'] as int)
+          .reduce((a, b) => a > b ? a : b);
+
+      for (var i = 0; i < orderedPageIds.length; i++) {
+        await transaction.update(
+          'pages',
+          {'position': maxPosition + 1 + i},
+          where: 'id = ? AND document_id = ?',
+          whereArgs: [orderedPageIds[i], documentId],
+        );
+      }
+      for (var i = 0; i < orderedPageIds.length; i++) {
+        final count = await transaction.update(
+          'pages',
+          {'position': i},
+          where: 'id = ? AND document_id = ?',
+          whereArgs: [orderedPageIds[i], documentId],
+        );
+        if (count != 1) throw StateError('Page reorder failed.');
+      }
+      return true;
+    });
+  }
+
   Future<List<DocumentPage>> pages(int documentId) async {
     final database = await _database;
     final rows = await database.query(

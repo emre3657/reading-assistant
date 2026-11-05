@@ -36,12 +36,13 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   bool _loading = true;
   bool _opening = false;
   bool _deleting = false;
+  bool _reordering = false;
   int? _deletingPageId;
   String? _error;
   int _loadId = 0;
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
-  bool get _busy => _loading || _opening || _deleting;
+  bool get _busy => _loading || _opening || _deleting || _reordering;
 
   @override
   void initState() {
@@ -236,6 +237,67 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     }
   }
 
+  Future<void> _reorder(int oldIndex, int newIndex) async {
+    if (_busy || _error != null) return;
+    // onReorderItem already reports newIndex after the item is removed.
+    if (oldIndex == newIndex) return;
+
+    final previous = _pages;
+    final reordered = [...previous];
+    reordered.insert(newIndex, reordered.removeAt(oldIndex));
+
+    setState(() {
+      _pages = reordered;
+      _reordering = true;
+    });
+
+    try {
+      await _store.reorderPages(
+        documentId: _document.id,
+        orderedPageIds: [for (final page in reordered) page.id],
+      );
+      if (!mounted) return;
+      setState(() {
+        _document = SavedDocument(
+          id: _document.id,
+          title: _document.title,
+          category: _document.category,
+          text: reordered.first.text,
+          createdAt: _document.createdAt,
+        );
+      });
+      widget.onUpdated?.call();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pages = previous);
+      _showMessage('Sayfa sırası kaydedilemedi. Önceki sıra geri yüklendi.');
+    } finally {
+      if (mounted) setState(() => _reordering = false);
+    }
+  }
+
+  Widget _dragHandle(int index, int number) {
+    return ReorderableDragStartListener(
+      key: ValueKey('page-handle-$number'),
+      index: index,
+      enabled: !_busy,
+      child: Semantics(
+        label: 'Sayfa $number sırasını değiştir',
+        hint: 'Sürüklemek için basılı tutup taşı',
+        excludeSemantics: true,
+        child: const Tooltip(
+          message: 'Sırayı değiştirmek için sürükle',
+          excludeFromSemantics: true,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Icon(Icons.drag_handle),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _pageMenu(DocumentPage page, int number) {
     if (_deletingPageId == page.id) {
       return const SizedBox(
@@ -280,7 +342,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _deletingPageId == null,
+      canPop: _deletingPageId == null && !_reordering,
       child: Scaffold(
         appBar: AppBar(
           title: Text(_document.title),
@@ -324,6 +386,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
         ),
       );
     }
+    final canReorder = _pages.length >= 2;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -331,6 +394,42 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
           padding: const EdgeInsets.all(16),
           child: Text('${_document.category.label} · ${_pages.length} sayfa'),
         ),
+        if (canReorder)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text.rich(
+              key: const ValueKey('page-reorder-hint'),
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Sıralamak için sağdaki tutamacı ('),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: ExcludeSemantics(
+                      child: Icon(
+                        Icons.drag_handle,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const TextSpan(text: ') sürükle.'),
+                ],
+              ),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        if (_reordering)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                LinearProgressIndicator(semanticsLabel: 'Sıra kaydediliyor'),
+                SizedBox(height: 4),
+                Text('Sıra kaydediliyor…'),
+              ],
+            ),
+          ),
         Expanded(
           child: _pages.isEmpty
               ? const Center(
@@ -341,23 +440,36 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                     ),
                   ),
                 )
-              : ListView.separated(
+              : ReorderableListView.builder(
+                  buildDefaultDragHandles: false,
                   itemCount: _pages.length,
-                  separatorBuilder: (context, index) =>
-                      const Divider(height: 1),
+                  onReorderItem: _reorder,
                   itemBuilder: (context, index) {
                     final page = _pages[index];
-                    return ListTile(
+                    final number = index + 1;
+                    return Column(
                       key: ValueKey('page-${page.id}'),
-                      leading: const Icon(Icons.article_outlined),
-                      title: Text('Sayfa ${index + 1}'),
-                      subtitle: Text(
-                        page.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: _pageMenu(page, index + 1),
-                      onTap: _busy ? null : () => _openPage(page, index + 1),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.article_outlined),
+                          title: Text('Sayfa $number'),
+                          subtitle: Text(
+                            page.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _pageMenu(page, number),
+                              if (canReorder) _dragHandle(index, number),
+                            ],
+                          ),
+                          onTap: _busy ? null : () => _openPage(page, number),
+                        ),
+                        const Divider(height: 1),
+                      ],
                     );
                   },
                 ),
