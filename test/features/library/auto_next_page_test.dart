@@ -109,7 +109,12 @@ Future<void> _show(
 }
 
 Future<void> _openMore(WidgetTester tester) async {
-  await tester.tap(_button('Diğer kontroller'));
+  // In a small panel with large text the button may be scrolled out of view.
+  final moreControls = find.text('Diğer kontroller');
+
+  await tester.ensureVisible(moreControls);
+  await tester.pumpAndSettle();
+  await tester.tap(moreControls);
   await tester.pumpAndSettle();
 }
 
@@ -474,6 +479,75 @@ void main() {
       );
       expect(speech.spoken, ['Tek cümle.']);
       expect(speech.isSpeaking, isFalse);
+    });
+
+    testWidgets('scroll hint arrow follows hidden content', (tester) async {
+      final arrow = find.descendant(
+        of: find.byKey(const ValueKey('listening-panel')),
+        matching: find.byIcon(Icons.keyboard_arrow_down),
+      );
+      final speech = FakeSpeechService();
+
+      // Tall screen, collapsed: everything fits, no arrow.
+      await _show(tester, _Store(_threePages()), speech);
+      expect(arrow, findsNothing);
+
+      // Small screen with large text: content below the visible area.
+      tester.view.physicalSize = const Size(320, 560);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpAndSettle();
+      expect(arrow, findsOneWidget);
+      final panelSize = tester.getSize(
+        find.byKey(const ValueKey('listening-panel')),
+      );
+
+      final scrollable = find.descendant(
+        of: find.byKey(const ValueKey('listening-panel')),
+        matching: find.byType(Scrollable),
+      );
+      expect(scrollable, findsOneWidget);
+      final position = tester.state<ScrollableState>(scrollable).position;
+      expect(position.pixels, 0);
+
+      // The hint is decorative: no semantics, no hit testing.
+      expect(
+        find.ancestor(of: arrow, matching: find.byType(ExcludeSemantics)),
+        findsWidgets,
+      );
+      expect(
+        find.ancestor(of: arrow, matching: find.byType(IgnorePointer)),
+        findsWidgets,
+      );
+
+      // Scroll to the bottom: the arrow disappears, the size does not change.
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(arrow, findsNothing);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('listening-panel'))),
+        panelSize,
+      );
+
+      // Back up: it returns.
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(arrow, findsOneWidget);
+
+      // Content change (opening the section) keeps the hint correct.
+      await _openMore(tester);
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(arrow, findsOneWidget);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(arrow, findsNothing);
+
+      // Larger screen and normal text: all fits again, no arrow.
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+      tester.view.physicalSize = const Size(800, 1600);
+      await tester.pumpAndSettle();
+      expect(arrow, findsNothing);
     });
 
     testWidgets('single-page content has no switch', (tester) async {

@@ -664,18 +664,35 @@ void main() {
         textScale: 2,
       );
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('Diğer kontroller'));
-      await tester.pump();
+
+      final moreControls = _button('Diğer kontroller');
+
+      await tester.ensureVisible(moreControls);
+      await tester.pumpAndSettle();
+      expect(moreControls.hitTestable(), findsOneWidget);
+      await tester.tap(moreControls);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Önceki cümle'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.text('Diğer kontroller'));
-      await tester.pump();
+      await tester.ensureVisible(moreControls);
+      await tester.pumpAndSettle();
+      expect(moreControls.hitTestable(), findsOneWidget);
+      await tester.tap(moreControls);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Önceki cümle'), findsNothing);
+
       await _enterEdit(tester);
       tester.view.viewInsets = const FakeViewPadding(bottom: 250);
-      await tester.pump();
+      await tester.pumpAndSettle();
+
       expect(tester.takeException(), isNull);
+
       await tester.ensureVisible(_button('Kaydet'));
-      expect(_button('Kaydet'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(_button('Kaydet').hitTestable(), findsOneWidget);
     });
   });
 

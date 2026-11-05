@@ -115,6 +115,15 @@ Future<void> _show(
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+
+  expect(
+    finder.hitTestable(),
+    findsOneWidget,
+    reason: 'Dokunulacak kontrol görünür ve erişilebilir olmalı.',
+  );
+
   await tester.tap(finder);
   await tester.pumpAndSettle();
 }
