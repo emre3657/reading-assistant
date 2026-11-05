@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/services/speech_service.dart';
+import '../data/document_page.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
+import 'page_navigation_bar.dart';
 
 /// Reads and edits one page. Shared title/category are edited separately
 /// at content level. Listening and editing lock each other.
@@ -52,11 +54,18 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   // Owned here; created once and disposed in dispose().
   final _textController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
 
   late SavedDocument _saved;
 
+  /// Stored pages in database order; null until loaded or when unavailable.
+  List<DocumentPage>? _pages;
+  int? _pageId;
+  int? _pageNumber;
+
   bool _editing = false;
   bool _saving = false;
+  bool _transitioning = false;
   bool _exitInProgress = false;
   bool _allowPop = false;
   bool _moreControlsOpen = false;
@@ -70,10 +79,17 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   bool get _hasChanges => _textController.text != _saved.text;
 
+  int get _pageIndex => _pages?.indexWhere((page) => page.id == _pageId) ?? -1;
+
+  bool get _hasPageNavigation => _pageIndex >= 0;
+
   @override
   void initState() {
     super.initState();
     _saved = widget.document;
+    _pageId = widget.pageId;
+    _pageNumber = widget.pageNumber;
+    if (_pageId != null) unawaited(_loadPages());
 
     final speechService =
         widget.speechService ?? (_ownedSpeechService = SpeechService());
@@ -88,7 +104,120 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _listening.dispose();
     _ownedSpeechService?.dispose();
     _textController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPages() async {
+    try {
+      final pages = await _store.pages(_saved.id);
+      if (!mounted) return;
+      setState(() => _pages = pages);
+    } catch (_) {
+      // Without a page list the navigation row stays hidden.
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Moves to the previous (-1) or next (+1) page in stored order.
+  Future<void> _navigate(int delta) async {
+    if (_transitioning ||
+        _saving ||
+        _exitInProgress ||
+        _listening.status == ListeningStatus.stopping) {
+      return;
+    }
+    setState(() => _transitioning = true);
+    final session = _editSession;
+
+    try {
+      if (_editing && _hasChanges) {
+        final choice = await _confirmChanges(
+          content:
+              'Sayfayı değiştirmeden önce değişiklikleri kaydetmek '
+              'ister misin?',
+          discardLabel: 'Kaydetmeden geç',
+          saveLabel: 'Kaydet ve geç',
+        );
+        if (!mounted || session != _editSession) return;
+        if (choice == null || choice == _ExitChoice.keepEditing) return;
+        if (choice == _ExitChoice.save) {
+          final saved = await _persist();
+          if (!saved || !mounted) return;
+        }
+      }
+
+      FocusManager.instance.primaryFocus?.unfocus();
+      if (_listening.isActive) {
+        await _listening.stop();
+        if (!mounted) return;
+        if (_listening.status == ListeningStatus.failed) {
+          _showMessage(_listening.message ?? 'Okuma durdurulamadı.');
+          return;
+        }
+      }
+
+      final pages = await _store.pages(_saved.id);
+      if (!mounted) return;
+      final index = pages.indexWhere((page) => page.id == _pageId);
+      if (index < 0) {
+        _showMessage('Bu sayfa bulunamadı. Sayfa değiştirilemedi.');
+        return;
+      }
+      final targetIndex = index + delta;
+      if (targetIndex < 0 || targetIndex >= pages.length) {
+        setState(() => _pages = pages);
+        return;
+      }
+      final target = pages[targetIndex];
+
+      setState(() {
+        _pages = pages;
+        _pageId = target.id;
+        _pageNumber = targetIndex + 1;
+        _saved = SavedDocument(
+          id: _saved.id,
+          title: _saved.title,
+          category: _saved.category,
+          text: target.text,
+          createdAt: _saved.createdAt,
+        );
+        _editing = false;
+        _error = null;
+        _editSession++;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        _showMessage('Sayfa açılamadı. Mevcut sayfa korundu.');
+      }
+    } finally {
+      if (mounted) setState(() => _transitioning = false);
+    }
+  }
+
+  Widget? _buildPageNavigation() {
+    if (!_hasPageNavigation) return null;
+    final index = _pageIndex;
+    final total = _pages!.length;
+    final blocked =
+        _transitioning ||
+        _saving ||
+        _listening.status == ListeningStatus.stopping;
+    return PageNavigationBar(
+      current: index + 1,
+      total: total,
+      onPrevious: blocked || index == 0 ? null : () => _navigate(-1),
+      onNext: blocked || index == total - 1 ? null : () => _navigate(1),
+    );
   }
 
   @override
@@ -102,12 +231,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   void _startListening() {
-    if (_editing || _saving || _listening.isActive) return;
+    if (_editing || _saving || _transitioning || _listening.isActive) return;
     _listening.start(_saved.text);
   }
 
   void _startEditing() {
-    if (_editing || _saving || _listening.isActive) return;
+    if (_editing || _saving || _transitioning || _listening.isActive) return;
 
     FocusManager.instance.primaryFocus?.unfocus();
 
@@ -128,7 +257,11 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     });
   }
 
-  Future<_ExitChoice?> _confirmExit() {
+  Future<_ExitChoice?> _confirmChanges({
+    String content = 'Çıkmadan önce değişiklikleri kaydetmek ister misin?',
+    String discardLabel = 'Kaydetmeden çık',
+    String saveLabel = 'Kaydet ve çık',
+  }) {
     return showDialog<_ExitChoice>(
       context: context,
       barrierDismissible: false,
@@ -137,9 +270,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         canPop: false,
         child: AlertDialog(
           title: const Text('Kaydedilmemiş değişiklikler var'),
-          content: const Text(
-            'Çıkmadan önce değişiklikleri kaydetmek ister misin?',
-          ),
+          content: Text(content),
           actions: [
             TextButton(
               onPressed: () =>
@@ -149,12 +280,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             TextButton(
               onPressed: () =>
                   Navigator.of(dialogContext).pop(_ExitChoice.discard),
-              child: const Text('Kaydetmeden çık'),
+              child: Text(discardLabel),
             ),
             FilledButton(
               onPressed: () =>
                   Navigator.of(dialogContext).pop(_ExitChoice.save),
-              child: const Text('Kaydet ve çık'),
+              child: Text(saveLabel),
             ),
           ],
         ),
@@ -164,6 +295,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   Future<void> _requestExit() async {
     if (_saving ||
+        _transitioning ||
         _exitInProgress ||
         _allowPop ||
         _listening.status == ListeningStatus.stopping) {
@@ -174,7 +306,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
     try {
       if (_editing && _hasChanges) {
-        final choice = await _confirmExit();
+        final choice = await _confirmChanges();
         if (!mounted || session != _editSession || _saving) return;
         if (choice == null || choice == _ExitChoice.keepEditing) return;
         if (choice == _ExitChoice.save) {
@@ -238,7 +370,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     final bool updated;
     try {
       // Legacy callers without a page id are safe only for single-page content.
-      var pageId = widget.pageId;
+      var pageId = _pageId;
       if (pageId == null) {
         final pages = await _store.pages(_saved.id);
         if (pages.length != 1) {
@@ -316,12 +448,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           IconButton(
             tooltip: listeningActive ? _lockedHint : 'Düzenle',
             icon: const Icon(Icons.edit_outlined),
-            onPressed: listeningActive ? null : _startEditing,
+            onPressed: listeningActive || _transitioning ? null : _startEditing,
           ),
         ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -330,9 +463,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                 document.category.label,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
-              if (widget.pageNumber != null) ...[
+              if (_pageNumber != null) ...[
                 const SizedBox(height: 8),
-                Text('Sayfa ${widget.pageNumber}'),
+                Text('Sayfa $_pageNumber'),
               ],
               const SizedBox(height: 16),
               SelectableText(
@@ -346,17 +479,28 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           ),
         ),
       ),
-      bottomNavigationBar: document.text.trim().isEmpty
-          ? null
-          : ListeningControls(
-              key: const ValueKey('listening-panel'),
-              listening: _listening,
-              canStart: !listeningActive,
-              onStart: _startListening,
-              expanded: _moreControlsOpen,
-              onToggleExpanded: () =>
-                  setState(() => _moreControlsOpen = !_moreControlsOpen),
-            ),
+      bottomNavigationBar: _buildBottomBar(document, listeningActive),
+    );
+  }
+
+  Widget? _buildBottomBar(SavedDocument document, bool listeningActive) {
+    final pageNavigation = _buildPageNavigation();
+    final controls = document.text.trim().isEmpty
+        ? null
+        : ListeningControls(
+            key: const ValueKey('listening-panel'),
+            listening: _listening,
+            canStart: !listeningActive && !_transitioning,
+            onStart: _startListening,
+            expanded: _moreControlsOpen,
+            onToggleExpanded: () =>
+                setState(() => _moreControlsOpen = !_moreControlsOpen),
+          );
+    if (pageNavigation == null) return controls;
+    if (controls == null) return SafeArea(child: pageNavigation);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [pageNavigation, controls],
     );
   }
 
@@ -424,6 +568,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           ),
         ),
       ),
+      bottomNavigationBar: _buildPageNavigation() == null
+          ? null
+          : SafeArea(child: _buildPageNavigation()!),
     );
   }
 }

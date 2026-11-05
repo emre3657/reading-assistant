@@ -38,6 +38,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Onay alarak tek sayfayı veya içeriğin tamamını silme.
+- Sayfa okuma ekranında önceki/sonraki sayfa düğmeleri ve "Sayfa 2 / 5" göstergesi; sayfalar kayıtlı sırayla gezilir, geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Kaydedilmemiş düzenlemede devam etme, kaydetmeden geçme veya kaydedip geçme sorulur.
 - Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.
 
 Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Silme sonrasında kalan sayfalar ekranda kesintisiz numaralanır.
@@ -86,7 +87,7 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - OCR, Türkçe karakterleri, dipnotları ve kaynak numaralarını yanlış okuyabilir. Otomatik yazım düzeltme yoktur.
 - Görsel yönü kullanıcı tarafından düzeltilir. Çok sütunlu metin ve tablolarda okuma sırası garanti edilmez.
 - Satır birleştirme ve cümle bölme sezgiseldir; şiir ve şarkı sözlerinde satır birleştirme kapalı bırakılabilir.
-- Sayfa sıralamasını değiştirme ve sayfalar arasında ardışık seslendirme henüz yoktur.
+- Sayfalar arasında ardışık (otomatik) seslendirme ve sayfa numarası girerek atlama henüz yoktur.
 - Arka planda/ekran kilitliyken dinleme, son okuma konumunu ve hız tercihini kalıcı saklama desteklenmez.
 - Metin sürüm geçmişi, uygulama içi yedekleme ve bulut senkronizasyonu yoktur.
 - Galeri eklentisinin geçici kopyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
