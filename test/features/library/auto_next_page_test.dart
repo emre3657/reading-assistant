@@ -8,8 +8,10 @@ import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
+import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 
 import '../listening/fake_speech_service.dart';
+import '../listening/fake_preferences_store.dart';
 
 // Fake store and fake speech engine: these cover our own sequencing and state
 // handling, not the real SQLite file or the real TTS engine.
@@ -89,28 +91,31 @@ Future<void> _show(
 
   final open = store.pageList.first;
   await tester.pumpWidget(
-    MaterialApp(
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: TextButton(
-            onPressed: () => Navigator.of(context).push<void>(
-              MaterialPageRoute(
-                builder: (_) => SavedDocumentScreen(
-                  document: SavedDocument(
-                    id: 7,
-                    title: 'Başlık',
-                    category: DocumentCategory.note,
-                    text: open.text,
-                    createdAt: DateTime(2024),
+    ReadingPreferencesScope(
+      preferences: ReadingPreferences(store: FakePreferencesStore()),
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => SavedDocumentScreen(
+                    document: SavedDocument(
+                      id: 7,
+                      title: 'Başlık',
+                      category: DocumentCategory.note,
+                      text: open.text,
+                      createdAt: DateTime(2024),
+                    ),
+                    pageId: open.id,
+                    pageNumber: 1,
+                    store: store,
+                    speechService: speech,
                   ),
-                  pageId: open.id,
-                  pageNumber: 1,
-                  store: store,
-                  speechService: speech,
                 ),
               ),
+              child: const Text('aç'),
             ),
-            child: const Text('aç'),
           ),
         ),
       ),

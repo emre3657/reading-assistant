@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/app.dart';
+import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 
 import '../image_import/test_doubles.dart';
+import 'fake_preferences_store.dart';
 import 'fake_speech_service.dart';
 
 // Fake engine and fake OCR: these tests cover layout and UI wiring only.
@@ -36,6 +38,7 @@ Future<_Harness> _open(
         data: MediaQuery.of(context)
             .copyWith(textScaler: TextScaler.linear(textScale)),
         child: ReadingAssistantApp(
+          readingPreferences: ReadingPreferences(store: FakePreferencesStore()),
           pickerService: FakeImagePickerService(
             onPick: () async => XFile('/tmp/a.jpg'),
           ),

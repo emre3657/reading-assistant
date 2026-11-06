@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
+import '../../listening/presentation/reading_preferences.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
@@ -52,6 +53,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   static const _lockedHint = 'Düzenlemek için okumayı durdur';
 
   late final ListeningController _listening;
+  ReadingPreferences? _preferences;
+  int _preferencesErrorRevision = 0;
   SpeechService? _ownedSpeechService;
 
   // Owned here; created once and disposed in dispose().
@@ -77,8 +80,6 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   int? _resumeSentence;
   bool _positionErrorShown = false;
 
-  /// Screen-session preference only; never saved.
-  final _autoNextPage = ValueNotifier<bool>(false);
   bool _autoPending = false;
   ListeningStatus _lastStatus = ListeningStatus.idle;
 
@@ -120,16 +121,67 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final preferences = ReadingPreferencesScope.of(context);
+    if (_preferences == preferences) return;
+    _preferences?.removeListener(_onPreferencesChanged);
+    _preferences = preferences;
+    preferences.addListener(_onPreferencesChanged);
+    if (preferences.ready) {
+      unawaited(_listening.setSpeed(preferences.speed));
+    } else {
+      unawaited(preferences.load());
+    }
+  }
+
+  void _onPreferencesChanged() {
+    final preferences = _preferences!;
+    if (preferences.ready && _listening.speed != preferences.speed) {
+      unawaited(_listening.setSpeed(preferences.speed));
+    }
+    if (!preferences.autoNextPage && _autoPending) _cancelAutoAdvance();
+    if (mounted) setState(() {});
+    if (_preferencesErrorRevision != preferences.errorRevision) {
+      _preferencesErrorRevision = preferences.errorRevision;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showPreferencesError();
+      });
+    }
+  }
+
+  void _showPreferencesError() {
+    final preferences = _preferences;
+    if (!mounted ||
+        preferences == null ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        !preferences.claimError(preferences.errorRevision)) {
+      return;
+    }
+    _showMessage(preferences.errorMessage!);
+  }
+
+  Future<void> _openReadingSettings() async {
+    await showReadingSettings(
+      context,
+      preferences: _preferences!,
+      pageChanges: _pageList,
+      showAutoNextPage: () => _hasPageNavigation && _pages!.length > 1,
+    );
+    if (mounted) _showPreferencesError();
+  }
+
+  @override
   void dispose() {
     _autoToken++;
     WidgetsBinding.instance.removeObserver(this);
     _listening.removeListener(_onListeningChanged);
+    _preferences?.removeListener(_onPreferencesChanged);
     _listening.dispose();
     _ownedSpeechService?.dispose();
     _textController.dispose();
     _scrollController.dispose();
     _pageList.dispose();
-    _autoNextPage.dispose();
     super.dispose();
   }
 
@@ -252,7 +304,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     // Only a natural end of the last sentence reaches `completed`; stop,
     // pause, errors and jumps end in other states.
     if (finishedNow &&
-        _autoNextPage.value &&
+        (_preferences?.autoNextPage ?? false) &&
         !_editing &&
         !_saving &&
         !_transitioning &&
@@ -304,12 +356,6 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         _transitioning = false;
       });
     }
-  }
-
-  void _setAutoNextPage(bool value) {
-    if (value == _autoNextPage.value) return;
-    if (!value) _cancelAutoAdvance();
-    _autoNextPage.value = value;
   }
 
   /// Opens the next stored page and reads it from its first sentence after the
@@ -397,7 +443,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   void _startListening() {
-    if (_editing || _saving || _transitioning || _listening.isActive) return;
+    if (_editing ||
+        _saving ||
+        _transitioning ||
+        _listening.isActive ||
+        !(_preferences?.ready ?? false)) {
+      return;
+    }
     final initialSentence = _resumeSentence ?? 0;
     _resumeSentence = null;
     _listening.start(_saved.text, initialSentence: initialSentence);
@@ -617,14 +669,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           IconButton(
             tooltip: 'Okuma ayarları',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => showReadingSettings(
-              context,
-              listening: _listening,
-              autoNextPage: _autoNextPage,
-              onAutoNextPageChanged: _setAutoNextPage,
-              pageChanges: _pageList,
-              showAutoNextPage: () => _hasPageNavigation && _pages!.length > 1,
-            ),
+            onPressed: _openReadingSettings,
           ),
           IconButton(
             tooltip: listeningActive ? _lockedHint : 'Düzenle',
@@ -671,7 +716,10 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         : ListeningControls(
             key: const ValueKey('listening-panel'),
             listening: _listening,
-            canStart: !listeningActive && !_transitioning,
+            canStart:
+                !listeningActive &&
+                !_transitioning &&
+                (_preferences?.ready ?? false),
             onStart: _startListening,
             expanded: _panelExpanded,
             onToggleExpanded: () =>

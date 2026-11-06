@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
-const documentDatabaseVersion = 3;
+const documentDatabaseVersion = 4;
 
 const createDocumentsSql = '''
 CREATE TABLE documents (
@@ -42,6 +42,14 @@ BEGIN
 END
 ''';
 
+const createReadingPreferencesSql = '''
+CREATE TABLE reading_preferences (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  speed TEXT NOT NULL,
+  auto_next_page INTEGER NOT NULL
+)
+''';
+
 const renameLegacyDocumentsSql = 'ALTER TABLE documents RENAME TO documents_v1';
 
 const copyLegacyDocumentsSql = '''
@@ -66,6 +74,7 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(createPagesSql);
   await database.execute(createReadingPositionsSql);
   await database.execute(invalidateReadingPositionSql);
+  await database.execute(createReadingPreferencesSql);
 }
 
 Future<void> upgradeDocumentSchema(
@@ -85,5 +94,8 @@ Future<void> upgradeDocumentSchema(
   if (oldVersion < 3 && newVersion >= 3) {
     await database.execute(createReadingPositionsSql);
     await database.execute(invalidateReadingPositionSql);
+  }
+  if (oldVersion < 4 && newVersion >= 4) {
+    await database.execute(createReadingPreferencesSql);
   }
 }

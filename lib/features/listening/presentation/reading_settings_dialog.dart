@@ -1,20 +1,18 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'listening_controller.dart';
+import 'reading_preferences.dart';
 
 Future<void> showReadingSettings(
   BuildContext context, {
-  required ListeningController listening,
-  ValueListenable<bool>? autoNextPage,
-  ValueChanged<bool>? onAutoNextPageChanged,
+  required ReadingPreferences preferences,
   Listenable? pageChanges,
   bool Function()? showAutoNextPage,
 }) {
   return showDialog<void>(
     context: context,
     builder: (context) => ListenableBuilder(
-      listenable: Listenable.merge([listening, autoNextPage, pageChanges]),
+      listenable: Listenable.merge([preferences, pageChanges]),
       builder: (context, _) => AlertDialog(
         title: const Text('Okuma ayarları'),
         content: SingleChildScrollView(
@@ -27,7 +25,7 @@ Future<void> showReadingSettings(
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<ReadingSpeed>(
                     key: const ValueKey('reading-speed'),
-                    value: listening.speed,
+                    value: preferences.speed,
                     isExpanded: true,
                     items: [
                       for (final speed in ReadingSpeed.values)
@@ -36,15 +34,15 @@ Future<void> showReadingSettings(
                           child: Text(speed.label),
                         ),
                     ],
-                    onChanged: (speed) {
-                      if (speed != null) listening.setSpeed(speed);
-                    },
+                    onChanged: preferences.ready
+                        ? (speed) {
+                            if (speed != null) preferences.setSpeed(speed);
+                          }
+                        : null,
                   ),
                 ),
               ),
-              if (autoNextPage != null &&
-                  onAutoNextPageChanged != null &&
-                  (showAutoNextPage?.call() ?? false)) ...[
+              if (showAutoNextPage?.call() ?? false) ...[
                 const SizedBox(height: 16),
                 SwitchListTile(
                   key: const ValueKey('auto-next-page'),
@@ -53,8 +51,10 @@ Future<void> showReadingSettings(
                   subtitle: const Text(
                     'Sayfa bitince sonraki sayfadan okumaya devam eder.',
                   ),
-                  value: autoNextPage.value,
-                  onChanged: onAutoNextPageChanged,
+                  value: preferences.autoNextPage,
+                  onChanged: preferences.ready
+                      ? preferences.setAutoNextPage
+                      : null,
                 ),
               ],
             ],

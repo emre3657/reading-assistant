@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
+import '../../listening/presentation/reading_preferences.dart';
 import '../../listening/services/speech_service.dart';
 
 import '../../library/presentation/library_screen.dart';
@@ -57,6 +58,8 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     with WidgetsBindingObserver {
   late final ImageImportController _controller;
   late final ListeningController _listening;
+  ReadingPreferences? _preferences;
+  int _preferencesErrorRevision = 0;
 
   SpeechService? _ownedSpeechService;
 
@@ -102,6 +105,52 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final preferences = ReadingPreferencesScope.of(context);
+    if (_preferences == preferences) return;
+    _preferences?.removeListener(_onPreferencesChanged);
+    _preferences = preferences;
+    preferences.addListener(_onPreferencesChanged);
+    if (preferences.ready) {
+      unawaited(_listening.setSpeed(preferences.speed));
+    } else {
+      unawaited(preferences.load());
+    }
+  }
+
+  void _onPreferencesChanged() {
+    final preferences = _preferences!;
+    if (preferences.ready && _listening.speed != preferences.speed) {
+      unawaited(_listening.setSpeed(preferences.speed));
+    }
+    if (mounted) setState(() {});
+    if (_preferencesErrorRevision != preferences.errorRevision) {
+      _preferencesErrorRevision = preferences.errorRevision;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showPreferencesError();
+      });
+    }
+  }
+
+  void _showPreferencesError() {
+    final preferences = _preferences;
+    if (!mounted ||
+        preferences == null ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        !preferences.claimError(preferences.errorRevision)) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(preferences.errorMessage!)));
+  }
+
+  Future<void> _openReadingSettings() async {
+    await showReadingSettings(context, preferences: _preferences!);
+    if (mounted) _showPreferencesError();
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _hideEditLockNotice();
@@ -109,6 +158,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     _controller.removeListener(_onImportChanged);
     _controller.dispose();
+    _preferences?.removeListener(_onPreferencesChanged);
 
     _listening.removeListener(_onListeningChanged);
     _listening.dispose();
@@ -322,7 +372,11 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   }
 
   Future<void> _startListening() async {
-    if (_controller.isBusy || _listening.isActive) return;
+    if (_controller.isBusy ||
+        _listening.isActive ||
+        !(_preferences?.ready ?? false)) {
+      return;
+    }
 
     FocusManager.instance.primaryFocus?.unfocus();
 
@@ -541,7 +595,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         child: ListeningControls(
           key: const ValueKey('listening-panel'),
           listening: _listening,
-          canStart: !_listening.isActive && !_controller.isBusy,
+          canStart:
+              !_listening.isActive &&
+              !_controller.isBusy &&
+              (_preferences?.ready ?? false),
           onStart: _startListening,
           expanded: _panelExpanded,
           onToggleExpanded: () =>
@@ -581,9 +638,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
           IconButton(
             tooltip: 'Okuma ayarları',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: _pageLocked
-                ? null
-                : () => showReadingSettings(context, listening: _listening),
+            onPressed: _pageLocked ? null : _openReadingSettings,
           ),
           if (_addingPage)
             TextButton(

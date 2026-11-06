@@ -123,6 +123,24 @@ class DocumentStore {
 
   Future<Database> get _database => _databaseFuture ??= _open();
 
+  Future<Map<String, Object?>?> loadReadingPreferences() async {
+    final database = await _database;
+    final rows = await database.query('reading_preferences', where: 'id = 1');
+    return rows.isEmpty ? null : rows.single;
+  }
+
+  Future<void> saveReadingPreferences({
+    required String speed,
+    required bool autoNextPage,
+  }) async {
+    final database = await _database;
+    await database.insert('reading_preferences', {
+      'id': 1,
+      'speed': speed,
+      'auto_next_page': autoNextPage ? 1 : 0,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<Database> _open() async {
     try {
       final opener = databaseOpener;
