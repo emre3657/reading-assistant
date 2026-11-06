@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
+import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
@@ -59,7 +60,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   late SavedDocument _saved;
 
   /// Stored pages in database order; null until loaded or when unavailable.
-  List<DocumentPage>? _pages;
+  final _pageList = ValueNotifier<List<DocumentPage>?>(null);
+  List<DocumentPage>? get _pages => _pageList.value;
+  set _pages(List<DocumentPage>? value) => _pageList.value = value;
   int? _pageId;
   int? _pageNumber;
 
@@ -68,10 +71,10 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   bool _transitioning = false;
   bool _exitInProgress = false;
   bool _allowPop = false;
-  bool _moreControlsOpen = false;
+  bool _panelExpanded = true;
 
   /// Screen-session preference only; never saved.
-  bool _autoNextPage = false;
+  final _autoNextPage = ValueNotifier<bool>(false);
   bool _autoPending = false;
   ListeningStatus _lastStatus = ListeningStatus.idle;
 
@@ -117,6 +120,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _ownedSpeechService?.dispose();
     _textController.dispose();
     _scrollController.dispose();
+    _pageList.dispose();
+    _autoNextPage.dispose();
     super.dispose();
   }
 
@@ -235,7 +240,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     // Only a natural end of the last sentence reaches `completed`; stop,
     // pause, errors and jumps end in other states.
     if (finishedNow &&
-        _autoNextPage &&
+        _autoNextPage.value &&
         !_editing &&
         !_saving &&
         !_transitioning &&
@@ -257,9 +262,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   void _setAutoNextPage(bool value) {
-    if (value == _autoNextPage) return;
+    if (value == _autoNextPage.value) return;
     if (!value) _cancelAutoAdvance();
-    setState(() => _autoNextPage = value);
+    _autoNextPage.value = value;
   }
 
   /// Opens the next stored page and reads it from its first sentence after the
@@ -562,6 +567,18 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         leading: BackButton(onPressed: () => unawaited(_requestExit())),
         actions: [
           IconButton(
+            tooltip: 'Okuma ayarları',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => showReadingSettings(
+              context,
+              listening: _listening,
+              autoNextPage: _autoNextPage,
+              onAutoNextPageChanged: _setAutoNextPage,
+              pageChanges: _pageList,
+              showAutoNextPage: () => _hasPageNavigation && _pages!.length > 1,
+            ),
+          ),
+          IconButton(
             tooltip: listeningActive ? _lockedHint : 'Düzenle',
             icon: const Icon(Icons.edit_outlined),
             onPressed: listeningActive || _transitioning ? null : _startEditing,
@@ -608,21 +625,22 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             listening: _listening,
             canStart: !listeningActive && !_transitioning,
             onStart: _startListening,
-            expanded: _moreControlsOpen,
+            expanded: _panelExpanded,
             onToggleExpanded: () =>
-                setState(() => _moreControlsOpen = !_moreControlsOpen),
-            autoNextPage: _autoNextPage,
-            onAutoNextPageChanged: _hasPageNavigation && _pages!.length > 1
-                ? _setAutoNextPage
-                : null,
+                setState(() => _panelExpanded = !_panelExpanded),
             nextPagePending: _autoPending,
             onCancelNextPage: _cancelAutoAdvance,
           );
-    if (pageNavigation == null) return controls;
+    if (pageNavigation == null) {
+      return controls == null ? null : ListeningSurface(child: controls);
+    }
     if (controls == null) return SafeArea(child: pageNavigation);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [pageNavigation, controls],
+    return ListeningSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [pageNavigation, controls],
+      ),
     );
   }
 

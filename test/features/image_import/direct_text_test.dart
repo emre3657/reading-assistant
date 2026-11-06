@@ -57,6 +57,29 @@ void main() {
     expect(find.byKey(const ValueKey('listening-panel')), findsNothing);
   });
 
+  testWidgets('new page settings omit automatic page reading', (tester) async {
+    tester.view.physicalSize = const Size(320, 560);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ImageImportScreen(
+          pickerService: _Picker(),
+          speechService: FakeSpeechService(),
+          onSavePage: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.pumpAndSettle();
+    expect(find.text('Okuma hızı'), findsOneWidget);
+    expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('typed text can be spoken and opens existing save dialog', (
     tester,
   ) async {

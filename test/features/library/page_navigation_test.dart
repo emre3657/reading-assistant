@@ -170,8 +170,10 @@ void main() {
       final store = _Store(_threePages());
       await _show(tester, store, speech);
 
-      await _tap(tester, _button('Diğer kontroller'));
-      await _tap(tester, find.text('1.5×'));
+      await _tap(tester, find.byTooltip('Okuma ayarları'));
+      await _tap(tester, find.byKey(const ValueKey('reading-speed')));
+      await _tap(tester, find.text('1.5×').last);
+      await _tap(tester, find.text('Kapat'));
       await tester.tap(_button('Sesli oku'));
       await tester.pump();
       await tester.pump();
@@ -343,7 +345,8 @@ void main() {
         expect(size.width, greaterThanOrEqualTo(48));
         expect(size.height, greaterThanOrEqualTo(48));
       }
-      await _tap(tester, _button('Diğer kontroller'));
+      await tester.ensureVisible(find.byTooltip('Paneli küçült'));
+      await _tap(tester, find.byTooltip('Paneli küçült'));
       expect(tester.takeException(), isNull);
     });
   });

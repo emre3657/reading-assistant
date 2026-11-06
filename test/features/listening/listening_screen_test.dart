@@ -333,9 +333,7 @@ void main() {
     final speech = await _openWithText(tester, text: 'Bir. İki. Üç.');
     expect(find.text('Duraklat'), findsNothing);
     expect(find.text('Devam et'), findsNothing);
-    expect(find.text('Önceki cümle'), findsNothing, reason: 'collapsed');
-    await tester.tap(find.text('Diğer kontroller'));
-    await tester.pump();
+    expect(find.text('Önceki cümle'), findsOneWidget);
     for (final label in ['Önceki cümle', 'Sonraki cümle', 'Başa dön']) {
       expect(_enabled(tester, label), isFalse, reason: label);
     }
@@ -350,11 +348,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Cümle 1 / 3'), findsOneWidget);
-    expect(find.text('Hız 1×'), findsOneWidget);
-    expect(
-      find.text('Devam et, mevcut cümlenin başından okur.'),
-      findsOneWidget,
-    );
+    expect(find.text('Hız 1×'), findsNothing);
     expect(_enabled(tester, 'Duraklat'), isTrue);
     expect(_enabled(tester, 'Sonraki cümle'), isTrue);
     expect(_enabled(tester, 'Önceki cümle'), isFalse);

@@ -236,8 +236,6 @@ void main() {
       await tester.pump();
       expect(_button('Devam et'), findsOneWidget);
 
-      await tester.tap(find.text('Diğer kontroller'));
-      await tester.pump();
       await tester.tap(_button('Sonraki cümle'));
       await tester.pump();
       expect(find.text('Cümle 2 / 3'), findsOneWidget);
@@ -295,8 +293,6 @@ void main() {
       await _show(tester, FakeDocumentStore([_doc()]), speech);
 
       await _startReading(tester);
-      await tester.tap(find.text('Diğer kontroller'));
-      await tester.pump();
       await tester.tap(_button('Sonraki cümle'));
       await tester.pump();
       await tester.tap(_button('Durdur'));
@@ -665,16 +661,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
-      final moreControls = _button('Diğer kontroller');
-
-      await tester.ensureVisible(moreControls);
-      await tester.pumpAndSettle();
-      expect(moreControls.hitTestable(), findsOneWidget);
-      await tester.tap(moreControls);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Önceki cümle'), findsOneWidget);
-      expect(tester.takeException(), isNull);
+      final moreControls = find.byTooltip('Paneli küçült');
 
       await tester.ensureVisible(moreControls);
       await tester.pumpAndSettle();
@@ -683,6 +670,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Önceki cümle'), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      final expandControls = find.byTooltip('Paneli genişlet');
+      await tester.ensureVisible(expandControls);
+      await tester.pumpAndSettle();
+      expect(expandControls.hitTestable(), findsOneWidget);
+      await tester.tap(expandControls);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Önceki cümle'), findsOneWidget);
 
       await _enterEdit(tester);
       tester.view.viewInsets = const FakeViewPadding(bottom: 250);

@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'listening_controller.dart';
 
-/// Fixed listening panel: a compact main row (play/pause/resume, stop, more),
-/// a short position/speed line and a collapsible section with navigation and
-/// speed choices. All logic stays in [ListeningController]; the screen decides when
-/// the panel is shown and whether reading may start.
-class ListeningControls extends StatefulWidget {
+class ListeningControls extends StatelessWidget {
   const ListeningControls({
     super.key,
     required this.listening,
@@ -14,293 +10,195 @@ class ListeningControls extends StatefulWidget {
     required this.onStart,
     required this.expanded,
     required this.onToggleExpanded,
-    this.onAutoNextPageChanged,
-    this.autoNextPage = false,
     this.nextPagePending = false,
     this.onCancelNextPage,
   });
 
   final ListeningController listening;
-
-  /// Only screens that read multi-page saved content pass a handler; without
-  /// it the "Sonraki sayfayı otomatik oku" switch is not shown.
-  final ValueChanged<bool>? onAutoNextPageChanged;
-  final bool autoNextPage;
-
-  /// True while the screen is moving on to the next page after a finished
-  /// page. Stop stays enabled and cancels that move.
+  final bool canStart;
+  final VoidCallback onStart;
+  final bool expanded;
+  final VoidCallback onToggleExpanded;
   final bool nextPagePending;
   final VoidCallback? onCancelNextPage;
 
-  /// Whether the secondary section is open; owned by the screen so it
-  /// survives the panel being hidden (e.g. while the keyboard is open).
-  final bool expanded;
-  final VoidCallback onToggleExpanded;
-
-  /// Whether "Sesli oku" is enabled (the screen knows about other busy flows).
-  final bool canStart;
-  final VoidCallback onStart;
-
-  @override
-  State<ListeningControls> createState() => _ListeningControlsState();
-}
-
-class _ListeningControlsState extends State<ListeningControls> {
-  /// True while part of the panel content is hidden below the visible area.
-  final _moreBelow = ValueNotifier<bool>(false);
-
-  @override
-  void dispose() {
-    _moreBelow.dispose();
-    super.dispose();
-  }
-
-  // Fires on scrolling and, after layout, on size or content changes.
-  bool _onMetrics(ScrollMetrics metrics) {
-    final value = metrics.extentAfter > 1;
-    if (_moreBelow.value != value) _moreBelow.value = value;
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final listening = widget.listening;
-    final canStart = widget.canStart;
-    final onStart = widget.onStart;
-    final expanded = widget.expanded;
-    final onToggleExpanded = widget.onToggleExpanded;
-    final onAutoNextPageChanged = widget.onAutoNextPageChanged;
-    final autoNextPage = widget.autoNextPage;
-    final nextPagePending = widget.nextPagePending;
-    final onCancelNextPage = widget.onCancelNextPage;
     final theme = Theme.of(context);
     final status = listening.status;
-    final message = listening.message;
-    final statusText = nextPagePending
+    final message = nextPagePending
         ? 'Sonraki sayfa açılıyor…'
         : switch (status) {
             ListeningStatus.starting => 'Okuma hazırlanıyor…',
             ListeningStatus.speaking => 'Okunuyor…',
             ListeningStatus.paused => 'Duraklatıldı.',
             ListeningStatus.stopping => 'Durduruluyor…',
-            _ => null,
+            _ => listening.message,
           };
-    // A tall panel (large text, narrow screen) scrolls inside its own limit
-    // instead of squeezing the text above it.
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.32;
 
     return Material(
-      elevation: 8,
       color: theme.colorScheme.surfaceContainer,
       child: SafeArea(
         top: false,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: Stack(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              NotificationListener<ScrollNotification>(
-                onNotification: (n) => _onMetrics(n.metrics),
-                child: NotificationListener<ScrollMetricsNotification>(
-                  onNotification: (n) => _onMetrics(n.metrics),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Semantics(
-                          container: true,
-                          explicitChildNodes: true,
-                          label: 'Oynatma kontrolleri',
-                          child: Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if (listening.canResume)
-                                FilledButton.icon(
-                                  onPressed: listening.resume,
-                                  icon: const Icon(Icons.play_arrow),
-                                  label: const Text('Devam et'),
-                                )
-                              else if (listening.canPause)
-                                FilledButton.icon(
-                                  onPressed: listening.pause,
-                                  icon: const Icon(Icons.pause),
-                                  label: const Text('Duraklat'),
-                                )
-                              else
-                                FilledButton.icon(
-                                  onPressed: canStart ? onStart : null,
-                                  icon: const Icon(Icons.volume_up),
-                                  label: const Text('Sesli oku'),
-                                ),
-                              OutlinedButton.icon(
-                                onPressed: nextPagePending
-                                    ? onCancelNextPage
-                                    : listening.canStop
-                                    ? listening.stop
-                                    : null,
-                                icon: const Icon(Icons.stop),
-                                label: const Text('Durdur'),
-                              ),
-                              Semantics(
-                                expanded: expanded,
-                                child: OutlinedButton.icon(
-                                  onPressed: onToggleExpanded,
-                                  icon: Icon(
-                                    expanded
-                                        ? Icons.expand_more
-                                        : Icons.expand_less,
-                                  ),
-                                  label: const Text('Diğer kontroller'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Semantics(
-                          liveRegion: true,
-                          child: Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 16,
-                            children: [
-                              if (listening.sentenceCount > 0)
-                                Text(
-                                  'Cümle ${listening.currentSentence} / '
-                                  '${listening.sentenceCount}',
-                                ),
-                              Text('Hız ${listening.speed.label}'),
-                            ],
-                          ),
-                        ),
-                        if (expanded) ...[
-                          const SizedBox(height: 8),
-                          Semantics(
-                            container: true,
-                            explicitChildNodes: true,
-                            label: 'Cümle gezinme kontrolleri',
-                            child: Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                OutlinedButton.icon(
-                                  onPressed: listening.canGoPrevious
-                                      ? listening.previousSentence
-                                      : null,
-                                  icon: const Icon(Icons.skip_previous),
-                                  label: const Text('Önceki cümle'),
-                                ),
-                                OutlinedButton.icon(
-                                  onPressed: listening.canGoNext
-                                      ? listening.nextSentence
-                                      : null,
-                                  icon: const Icon(Icons.skip_next),
-                                  label: const Text('Sonraki cümle'),
-                                ),
-                                OutlinedButton.icon(
-                                  onPressed: listening.canRestart
-                                      ? listening.restartFromBeginning
-                                      : null,
-                                  icon: const Icon(Icons.first_page),
-                                  label: const Text('Başa dön'),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Semantics(
-                            container: true,
-                            explicitChildNodes: true,
-                            label: 'Okuma hızı',
-                            child: Wrap(
-                              alignment: WrapAlignment.center,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                const Text('Okuma hızı'),
-                                for (final speed in ReadingSpeed.values)
-                                  ChoiceChip(
-                                    label: Text(speed.label),
-                                    tooltip: 'Okuma hızı ${speed.label}',
-                                    selected: listening.speed == speed,
-                                    onSelected: (_) =>
-                                        listening.setSpeed(speed),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          if (onAutoNextPageChanged != null)
-                            SwitchListTile(
-                              key: const ValueKey('auto-next-page'),
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              title: const Text(
-                                'Sonraki sayfayı otomatik oku',
-                                style: TextStyle(fontSize: 16.5),
-                              ),
-                              value: autoNextPage,
-                              onChanged: onAutoNextPageChanged,
-                            ),
-                          if (listening.sentenceCount > 0)
-                            Text(
-                              'Devam et, mevcut cümlenin başından okur.',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                        ],
-                        if (statusText != null || message != null) ...[
-                          const SizedBox(height: 8),
-                          Semantics(
-                            liveRegion: true,
-                            child: Text(
-                              statusText ?? message!,
-                              textAlign: TextAlign.center,
-                              style: status == ListeningStatus.failed
-                                  ? TextStyle(color: theme.colorScheme.error)
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ],
+              Row(
+                children: [
+                  const Expanded(child: Divider(indent: 16, endIndent: 8)),
+                  Semantics(
+                    expanded: expanded,
+                    child: IconButton(
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
+                      ),
+                      tooltip: expanded ? 'Paneli küçült' : 'Paneli genişlet',
+                      onPressed: onToggleExpanded,
+                      icon: Icon(
+                        expanded ? Icons.expand_more : Icons.expand_less,
+                        size: 20,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
+                  const Expanded(child: Divider(indent: 8, endIndent: 16)),
+                ],
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _moreBelow,
-                  builder: (context, moreBelow, _) {
-                    if (!moreBelow) return const SizedBox.shrink();
-                    // Decorative hint: no hit testing, not in the semantics tree.
-                    return ExcludeSemantics(
-                      child: IgnorePointer(
-                        child: Icon(
-                          Icons.keyboard_arrow_down,
-                          size: 22,
-                          color: theme.colorScheme.onSurface,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black26,
-                              blurRadius: 3,
-                              offset: Offset(0, 1),
-                            ),
-                          ],
+              Semantics(
+                container: true,
+                label: 'Oynatma kontrolleri',
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    if (listening.canResume)
+                      Semantics(
+                        hint: 'Mevcut cümlenin başından okur.',
+                        child: Tooltip(
+                          message: 'Devam et, mevcut cümlenin başından okur.',
+                          child: FilledButton.icon(
+                            onPressed: listening.resume,
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text('Devam et'),
+                          ),
                         ),
+                      )
+                    else if (listening.canPause)
+                      FilledButton.icon(
+                        onPressed: listening.pause,
+                        icon: const Icon(Icons.pause),
+                        label: const Text('Duraklat'),
+                      )
+                    else
+                      FilledButton.icon(
+                        onPressed: canStart ? onStart : null,
+                        icon: const Icon(Icons.volume_up),
+                        label: const Text('Sesli oku'),
                       ),
-                    );
-                  },
+                    OutlinedButton.icon(
+                      onPressed: nextPagePending
+                          ? onCancelNextPage
+                          : listening.canStop
+                          ? listening.stop
+                          : null,
+                      icon: const Icon(Icons.stop),
+                      label: const Text('Durdur'),
+                    ),
+                  ],
                 ),
               ),
+              if (expanded) ...[
+                Semantics(
+                  container: true,
+                  label: 'Cümle gezinme kontrolleri',
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: listening.canGoPrevious
+                            ? listening.previousSentence
+                            : null,
+                        icon: const Icon(Icons.skip_previous),
+                        label: const Text('Önceki cümle'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: listening.canGoNext
+                            ? listening.nextSentence
+                            : null,
+                        icon: const Icon(Icons.skip_next),
+                        label: const Text('Sonraki cümle'),
+                      ),
+                    ],
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: listening.canRestart
+                      ? listening.restartFromBeginning
+                      : null,
+                  icon: const Icon(Icons.first_page),
+                  label: const Text('Başa dön'),
+                ),
+                if (listening.sentenceCount > 0)
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      'Cümle ${listening.currentSentence} / '
+                      '${listening.sentenceCount}',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+              ],
+              if (message != null &&
+                  (expanded ||
+                      nextPagePending ||
+                      status == ListeningStatus.failed))
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: status == ListeningStatus.failed
+                        ? TextStyle(color: theme.colorScheme.error)
+                        : null,
+                  ),
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Keeps the bottom surface at its natural height unless it exceeds the
+/// screen space available beneath the app bar.
+class ListeningSurface extends StatelessWidget {
+  const ListeningSurface({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final available =
+        (media.size.height -
+                media.padding.top -
+                media.viewInsets.bottom -
+                kToolbarHeight -
+                48)
+            .clamp(0.0, double.infinity);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: available),
+      child: SingleChildScrollView(
+        primary: false,
+        child: SizedBox(width: double.infinity, child: child),
       ),
     );
   }

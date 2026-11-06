@@ -24,7 +24,7 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 - Başlatma, duraklatma, devam etme ve durdurma.
 - Önceki/sonraki cümle ve başa dönme.
 - 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
-- Ekranın altında kompakt dinleme paneli.
+- Ekranın altında küçültülebilen dinleme paneli; hız seçenekleri üstteki “Okuma ayarları” menüsündedir.
 
 Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirilirse aynı cümle yeni hızla yeniden başlar. Aktif ve duraklatılmış oturumlarda metin düzenleme kilitlidir; düzenlemek için okuma durdurulmalıdır.
 
@@ -39,7 +39,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Onay alarak tek sayfayı veya içeriğin tamamını silme.
 - Sayfa okuma ekranında önceki/sonraki sayfa düğmeleri ve "Sayfa 2 / 5" göstergesi; sayfalar kayıtlı sırayla gezilir, geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Kaydedilmemiş düzenlemede devam etme, kaydetmeden geçme veya kaydedip geçme sorulur.
-- Dinleme panelindeki "Diğer kontroller" bölümünde, varsayılan kapalı "Sonraki sayfayı otomatik oku" anahtarı: açıkken sayfanın son cümlesi doğal olarak bittiğinde sonraki sayfa ilk cümleden okunur. Tercih yalnızca o okuma ekranı oturumunda tutulur. Duraklatma, durdurma, hata, sayfa başına/cümle gezinmesi geçiş başlatmaz; son sayfada veya boş sayfada oturum biter. Bekleyen geçiş Durdur, anahtarı kapatma veya arka plana geçme ile iptal edilir.
+- Çok sayfalı içeriklerde “Okuma ayarları”ndaki varsayılan kapalı “Sonraki sayfayı otomatik oku” anahtarı, sayfa doğal olarak bittiğinde sonraki sayfayı okur. Tercih ekran oturumunda tutulur; son veya boş sayfada okuma biter. Bekleyen geçiş Durdur, anahtarı kapatma veya arka plana geçme ile iptal edilir.
 - Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.
 
 Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Silme sonrasında kalan sayfalar ekranda kesintisiz numaralanır.

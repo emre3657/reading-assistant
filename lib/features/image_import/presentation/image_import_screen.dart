@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
+import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/services/speech_service.dart';
 
 import '../../library/presentation/library_screen.dart';
@@ -63,7 +64,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
   int _lastRecognitionId = 0;
   int _scrollToken = 0;
-  bool _moreControlsOpen = false;
+  bool _panelExpanded = true;
 
   OverlayEntry? _editLockNotice;
   Timer? _editLockNoticeTimer;
@@ -536,14 +537,16 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     return _AnimatedPanel(
       visible: visible,
-      child: ListeningControls(
-        key: const ValueKey('listening-panel'),
-        listening: _listening,
-        canStart: !_listening.isActive && !_controller.isBusy,
-        onStart: _startListening,
-        expanded: _moreControlsOpen,
-        onToggleExpanded: () =>
-            setState(() => _moreControlsOpen = !_moreControlsOpen),
+      child: ListeningSurface(
+        child: ListeningControls(
+          key: const ValueKey('listening-panel'),
+          listening: _listening,
+          canStart: !_listening.isActive && !_controller.isBusy,
+          onStart: _startListening,
+          expanded: _panelExpanded,
+          onToggleExpanded: () =>
+              setState(() => _panelExpanded = !_panelExpanded),
+        ),
       ),
     );
   }
@@ -575,6 +578,13 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               )
             : null,
         actions: [
+          IconButton(
+            tooltip: 'Okuma ayarları',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _pageLocked
+                ? null
+                : () => showReadingSettings(context, listening: _listening),
+          ),
           if (_addingPage)
             TextButton(
               key: const ValueKey('save-page'),

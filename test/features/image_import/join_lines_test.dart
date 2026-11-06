@@ -152,6 +152,8 @@ void main() {
       expect(_isOn(tester), isTrue);
 
       // Removing the image asks too.
+      await tester.ensureVisible(find.text(_removeLabel));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(_removeLabel));
       await _showDialog(tester);
       expect(find.text('Düzenlediğin metin silinsin mi?'), findsOneWidget);
@@ -168,6 +170,8 @@ void main() {
     await _extract(tester);
     await _toggle(tester);
 
+    await tester.ensureVisible(find.text(_removeLabel));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(_removeLabel));
     await tester.pump();
 
@@ -279,6 +283,8 @@ void main() {
       expect(_fieldText(tester), isNot(laidOutRaw));
 
       // Only the automatic formatting does not count as an edit.
+      await tester.ensureVisible(find.text(_removeLabel));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(_removeLabel));
       await tester.pump();
       expect(find.byType(AlertDialog), findsNothing);

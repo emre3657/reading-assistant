@@ -109,19 +109,29 @@ Future<void> _show(
 }
 
 Future<void> _openMore(WidgetTester tester) async {
-  // In a small panel with large text the button may be scrolled out of view.
-  final moreControls = find.text('Diğer kontroller');
+  await tester.tap(find.byTooltip('Okuma ayarları'));
+  await tester.pumpAndSettle();
+}
 
-  await tester.ensureVisible(moreControls);
+Future<void> _closeSettings(WidgetTester tester) async {
+  await tester.tap(find.text('Kapat'));
   await tester.pumpAndSettle();
-  await tester.tap(moreControls);
+}
+
+Future<void> _setSpeed(WidgetTester tester, String speed) async {
+  await _openMore(tester);
+  await tester.tap(find.byKey(const ValueKey('reading-speed')));
   await tester.pumpAndSettle();
+  await tester.tap(find.text(speed).last);
+  await tester.pumpAndSettle();
+  await _closeSettings(tester);
 }
 
 Future<void> _turnOn(WidgetTester tester) async {
   await _openMore(tester);
   await tester.tap(_switch);
   await tester.pumpAndSettle();
+  await _closeSettings(tester);
 }
 
 Future<void> _read(WidgetTester tester) async {
@@ -145,6 +155,7 @@ void main() {
       await _show(tester, _Store(_threePages()), speech);
       await _openMore(tester);
       expect(_switchOn(tester), isFalse);
+      await _closeSettings(tester);
 
       await _read(tester);
       await _finish(tester, speech); // first sentence
@@ -161,7 +172,9 @@ void main() {
       final before = store.pagesCalls;
       await _turnOn(tester);
 
+      await _openMore(tester);
       expect(_switchOn(tester), isTrue);
+      await _closeSettings(tester);
       expect(speech.spoken, isEmpty);
       expect(store.pagesCalls, before);
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
@@ -192,6 +205,7 @@ void main() {
       expect(speech.isSpeaking, isFalse);
       expect(speech.spoken, hasLength(4));
       expect(_button('Sesli oku'), findsOneWidget);
+      await _openMore(tester);
       expect(_switchOn(tester), isTrue, reason: 'preference kept');
       expect(store.updateCalls, 0);
     });
@@ -200,8 +214,7 @@ void main() {
       final speech = FakeSpeechService();
       await _show(tester, _Store(_threePages()), speech);
       await _turnOn(tester);
-      await tester.tap(find.text('1.5×'));
-      await tester.pumpAndSettle();
+      await _setSpeed(tester, '1.5×');
 
       await _read(tester);
       await _finish(tester, speech);
@@ -209,7 +222,48 @@ void main() {
 
       expect(speech.spoken.last, 'Üçüncü cümle.');
       expect(speech.spokenRates.last, 1.5);
-      expect(find.text('Hız 1.5×'), findsOneWidget);
+      await _openMore(tester);
+      expect(find.text('1.5×'), findsOneWidget);
+    });
+
+    testWidgets('settings stay live during automatic page transition', (
+      tester,
+    ) async {
+      final speech = FakeSpeechService();
+      await _show(tester, _Store(_threePages()), speech);
+      await _turnOn(tester);
+      await _read(tester);
+      await _openMore(tester);
+      expect(speech.stopCalls, 0);
+      await _finish(tester, speech);
+      await _finish(tester, speech);
+      expect(speech.spoken.last, 'Üçüncü cümle.');
+      expect(_switchOn(tester), isTrue);
+      expect(find.text('1×'), findsOneWidget);
+      await _closeSettings(tester);
+      expect(speech.isSpeaking, isTrue);
+      expect(speech.stopCalls, 0);
+      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+    });
+
+    testWidgets('settings reflect a changed page count while open', (
+      tester,
+    ) async {
+      final speech = FakeSpeechService();
+      final store = _Store(_threePages());
+      await _show(tester, store, speech);
+      await _turnOn(tester);
+      await _read(tester);
+      await _openMore(tester);
+      expect(_switchOn(tester), isTrue);
+      store.pageList = [store.pageList.first];
+      await _finish(tester, speech);
+      await _finish(tester, speech);
+      expect(_switch, findsNothing);
+      expect(find.text('1×'), findsOneWidget);
+      await _closeSettings(tester);
+      expect(find.text('Sayfa 1 / 1'), findsOneWidget);
+      expect(speech.isSpeaking, isFalse);
     });
 
     testWidgets('pause, stop, error and sentence controls do not move', (
@@ -229,8 +283,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(_button('Başa dön'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('1.25×'));
-      await tester.pumpAndSettle();
+      await _setSpeed(tester, '1.25×');
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
 
       await tester.tap(_button('Durdur'));
@@ -259,8 +312,10 @@ void main() {
       await _turnOn(tester);
       await _read(tester);
 
+      await _openMore(tester);
       await tester.tap(_switch);
       await tester.pumpAndSettle();
+      await _closeSettings(tester);
       expect(speech.isSpeaking, isTrue);
       expect(speech.stopCalls, 0);
 
@@ -282,6 +337,7 @@ void main() {
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(speech.isSpeaking, isFalse);
       expect(speech.spoken, hasLength(1));
+      await _openMore(tester);
       expect(_switchOn(tester), isTrue);
     });
 
@@ -326,8 +382,10 @@ void main() {
       speech.finishCurrent();
       await tester.pump();
       await tester.pump();
+      await _openMore(tester);
       await tester.tap(_switch);
       await tester.pump();
+      await _closeSettings(tester);
       store.pagesGate!.complete();
       await tester.pumpAndSettle();
 
@@ -481,78 +539,47 @@ void main() {
       expect(speech.isSpeaking, isFalse);
     });
 
-    testWidgets('scroll hint arrow follows hidden content', (tester) async {
-      final arrow = find.descendant(
-        of: find.byKey(const ValueKey('listening-panel')),
-        matching: find.byIcon(Icons.keyboard_arrow_down),
-      );
-      final speech = FakeSpeechService();
-
-      // Tall screen, collapsed: everything fits, no arrow.
-      await _show(tester, _Store(_threePages()), speech);
-      expect(arrow, findsNothing);
-
-      // Small screen with large text: content below the visible area.
-      tester.view.physicalSize = const Size(320, 560);
-      tester.platformDispatcher.textScaleFactorTestValue = 2;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await tester.pumpAndSettle();
-      expect(arrow, findsOneWidget);
-      final panelSize = tester.getSize(
-        find.byKey(const ValueKey('listening-panel')),
-      );
-
-      final scrollable = find.descendant(
-        of: find.byKey(const ValueKey('listening-panel')),
-        matching: find.byType(Scrollable),
-      );
-      expect(scrollable, findsOneWidget);
-      final position = tester.state<ScrollableState>(scrollable).position;
-      expect(position.pixels, 0);
-
-      // The hint is decorative: no semantics, no hit testing.
-      expect(
-        find.ancestor(of: arrow, matching: find.byType(ExcludeSemantics)),
-        findsWidgets,
-      );
-      expect(
-        find.ancestor(of: arrow, matching: find.byType(IgnorePointer)),
-        findsWidgets,
-      );
-
-      // Scroll to the bottom: the arrow disappears, the size does not change.
-      position.jumpTo(position.maxScrollExtent);
-      await tester.pumpAndSettle();
-      expect(arrow, findsNothing);
-      expect(
-        tester.getSize(find.byKey(const ValueKey('listening-panel'))),
-        panelSize,
-      );
-
-      // Back up: it returns.
-      position.jumpTo(0);
-      await tester.pumpAndSettle();
-      expect(arrow, findsOneWidget);
-
-      // Content change (opening the section) keeps the hint correct.
-      await _openMore(tester);
-      position.jumpTo(0);
-      await tester.pumpAndSettle();
-      expect(arrow, findsOneWidget);
-      position.jumpTo(position.maxScrollExtent);
-      await tester.pumpAndSettle();
-      expect(arrow, findsNothing);
-
-      // Larger screen and normal text: all fits again, no arrow.
-      tester.platformDispatcher.clearTextScaleFactorTestValue();
-      tester.view.physicalSize = const Size(800, 1600);
-      await tester.pumpAndSettle();
-      expect(arrow, findsNothing);
-    });
+    testWidgets(
+      'page row and panel stay full width and collapsed across pages',
+      (tester) async {
+        await _show(tester, _Store(_threePages()), FakeSpeechService());
+        final panel = find.byKey(const ValueKey('listening-panel'));
+        final row = find
+            .ancestor(
+              of: find.byKey(const ValueKey('page-indicator')),
+              matching: find.byType(Material),
+            )
+            .first;
+        expect(tester.getSize(panel).width, 800);
+        expect(tester.getSize(row).width, 800);
+        expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+        await tester.tap(find.byTooltip('Paneli küçült'));
+        await tester.pumpAndSettle();
+        expect(find.text('Sonraki cümle'), findsNothing);
+        expect(find.text('Durdur'), findsOneWidget);
+        await tester.tap(_next);
+        await tester.pumpAndSettle();
+        expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+        expect(find.byTooltip('Paneli genişlet'), findsOneWidget);
+        expect(tester.getSize(panel).width, 800);
+        expect(tester.getSize(row).width, 800);
+      },
+    );
 
     testWidgets('single-page content has no switch', (tester) async {
       final speech = FakeSpeechService();
       await _show(tester, _Store([_page(1, 0, 'Tek.')]), speech);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('listening-panel'))).width,
+        800,
+      );
+      final row = find
+          .ancestor(
+            of: find.byKey(const ValueKey('page-indicator')),
+            matching: find.byType(Material),
+          )
+          .first;
+      expect(tester.getSize(row).width, 800);
       await _openMore(tester);
       expect(_switch, findsNothing);
     });

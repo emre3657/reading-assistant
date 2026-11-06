@@ -12,8 +12,6 @@ final _panel = find.byKey(const ValueKey('listening-panel'));
 final _field = find.byType(TextField);
 final _scroll = find.byKey(const ValueKey('content-scroll'));
 
-Finder _chip(String label) => find.widgetWithText(ChoiceChip, label);
-
 class _Harness {
   _Harness(this.speech, this.results);
   final FakeSpeechService speech;
@@ -175,53 +173,53 @@ void main() {
     expect(_panel, findsNothing);
   });
 
-  testWidgets(
-    'more-controls section: default closed, toggles, survives rebuild '
-    'and the panel being hidden by the keyboard',
-    (tester) async {
-      await _open(tester, ['Bir. İki.']);
-      await _extract(tester);
-      expect(find.text('Önceki cümle'), findsNothing);
-      expect(find.text('Hız 1×'), findsOneWidget);
+  testWidgets('panel defaults expanded, toggles, survives rebuild '
+      'and the panel being hidden by the keyboard', (tester) async {
+    await _open(tester, ['Bir. İki.']);
+    await _extract(tester);
+    expect(find.text('Önceki cümle'), findsOneWidget);
+    expect(find.text('Hız 1×'), findsNothing);
+    await tester.tap(find.byTooltip('Paneli küçült'));
+    await tester.pump();
+    expect(find.text('Önceki cümle'), findsNothing);
+    expect(find.text('Başa dön'), findsNothing);
+    expect(find.text('Durdur'), findsOneWidget);
 
-      await tester.tap(find.text('Diğer kontroller'));
-      await tester.pump();
-      expect(find.text('Önceki cümle'), findsOneWidget);
-      expect(find.text('Başa dön'), findsOneWidget);
-      expect(_chip('1.5×'), findsOneWidget);
+    // Ordinary rebuild (text edit) keeps it collapsed.
+    await tester.enterText(_field, 'Bir. İki. Üç.');
+    await tester.pump();
+    expect(find.text('Önceki cümle'), findsNothing);
 
-      // Ordinary rebuild (text edit) keeps it open.
-      await tester.enterText(_field, 'Bir. İki. Üç.');
-      await tester.pump();
-      expect(find.text('Önceki cümle'), findsOneWidget);
+    // Keyboard hides the whole panel; it returns with the same state.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_panel, findsNothing);
+    tester.view.resetViewInsets();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_panel, findsOneWidget);
+    expect(find.text('Önceki cümle'), findsNothing);
 
-      // Keyboard hides the whole panel; it returns with the same state.
-      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(_panel, findsNothing);
-      tester.view.resetViewInsets();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(_panel, findsOneWidget);
-      expect(find.text('Önceki cümle'), findsOneWidget);
-
-      await tester.tap(find.text('Diğer kontroller'));
-      await tester.pump();
-      expect(find.text('Önceki cümle'), findsNothing);
-    },
-  );
+    await tester.tap(find.byTooltip('Paneli genişlet'));
+    await tester.pump();
+    expect(find.text('Önceki cümle'), findsOneWidget);
+  });
 
   testWidgets('main controls stay available and Stop is not hidden in the '
       'collapsed section', (tester) async {
-    await _open(tester, ['Bir. İki.']);
+    final harness = await _open(tester, ['Bir. İki.']);
     await _extract(tester);
     expect(find.text('Durdur'), findsOneWidget);
-    expect(find.text('Diğer kontroller'), findsOneWidget);
+    expect(find.byTooltip('Paneli küçült'), findsOneWidget);
 
     await tester.tap(find.text('Sesli oku'));
     await tester.pump();
     await tester.pump();
+    await tester.tap(find.byTooltip('Paneli küçült'));
+    await tester.pump();
+    expect(harness.speech.isSpeaking, isTrue);
+    expect(harness.speech.stopCalls, 0);
     expect(find.text('Önceki cümle'), findsNothing);
     expect(find.text('Duraklat'), findsOneWidget);
     await tester.tap(find.text('Duraklat'));
@@ -234,7 +232,7 @@ void main() {
     expect(find.text('Sesli oku'), findsOneWidget);
 
     // Reachable and at least 48 px high, with tooltips/semantics labels.
-    for (final label in ['Sesli oku', 'Durdur', 'Diğer kontroller']) {
+    for (final label in ['Sesli oku', 'Durdur']) {
       final size = tester.getSize(
         find.ancestor(
           of: find.text(label),
@@ -243,6 +241,50 @@ void main() {
       );
       expect(size.height, greaterThanOrEqualTo(48), reason: label);
     }
+  });
+
+  testWidgets('expanded controls are centered in the specified rows', (
+    tester,
+  ) async {
+    await _open(tester, ['Bir. İki.']);
+    await _extract(tester);
+    final read = tester.getCenter(find.text('Sesli oku'));
+    final stop = tester.getCenter(find.text('Durdur'));
+    final previous = tester.getCenter(find.text('Önceki cümle'));
+    final next = tester.getCenter(find.text('Sonraki cümle'));
+    final restart = tester.getCenter(find.text('Başa dön'));
+    expect(read.dy, stop.dy);
+    expect(previous.dy, next.dy);
+    expect(previous.dy, greaterThan(read.dy));
+    expect(restart.dy, greaterThan(previous.dy));
+    expect(
+      tester
+          .getCenter(
+            find.ancestor(
+              of: find.text('Başa dön'),
+              matching: find.byType(OutlinedButton),
+            ),
+          )
+          .dx,
+      closeTo(400, 1),
+    );
+    final collapse = find.byTooltip('Paneli küçült');
+    final size = tester.getSize(collapse);
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.expanded == true,
+      ),
+      findsWidgets,
+    );
+    await tester.tap(find.text('Sesli oku'));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      tester.getCenter(find.text('Cümle 1 / 2')).dy,
+      greaterThan(tester.getCenter(find.text('Başa dön')).dy),
+    );
   });
 
   testWidgets('starting to read removes the text field focus', (tester) async {
@@ -291,63 +333,68 @@ void main() {
     await tester.pump();
     expect(h.speech.spoken, ['Merhaba dünya.']);
 
-    final more = find.text('Diğer kontroller');
-    await tester.ensureVisible(more);
-    await tester.tap(more);
-    await tester.pump();
     final next = find.text('Sonraki cümle');
     await tester.ensureVisible(next);
+    expect(next.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
-    final chip = _chip('1.5×');
-    await tester.ensureVisible(chip);
-    await tester.tap(chip);
-    await tester.pump();
-    await tester.pump();
+    final restart = find.text('Başa dön');
+    await tester.ensureVisible(restart);
+    expect(restart.hitTestable(), findsOneWidget);
+    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reading-speed')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('speed chips: 1× default, selection updates and is applied', (
+  testWidgets('speed dialog: default, selection updates and is applied', (
     tester,
   ) async {
     final h = await _open(tester, ['Bir. İki.']);
     await _extract(tester);
 
-    expect(_chip('1×'), findsNothing, reason: 'collapsed by default');
-    await tester.tap(find.text('Diğer kontroller'));
-    await tester.pump();
-
-    bool selected(String l) => tester.widget<ChoiceChip>(_chip(l)).selected;
-    for (final l in ['0.75×', '1×', '1.25×', '1.5×']) {
-      expect(_chip(l), findsOneWidget);
+    Future<void> openSettings() async {
+      await tester.tap(find.byTooltip('Okuma ayarları'));
+      await tester.pumpAndSettle();
     }
-    expect(selected('1×'), isTrue);
 
-    await tester.tap(_chip('1.25×'));
-    await tester.pump();
-    expect(selected('1.25×'), isTrue);
-    expect(selected('1×'), isFalse);
+    Future<void> selectSpeed(String value) async {
+      await tester.tap(find.byKey(const ValueKey('reading-speed')));
+      await tester.pumpAndSettle();
+      for (final label in ['0.75×', '1×', '1.25×', '1.5×']) {
+        expect(find.text(label), findsWidgets);
+      }
+      await tester.tap(find.text(value).last);
+      await tester.pumpAndSettle();
+      expect(find.text(value), findsOneWidget);
+    }
+
+    await openSettings();
+    expect(find.text('1×'), findsOneWidget);
+    expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
+    await selectSpeed('1.25×');
+    await tester.tap(find.text('Kapat'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Sesli oku'));
     await tester.pump();
     await tester.pump();
     expect(h.speech.spokenRates, [1.25]);
 
-    await tester.tap(_chip('1.5×'));
-    await tester.pump();
-    await tester.pump();
-    await tester.pump();
+    await openSettings();
+    expect(h.speech.stopCalls, 0);
+    await selectSpeed('1.5×');
     expect(h.speech.spokenRates, [1.25, 1.5]);
     expect(h.speech.spoken.last, h.speech.spoken.first);
+    await tester.tap(find.text('Kapat'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Duraklat'));
     await tester.pump();
     await tester.pump();
     final spoken = h.speech.spoken.length;
-    await tester.tap(_chip('0.75×'));
-    await tester.pump();
-    await tester.pump();
+    await openSettings();
+    await selectSpeed('0.75×');
     expect(h.speech.spoken.length, spoken);
-    expect(selected('0.75×'), isTrue);
   });
 
   group('auto-scroll after OCR', () {
