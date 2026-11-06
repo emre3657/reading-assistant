@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'fake_reading_positions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
@@ -7,7 +9,7 @@ import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/document_contents_screen.dart';
 
-class _Store extends DocumentStore {
+class _Store extends DocumentStore with FakeReadingPositions {
   final document = SavedDocument(
     id: 7,
     title: 'Kitabım',

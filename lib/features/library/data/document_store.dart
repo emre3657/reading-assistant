@@ -2,16 +2,124 @@ import 'package:sqflite/sqflite.dart';
 
 import 'document_page.dart';
 import 'document_schema.dart';
+import 'reading_position.dart';
 import 'saved_document.dart';
 
 class DocumentStore {
-  /// An injected opener must return an already configured v2 database.
+  /// An injected opener must return an already configured current database.
   DocumentStore({this.databaseOpener});
 
   static final instance = DocumentStore();
 
   final Future<Database> Function()? databaseOpener;
   Future<Database>? _databaseFuture;
+  static Future<void> _positionTail = Future.value();
+
+  Future<T> _queuePosition<T>(Future<T> Function() action) {
+    final result = _positionTail.then((_) => action());
+    _positionTail = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
+  }
+
+  /// Serializes position reads, writes and completion so older writes cannot
+  /// overwrite a newer sentence or a completion.
+  Future<void> saveReadingPosition({
+    required int documentId,
+    required int pageId,
+    required int sentenceIndex,
+    required String pageText,
+  }) => _queuePosition(() async {
+    if (sentenceIndex < 0) throw ArgumentError.value(sentenceIndex);
+    final database = await _database;
+    await database.transaction((txn) async {
+      final page = await txn.query(
+        'pages',
+        columns: ['id'],
+        where: 'document_id = ? AND id = ? AND text = ?',
+        whereArgs: [documentId, pageId, pageText],
+      );
+      if (page.isEmpty) {
+        throw StateError('Reading position page is missing or changed.');
+      }
+      final existing = await txn.query(
+        'reading_positions',
+        where: 'document_id = ?',
+        whereArgs: [documentId],
+      );
+      final values = {
+        'document_id': documentId,
+        'page_id': pageId,
+        'sentence_index': sentenceIndex,
+        'page_text': pageText,
+      };
+      if (existing.isEmpty) {
+        await txn.insert('reading_positions', values);
+      } else if (existing.single['page_id'] != pageId ||
+          existing.single['sentence_index'] != sentenceIndex ||
+          existing.single['page_text'] != pageText) {
+        await txn.update(
+          'reading_positions',
+          values,
+          where: 'document_id = ?',
+          whereArgs: [documentId],
+        );
+      }
+    });
+  });
+
+  Future<ReadingPosition?> readingPosition(int documentId) =>
+      _queuePosition(() async {
+        final database = await _database;
+        return database.transaction((txn) async {
+          final rows = await txn.rawQuery(
+            '''
+            SELECT r.page_id, r.sentence_index, r.page_text,
+                   p.id AS valid_page
+            FROM reading_positions r
+            LEFT JOIN pages p ON p.id = r.page_id
+              AND p.document_id = r.document_id AND p.text = r.page_text
+            WHERE r.document_id = ?
+          ''',
+            [documentId],
+          );
+          if (rows.isEmpty) return null;
+          final row = rows.single;
+          if (row['valid_page'] == null) {
+            await txn.delete(
+              'reading_positions',
+              where: 'document_id = ?',
+              whereArgs: [documentId],
+            );
+            return null;
+          }
+          return ReadingPosition(
+            pageId: row['page_id'] as int,
+            sentenceIndex: row['sentence_index'] as int,
+            pageText: row['page_text'] as String,
+          );
+        });
+      });
+
+  Future<void> completeReadingPage({
+    required int documentId,
+    required int pageId,
+  }) => _queuePosition(() async {
+    final database = await _database;
+    await database.rawDelete(
+      '''
+      DELETE FROM reading_positions
+      WHERE document_id = ?
+        AND ? = (
+          SELECT id FROM pages WHERE document_id = ?
+          ORDER BY position DESC, id DESC LIMIT 1
+        )
+    ''',
+      [documentId, pageId, documentId],
+    );
+  });
 
   Future<Database> get _database => _databaseFuture ??= _open();
 
@@ -65,7 +173,7 @@ class DocumentStore {
     required String title,
     required DocumentCategory category,
     required String text,
-  }) async {
+  }) => _queuePosition(() async {
     final cleanTitle = title.trim();
     if (cleanTitle.isEmpty || text.trim().isEmpty) {
       throw ArgumentError('Title and text must not be empty.');
@@ -105,7 +213,7 @@ class DocumentStore {
       if (updated != 1) throw StateError('Page update failed.');
       return true;
     });
-  }
+  });
 
   /// Changes content metadata without writing to any page.
   Future<bool> updateDetails({
@@ -132,7 +240,7 @@ class DocumentStore {
     required int documentId,
     required int pageId,
     required String text,
-  }) async {
+  }) => _queuePosition(() async {
     if (text.trim().isEmpty) {
       throw ArgumentError('Page text must not be empty.');
     }
@@ -144,7 +252,7 @@ class DocumentStore {
           whereArgs: [pageId, documentId],
         ) >
         0;
-  }
+  });
 
   /// Foreign-key cascade removes every page belonging to this document.
   Future<bool> delete(int id) async {
@@ -233,7 +341,7 @@ class DocumentStore {
     required String title,
     required DocumentCategory category,
     required String text,
-  }) async {
+  }) => _queuePosition(() async {
     final cleanTitle = title.trim();
     if (cleanTitle.isEmpty || text.trim().isEmpty) {
       throw ArgumentError('Title and text must not be empty.');
@@ -263,7 +371,7 @@ class DocumentStore {
       if (updated != 1) throw StateError('Page update failed.');
       return true;
     });
-  }
+  });
 
   /// Removes only the selected page belonging to this content. Remaining
   /// positions stay stable; the UI numbers pages by their current list order.

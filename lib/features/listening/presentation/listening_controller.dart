@@ -50,7 +50,7 @@ enum ListeningStatus {
 ///
 /// The service is owned by whoever created it; this controller only uses it.
 class ListeningController extends ChangeNotifier {
-  ListeningController({required this.speechService});
+  ListeningController({required this.speechService, this.onSentenceStarted});
 
   /// Largest piece handed to the engine in one call. A sentence longer than
   /// this (or the platform limit) is read in several pieces.
@@ -60,6 +60,7 @@ class ListeningController extends ChangeNotifier {
       'Okuma durdurulamadı. Cihazın konuşma motoru yanıt vermiyor.';
 
   final SpeechService speechService;
+  final void Function(int sentenceIndex)? onSentenceStarted;
 
   ListeningStatus _status = ListeningStatus.idle;
   String? _message;
@@ -131,7 +132,7 @@ class ListeningController extends ChangeNotifier {
   /// Reads [text] from its first sentence. A copy is taken now, later changes
   /// of the source do not affect the running session. Ignored while active.
   /// Completes when this reading ends (completed, stopped, paused or failed).
-  Future<void> start(String text) async {
+  Future<void> start(String text, {int initialSentence = 0}) async {
     if (_disposed || isActive) return;
     if (text.trim().isEmpty) {
       _setState(ListeningStatus.idle, 'Okunacak metin yok.');
@@ -169,7 +170,9 @@ class ListeningController extends ChangeNotifier {
         : preferredChunkLength;
     _text = text;
     _sentences = splitSentences(text);
-    _index = 0;
+    _index = initialSentence >= 0 && initialSentence < _sentences.length
+        ? initialSentence
+        : 0;
 
     _setState(ListeningStatus.speaking);
     await _play(run);
@@ -299,11 +302,16 @@ class ListeningController extends ChangeNotifier {
     while (!_disposed && run == _run && _index < _sentences.length) {
       final span = _sentences[_index];
       final sentence = _text.substring(span.start, span.end);
+      var sentenceStarted = false;
       for (final chunk in splitSpeechText(sentence, maxLength: _chunkLength)) {
         if (chunk.trim().isEmpty) continue;
         // Checked right before each piece, so a stop, pause or jump never
         // lets the next piece of the old run begin.
         if (_disposed || run != _run) return;
+        if (!sentenceStarted) {
+          sentenceStarted = true;
+          onSentenceStarted?.call(_index);
+        }
         var outcome = SpeechOutcome.failed;
         try {
           outcome = await speechService.speak(chunk);

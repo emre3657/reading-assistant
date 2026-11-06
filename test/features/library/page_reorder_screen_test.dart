@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'fake_reading_positions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
@@ -10,7 +12,7 @@ import 'package:reading_assistant/features/library/presentation/saved_document_s
 
 // Fake store: covers our UI and state handling. The SQL itself is covered by
 // page_reorder_store_test.dart; real touch dragging needs manual testing.
-class _Store extends DocumentStore {
+class _Store extends DocumentStore with FakeReadingPositions {
   _Store(int pageCount)
     : stored = [
         for (var i = 0; i < pageCount; i++)

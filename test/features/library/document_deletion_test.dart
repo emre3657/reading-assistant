@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'fake_reading_positions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
@@ -17,7 +19,7 @@ SavedDocument _document(int id, String title) {
   );
 }
 
-class _FakeStore extends DocumentStore {
+class _FakeStore extends DocumentStore with FakeReadingPositions {
   _FakeStore(this.documents);
 
   List<SavedDocument> documents;

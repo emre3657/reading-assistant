@@ -19,6 +19,7 @@ class SavedDocumentScreen extends StatefulWidget {
     required this.document,
     this.pageId,
     this.pageNumber,
+    this.initialSentence,
     this.store,
     this.speechService,
     this.onUpdated,
@@ -29,6 +30,7 @@ class SavedDocumentScreen extends StatefulWidget {
   /// Present when this reader was opened for a specific stored page.
   final int? pageId;
   final int? pageNumber;
+  final int? initialSentence;
 
   /// Defaults to [DocumentStore.instance].
   final DocumentStore? store;
@@ -72,6 +74,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   bool _exitInProgress = false;
   bool _allowPop = false;
   bool _panelExpanded = true;
+  int? _resumeSentence;
+  bool _positionErrorShown = false;
 
   /// Screen-session preference only; never saved.
   final _autoNextPage = ValueNotifier<bool>(false);
@@ -101,11 +105,15 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _saved = widget.document;
     _pageId = widget.pageId;
     _pageNumber = widget.pageNumber;
+    _resumeSentence = widget.initialSentence;
     if (_pageId != null) unawaited(_loadPages());
 
     final speechService =
         widget.speechService ?? (_ownedSpeechService = SpeechService());
-    _listening = ListeningController(speechService: speechService);
+    _listening = ListeningController(
+      speechService: speechService,
+      onSentenceStarted: _saveListeningPosition,
+    );
     _listening.addListener(_onListeningChanged);
 
     WidgetsBinding.instance.addObserver(this);
@@ -212,6 +220,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       _pages = pages;
       _pageId = target.id;
       _pageNumber = index + 1;
+      _resumeSentence = null;
       _saved = SavedDocument(
         id: _saved.id,
         title: _saved.title,
@@ -237,6 +246,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         status == ListeningStatus.completed &&
         _lastStatus != ListeningStatus.completed;
     _lastStatus = status;
+    if (finishedNow && _pageId != null) {
+      unawaited(_recordCompletion(_pageId!));
+    }
     // Only a natural end of the last sentence reaches `completed`; stop,
     // pause, errors and jumps end in other states.
     if (finishedNow &&
@@ -247,6 +259,39 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         !_exitInProgress) {
       unawaited(_advanceToNextPage());
     }
+  }
+
+  void _saveListeningPosition(int sentenceIndex) {
+    final pageId = _pageId;
+    if (pageId == null) return;
+    unawaited(_savePosition(pageId, sentenceIndex, _saved.text));
+  }
+
+  Future<void> _savePosition(int pageId, int index, String text) async {
+    try {
+      await _store.saveReadingPosition(
+        documentId: _saved.id,
+        pageId: pageId,
+        sentenceIndex: index,
+        pageText: text,
+      );
+    } catch (_) {
+      _showPositionError();
+    }
+  }
+
+  Future<void> _recordCompletion(int pageId) async {
+    try {
+      await _store.completeReadingPage(documentId: _saved.id, pageId: pageId);
+    } catch (_) {
+      _showPositionError();
+    }
+  }
+
+  void _showPositionError() {
+    if (!mounted || _positionErrorShown) return;
+    _positionErrorShown = true;
+    _showMessage('Okuma konumu kaydedilemedi. Okumaya devam edebilirsin.');
   }
 
   /// Cancels a pending automatic move. A late result of the cancelled move
@@ -353,7 +398,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   void _startListening() {
     if (_editing || _saving || _transitioning || _listening.isActive) return;
-    _listening.start(_saved.text);
+    final initialSentence = _resumeSentence ?? 0;
+    _resumeSentence = null;
+    _listening.start(_saved.text, initialSentence: initialSentence);
   }
 
   void _startEditing() {
@@ -530,6 +577,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         text: text,
         createdAt: _saved.createdAt,
       );
+      _resumeSentence = null;
       _saving = false;
       _editing = false;
       _error = null;

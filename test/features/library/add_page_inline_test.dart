@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'fake_reading_positions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -29,7 +31,7 @@ class _Ocr extends TextRecognitionService {
   }
 }
 
-class _Store extends DocumentStore {
+class _Store extends DocumentStore with FakeReadingPositions {
   int calls = 0;
   int? owner;
   String? savedText;

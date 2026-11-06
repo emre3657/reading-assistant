@@ -228,8 +228,8 @@ void main() {
       expect(await store.getDocument(id), isNotNull);
     });
 
-    test('new database has v2 tables and foreign keys enabled', () async {
-      expect(await database.getVersion(), 2);
+    test('new database has current tables and foreign keys enabled', () async {
+      expect(await database.getVersion(), documentDatabaseVersion);
       final columns = await database.rawQuery('PRAGMA table_info(documents)');
       expect(columns.map((row) => row['name']), isNot(contains('text')));
       expect(await database.query('pages'), isEmpty);
@@ -643,7 +643,7 @@ void main() {
           options: _options(),
         );
         try {
-          expect(await upgraded.getVersion(), 2);
+          expect(await upgraded.getVersion(), documentDatabaseVersion);
           final store = DocumentStore(databaseOpener: () async => upgraded);
           expect(await store.list(), hasLength(expected.length));
           for (var index = 0; index < DocumentCategory.values.length; index++) {
@@ -695,7 +695,7 @@ void main() {
         options: _options(),
       );
       try {
-        expect(await upgraded.getVersion(), 2);
+        expect(await upgraded.getVersion(), documentDatabaseVersion);
         expect(await upgraded.query('documents'), isEmpty);
         expect(await upgraded.query('pages'), isEmpty);
       } finally {

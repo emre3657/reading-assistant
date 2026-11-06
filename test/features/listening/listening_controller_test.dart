@@ -19,6 +19,39 @@ void main() {
 
   tearDown(() => controller.dispose());
 
+  test(
+    'sentence-start callback follows speech, not paused navigation or chunks',
+    () async {
+      final events = <int>[];
+      final engine = FakeSpeechService(
+        setup: const SpeechSetup(SpeechAvailability.ready, maxInputLength: 10),
+      );
+      final listening = ListeningController(
+        speechService: engine,
+        onSentenceStarted: events.add,
+      );
+      addTearDown(listening.dispose);
+      final run = listening.start(
+        'Bir. İkinci uzun cümle.',
+        initialSentence: 1,
+      );
+      await pumpEventQueue();
+      expect(events, [1]);
+      expect(engine.spoken.first, contains('İkinci'));
+      engine.finishCurrent();
+      await pumpEventQueue();
+      expect(events, [1], reason: 'another chunk of the same sentence');
+      await listening.pause();
+      await listening.previousSentence();
+      expect(events, [1], reason: 'paused navigation does not speak');
+      await listening.resume();
+      await pumpEventQueue();
+      expect(events, [1, 0]);
+      await listening.stop();
+      await run;
+    },
+  );
+
   test('reads the given text and completes', () async {
     final run = controller.start('Merhaba dünya.');
     await pumpEventQueue();

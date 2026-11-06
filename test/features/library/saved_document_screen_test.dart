@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'fake_reading_positions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
@@ -12,7 +14,7 @@ import '../listening/fake_speech_service.dart';
 
 // Fake store and fake speech engine: these tests cover our own UI and state
 // handling. The real SQLite file and the real TTS engine are not exercised.
-class FakeDocumentStore extends DocumentStore {
+class FakeDocumentStore extends DocumentStore with FakeReadingPositions {
   FakeDocumentStore(this.documents);
 
   List<SavedDocument> documents;

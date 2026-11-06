@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
-const documentDatabaseVersion = 2;
+const documentDatabaseVersion = 3;
 
 const createDocumentsSql = '''
 CREATE TABLE documents (
@@ -20,6 +20,26 @@ CREATE TABLE pages (
   FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
   UNIQUE (document_id, position)
 )
+''';
+
+const createReadingPositionsSql = '''
+CREATE TABLE reading_positions (
+  document_id INTEGER PRIMARY KEY,
+  page_id INTEGER NOT NULL,
+  sentence_index INTEGER NOT NULL CHECK (sentence_index >= 0),
+  page_text TEXT NOT NULL,
+  FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+  FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
+)
+''';
+
+const invalidateReadingPositionSql = '''
+CREATE TRIGGER invalidate_reading_position
+AFTER UPDATE OF text ON pages
+WHEN OLD.text != NEW.text
+BEGIN
+  DELETE FROM reading_positions WHERE page_id = OLD.id;
+END
 ''';
 
 const renameLegacyDocumentsSql = 'ALTER TABLE documents RENAME TO documents_v1';
@@ -44,6 +64,8 @@ Future<void> configureDocumentDatabase(Database database) async {
 Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(createDocumentsSql);
   await database.execute(createPagesSql);
+  await database.execute(createReadingPositionsSql);
+  await database.execute(invalidateReadingPositionSql);
 }
 
 Future<void> upgradeDocumentSchema(
@@ -59,5 +81,9 @@ Future<void> upgradeDocumentSchema(
     await database.execute(copyLegacyDocumentsSql);
     await database.execute(copyLegacyPagesSql);
     await database.execute(dropLegacyDocumentsSql);
+  }
+  if (oldVersion < 3 && newVersion >= 3) {
+    await database.execute(createReadingPositionsSql);
+    await database.execute(invalidateReadingPositionSql);
   }
 }

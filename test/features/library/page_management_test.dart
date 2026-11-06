@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'fake_reading_positions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
+import 'package:reading_assistant/features/library/data/reading_position.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/add_page_screen.dart';
 import 'package:reading_assistant/features/library/presentation/document_contents_screen.dart';
@@ -22,7 +25,7 @@ class _NoPicker extends ImagePickerService {
   Future<XFile?> pickFromGallery() async => null;
 }
 
-class _PageStore extends DocumentStore {
+class _PageStore extends DocumentStore with FakeReadingPositions {
   SavedDocument document = SavedDocument(
     id: 7,
     title: 'Deneme',
@@ -136,6 +139,161 @@ final _newText = find.byKey(const ValueKey('new-page-text'));
 final _savePage = find.byKey(const ValueKey('save-page'));
 
 void main() {
+  testWidgets('resume opens the saved page without speaking until requested', (
+    tester,
+  ) async {
+    final store = _PageStore();
+    store.storedPages = const [
+      DocumentPage(id: 71, documentId: 7, position: 0, text: 'Bir. İki. Üç.'),
+      DocumentPage(id: 70, documentId: 7, position: 5, text: 'Diğer.'),
+    ];
+    store.positions[7] = const ReadingPosition(
+      pageId: 71,
+      sentenceIndex: 1,
+      pageText: 'Bir. İki. Üç.',
+    );
+    final speech = FakeSpeechService();
+    await _show(tester, store, speech: speech);
+    await tester.tap(find.text('Kaldığın yerden devam et'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SavedDocumentScreen>(find.byType(SavedDocumentScreen))
+          .pageId,
+      71,
+    );
+    expect(speech.spoken, isEmpty);
+    await tester.tap(find.text('Sesli oku'));
+    await tester.pumpAndSettle();
+    expect(speech.spoken.single, 'İki. ');
+    expect(store.positions[7]?.sentenceIndex, 1);
+    await tester.tap(find.text('Duraklat'));
+    await tester.pumpAndSettle();
+    expect(store.positions[7]?.sentenceIndex, 1);
+    await tester.tap(find.text('Durdur'));
+    await tester.pumpAndSettle();
+    expect(store.positions[7]?.sentenceIndex, 1);
+    await tester.tap(find.text('Sesli oku'));
+    await tester.pumpAndSettle();
+    expect(speech.spoken.last, 'Bir. ');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Kaldığın yerden devam et'), findsOneWidget);
+  });
+
+  testWidgets(
+    'normal page opening starts at the beginning; invalid index falls back',
+    (tester) async {
+      final store = _PageStore();
+      store.storedPages = const [
+        DocumentPage(id: 70, documentId: 7, position: 0, text: 'Bir. İki.'),
+        DocumentPage(id: 71, documentId: 7, position: 1, text: 'Diğer.'),
+      ];
+      store.positions[7] = const ReadingPosition(
+        pageId: 70,
+        sentenceIndex: 99,
+        pageText: 'Bir. İki.',
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech: speech);
+      await tester.tap(find.text('Kaldığın yerden devam et'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sesli oku'));
+      await tester.pumpAndSettle();
+      expect(speech.spoken.last, 'Bir. ');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      store.positions[7] = const ReadingPosition(
+        pageId: 70,
+        sentenceIndex: 1,
+        pageText: 'Bir. İki.',
+      );
+      await tester.tap(find.byKey(const ValueKey('page-70')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sesli oku'));
+      await tester.pumpAndSettle();
+      expect(speech.spoken.last, 'Bir. ');
+    },
+  );
+
+  testWidgets('opening and changing pages do not alter the saved position', (
+    tester,
+  ) async {
+    final store = _PageStore();
+    store.positions[7] = const ReadingPosition(
+      pageId: 71,
+      sentenceIndex: 0,
+      pageText: 'İkinci sayfa.',
+    );
+    await _show(tester, store);
+    await tester.tap(find.byKey(const ValueKey('page-70')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('next-page')));
+    await tester.pumpAndSettle();
+    expect(store.positions[7]?.pageId, 71);
+    expect(store.positionWrites, 0);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Kaldığın yerden devam et'), findsOneWidget);
+  });
+
+  testWidgets(
+    'resume option is accessible with large text on a narrow screen',
+    (tester) async {
+      final store = _PageStore();
+      store.positions[7] = const ReadingPosition(
+        pageId: 71,
+        sentenceIndex: 0,
+        pageText: 'İkinci sayfa.',
+      );
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _show(tester, store);
+      tester.view.physicalSize = const Size(320, 560);
+      await tester.pumpAndSettle();
+      final resume = find.text('Kaldığın yerden devam et');
+      expect(tester.takeException(), isNull);
+      expect(resume.hitTestable(), findsOneWidget);
+      await tester.tap(resume);
+      await tester.pumpAndSettle();
+      expect(find.byType(SavedDocumentScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'position write failures do not interrupt speech or repeat notices',
+    (tester) async {
+      final store = _PageStore()..positionSaveError = StateError('db');
+      store.storedPages = const [
+        DocumentPage(id: 70, documentId: 7, position: 0, text: 'Bir. İki.'),
+      ];
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech: speech);
+      await tester.tap(find.byKey(const ValueKey('page-70')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sesli oku'));
+      await tester.pumpAndSettle();
+      expect(speech.isSpeaking, isTrue);
+      expect(find.textContaining('Okuma konumu kaydedilemedi'), findsOneWidget);
+      speech.finishCurrent();
+      await tester.pumpAndSettle();
+      expect(speech.spoken.last, 'İki.');
+      expect(store.positionWrites, 2);
+      expect(speech.isSpeaking, isTrue);
+    },
+  );
+
+  testWidgets('position load failure leaves normal page opening available', (
+    tester,
+  ) async {
+    final store = _PageStore()..positionLoadError = StateError('db');
+    await _show(tester, store);
+    expect(find.textContaining('Okuma konumu yüklenemedi'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('page-70')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SavedDocumentScreen), findsOneWidget);
+  });
+
   testWidgets('lists pages for every category', (tester) async {
     for (final category in DocumentCategory.values) {
       final store = _PageStore();

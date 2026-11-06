@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'fake_reading_positions.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
@@ -11,7 +13,7 @@ import '../listening/fake_speech_service.dart';
 
 // Fake store and fake speech engine: these cover our own sequencing and state
 // handling, not the real SQLite file or the real TTS engine.
-class _Store extends DocumentStore {
+class _Store extends DocumentStore with FakeReadingPositions {
   _Store(this.pageList);
 
   List<DocumentPage> pageList;
@@ -19,6 +21,16 @@ class _Store extends DocumentStore {
   Completer<void>? pagesGate;
   int pagesCalls = 0;
   int updateCalls = 0;
+
+  @override
+  Future<void> completeReadingPage({
+    required int documentId,
+    required int pageId,
+  }) async {
+    if (pageList.isNotEmpty && pageList.last.id == pageId) {
+      positions.remove(documentId);
+    }
+  }
 
   @override
   Future<List<DocumentPage>> pages(int documentId) async {
@@ -195,15 +207,19 @@ void main() {
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(speech.spoken.last, 'Üçüncü cümle.');
       expect(find.text('Cümle 1 / 1'), findsOneWidget);
+      expect(store.positions[7]?.pageId, 10);
+      expect(store.positions[7]?.sentenceIndex, 0);
 
       await _finish(tester, speech);
       expect(find.text('Sayfa 3 / 3'), findsOneWidget);
       expect(speech.spoken.last, 'Dördüncü cümle.');
+      expect(store.positions[7]?.pageId, 20);
 
       await _finish(tester, speech); // end of the last page
       expect(find.text('Sayfa 3 / 3'), findsOneWidget);
       expect(speech.isSpeaking, isFalse);
       expect(speech.spoken, hasLength(4));
+      expect(store.positions[7], isNull);
       expect(_button('Sesli oku'), findsOneWidget);
       await _openMore(tester);
       expect(_switchOn(tester), isTrue, reason: 'preference kept');

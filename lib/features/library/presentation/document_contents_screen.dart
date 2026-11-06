@@ -4,6 +4,7 @@ import '../../image_import/services/image_picker_service.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
+import '../data/reading_position.dart';
 import '../data/saved_document.dart';
 import 'add_page_screen.dart';
 import 'saved_document_screen.dart';
@@ -40,6 +41,8 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   int? _deletingPageId;
   String? _error;
   int _loadId = 0;
+  int _positionLoadId = 0;
+  ReadingPosition? _readingPosition;
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
   bool get _busy => _loading || _opening || _deleting || _reordering;
@@ -53,6 +56,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
 
   Future<void> _load() async {
     final run = ++_loadId;
+    _positionLoadId++;
     setState(() {
       _loading = true;
       _error = null;
@@ -74,6 +78,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
         _pages = pages;
         _loading = false;
       });
+      await _loadReadingPosition();
     } catch (_) {
       if (!mounted || run != _loadId) return;
       setState(() {
@@ -83,7 +88,34 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     }
   }
 
-  Future<void> _openPage(DocumentPage page, int number) async {
+  Future<void> _loadReadingPosition() async {
+    final loadId = ++_positionLoadId;
+    try {
+      final position = await _store.readingPosition(_document.id);
+      if (!mounted || loadId != _positionLoadId) return;
+      setState(() {
+        _readingPosition =
+            position != null &&
+                _pages.any(
+                  (page) =>
+                      page.id == position.pageId &&
+                      page.text == position.pageText,
+                )
+            ? position
+            : null;
+      });
+    } catch (_) {
+      if (!mounted || loadId != _positionLoadId) return;
+      setState(() => _readingPosition = null);
+      _showMessage('Okuma konumu yüklenemedi. Sayfaları açabilirsin.');
+    }
+  }
+
+  Future<void> _openPage(
+    DocumentPage page,
+    int number, {
+    int? initialSentence,
+  }) async {
     if (_busy || _error != null) return;
     setState(() => _opening = true);
     var changed = false;
@@ -100,6 +132,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
             ),
             pageId: page.id,
             pageNumber: number,
+            initialSentence: initialSentence,
             store: _store,
             speechService: widget.speechService,
             onUpdated: () {
@@ -112,7 +145,12 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     } finally {
       if (mounted) setState(() => _opening = false);
     }
-    if (mounted && changed) await _load();
+    if (!mounted) return;
+    if (changed) {
+      await _load();
+    } else {
+      await _loadReadingPosition();
+    }
   }
 
   Future<void> _editDetails() async {
@@ -209,6 +247,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
           _pages = _pages
               .where((item) => item.id != page.id)
               .toList(growable: false);
+          if (_readingPosition?.pageId == page.id) _readingPosition = null;
           _document = SavedDocument(
             id: _document.id,
             title: _document.title,
@@ -347,12 +386,21 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
         appBar: AppBar(
           title: Text(_document.title),
           actions: [
-            TextButton.icon(
-              key: const ValueKey('add-page'),
-              onPressed: _busy || _error != null ? null : _addPage,
-              icon: const Icon(Icons.add),
-              label: const Text('Sayfa ekle'),
-            ),
+            if (MediaQuery.sizeOf(context).width < 400 &&
+                MediaQuery.textScalerOf(context).scale(14) > 20)
+              IconButton(
+                key: const ValueKey('add-page'),
+                tooltip: 'Sayfa ekle',
+                onPressed: _busy || _error != null ? null : _addPage,
+                icon: const Icon(Icons.add),
+              )
+            else
+              TextButton.icon(
+                key: const ValueKey('add-page'),
+                onPressed: _busy || _error != null ? null : _addPage,
+                icon: const Icon(Icons.add),
+                label: const Text('Sayfa ekle'),
+              ),
             PopupMenuButton<String>(
               key: const ValueKey('content-options'),
               tooltip: 'İçerik seçenekleri',
@@ -394,6 +442,30 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
           padding: const EdgeInsets.all(16),
           child: Text('${_document.category.label} · ${_pages.length} sayfa'),
         ),
+        if (_readingPosition != null &&
+            _pages.any((page) => page.id == _readingPosition!.pageId))
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _busy
+                    ? null
+                    : () {
+                        final index = _pages.indexWhere(
+                          (page) => page.id == _readingPosition!.pageId,
+                        );
+                        _openPage(
+                          _pages[index],
+                          index + 1,
+                          initialSentence: _readingPosition!.sentenceIndex,
+                        );
+                      },
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Kaldığın yerden devam et'),
+              ),
+            ),
+          ),
         if (canReorder)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
