@@ -8,6 +8,9 @@ import 'document_details_dialog.dart';
 
 enum _DocumentAction { edit, delete }
 
+String _normalizeTitle(String value) =>
+    value.replaceAll('I', 'ı').replaceAll('İ', 'i').toLowerCase();
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key, this.store, this.speechService});
 
@@ -22,6 +25,7 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   late Future<List<SavedDocument>> _documents;
+  final _searchController = TextEditingController();
   bool _opening = false;
   bool _deleting = false;
   int? _deletingId;
@@ -33,6 +37,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _documents = _store.list();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _reload() {
@@ -211,60 +221,111 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ],
       ),
       body: SafeArea(
-        child: FutureBuilder<List<SavedDocument>>(
-          future: _documents,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Kayıtlar yüklenemedi.'),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: _busy ? null : _reload,
-                        child: const Text('Tekrar dene'),
-                      ),
-                    ],
-                  ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: TextField(
+                key: const ValueKey('title-search'),
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Başlık ara',
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Aramayı temizle',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.clear),
+                        ),
                 ),
-              );
-            }
-            final documents = snapshot.data ?? const <SavedDocument>[];
-            if (documents.isEmpty) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text(
-                    'Henüz kayıt yok. Çıkardığın metni kaydederek başlayabilirsin.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              );
-            }
-            return ListView.separated(
-              itemCount: documents.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final document = documents[index];
-                return ListTile(
-                  key: ValueKey('document-${document.id}'),
-                  leading: const Icon(Icons.description_outlined),
-                  title: Text(document.title),
-                  subtitle: Text(document.category.label),
-                  trailing: _buildDocumentMenu(document),
-                  onTap: _busy ? null : () => _open(document),
-                );
-              },
-            );
-          },
+              ),
+            ),
+            Expanded(child: _buildDocumentList()),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDocumentList() {
+    return FutureBuilder<List<SavedDocument>>(
+      future: _documents,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Kayıtlar yüklenemedi.'),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _busy ? null : _reload,
+                    child: const Text('Tekrar dene'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        final documents = snapshot.data ?? const <SavedDocument>[];
+        if (documents.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Henüz kayıt yok. Çıkardığın metni kaydederek başlayabilirsin.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+        final query = _normalizeTitle(_searchController.text.trim());
+        final filtered = query.isEmpty
+            ? documents
+            : documents
+                  .where(
+                    (document) =>
+                        _normalizeTitle(document.title).contains(query),
+                  )
+                  .toList();
+        if (filtered.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Aramana uygun kayıt bulunamadı.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+        return ListView.separated(
+          itemCount: filtered.length,
+          separatorBuilder: (context, index) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final document = filtered[index];
+            return ListTile(
+              key: ValueKey('document-${document.id}'),
+              leading: const Icon(Icons.description_outlined),
+              title: Text(document.title),
+              subtitle: Text(document.category.label),
+              trailing: _buildDocumentMenu(document),
+              onTap: _busy ? null : () => _open(document),
+            );
+          },
+        );
+      },
     );
   }
 }

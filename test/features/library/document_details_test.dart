@@ -208,6 +208,24 @@ void main() {
     expect(store.listCalls, 2);
   });
 
+  testWidgets('editing a filtered title reapplies the search', (tester) async {
+    final store = _DetailsStore();
+    await tester.pumpWidget(MaterialApp(home: LibraryScreen(store: store)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('title-search')), 'baş');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('document-menu-7')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Düzenle'));
+    await tester.pumpAndSettle();
+    await _saveTitle(tester, 'Güncel');
+    expect(find.text('Aramana uygun kayıt bulunamadı.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('document-7')), findsNothing);
+    await tester.tap(find.byTooltip('Aramayı temizle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Güncel'), findsOneWidget);
+  });
+
   testWidgets('contents menu refreshes header without losing pages', (
     tester,
   ) async {

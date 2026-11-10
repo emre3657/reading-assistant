@@ -34,7 +34,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 İçerikler **Kitap, Not, Yemek tarifi, Ders notu ve Şarkı sözü** kategorilerinde SQLite veritabanında saklanır. Her içerik birden fazla sıralı sayfa içerebilir.
 
 - İlk ekrandaki metni yeni içeriğin ilk sayfası olarak kaydetme.
-- “Kayıtlarım” ekranında içerikleri listeleme ve açma.
+- “Kayıtlarım” ekranında içerikleri listeleme, başlığa göre arama ve açma.
 - Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
