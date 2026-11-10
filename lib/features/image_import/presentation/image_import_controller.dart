@@ -24,7 +24,7 @@ class ImageSelection {
   final ImageProvider image;
 }
 
-/// A file chosen in the gallery that is not applied yet. The screen may ask
+/// A chosen image that is not applied yet. The screen may ask
 /// the user for confirmation, then must call exactly one of
 /// [ImageImportController.applyPick] or [ImageImportController.discardPick].
 class PickCandidate {
@@ -150,18 +150,28 @@ class ImageImportController extends ChangeNotifier {
   /// Applies an image left by an Android activity restart. Needs no
   /// confirmation because nothing can have been edited yet.
   Future<void> recoverLostImage() async {
-    if (_disposed || !pickerService.canRecoverLostImage) return;
+    if (_disposed || isBusy || !pickerService.canRecoverLostImage) return;
+    final revision = _revision;
     _isPicking = true;
     XFile? recovered;
     String? error;
     try {
       recovered = await pickerService.retrieveLostImage();
+    } on LostCameraPageException {
+      error =
+          'Önceki fotoğraf sayfa ekleme ekranına aitti. '
+          'İlgili içeriği açıp fotoğrafı yeniden çekin.';
     } catch (_) {
       error = 'Önceki fotoğraf seçimi kurtarılamadı. Lütfen tekrar seçin.';
     }
     if (_disposed) return;
     _isPicking = false;
-    if (recovered != null) {
+    if (recovered != null &&
+        (revision != _revision || hasEditedText || _selection != null)) {
+      error =
+          'Önceki görsel kurtarıldı ancak mevcut taslağı korumak için '
+          'uygulanmadı. Lütfen görseli yeniden seçin.';
+    } else if (recovered != null) {
       _replaceSelection(
         ImageSelection(
           ++_lastSelectionId,
@@ -177,7 +187,10 @@ class ImageImportController extends ChangeNotifier {
   /// Opens the gallery. Returns null when busy, cancelled or failed (the
   /// failure is in [errorMessage]); the busy state is then already released.
   /// On a result the busy state stays on until [applyPick] or [discardPick].
-  Future<PickCandidate?> pickImage() async {
+  Future<PickCandidate?> pickImage({
+    bool camera = false,
+    bool recoverToHome = true,
+  }) async {
     if (_disposed || isBusy) return null;
     _isPicking = true;
     _errorMessage = null;
@@ -186,9 +199,13 @@ class ImageImportController extends ChangeNotifier {
     XFile? picked;
     String? error;
     try {
-      picked = await pickerService.pickFromGallery();
+      picked = camera
+          ? await pickerService.takePhoto(recoverToHome: recoverToHome)
+          : await pickerService.pickFromGallery();
     } catch (_) {
-      error = 'Görsel seçilemedi. Lütfen tekrar deneyin.';
+      error = camera
+          ? 'Fotoğraf çekilemedi. Kamera iznini ve kameranın kullanılabilirliğini kontrol edip tekrar deneyin.'
+          : 'Görsel seçilemedi. Lütfen tekrar deneyin.';
     }
     if (_disposed) return null;
     if (picked == null) {

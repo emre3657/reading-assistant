@@ -228,4 +228,25 @@ void main() {
     expect(c.selection?.file.path, '/lost.jpg');
     expect(c.isBusy, isFalse);
   });
+
+  test('late recovery does not overwrite a draft', () async {
+    final gate = Completer<XFile?>();
+    final c = ImageImportController(
+      pickerService: FakeImagePickerService(
+        canRecoverLostImage: true,
+        onRetrieveLost: () => gate.future,
+      ),
+      textRecognitionService: ocr,
+      rotationService: rotation,
+      previewImageBuilder: _image,
+    );
+    addTearDown(c.dispose);
+    final recovery = c.recoverLostImage();
+    c.textController.text = 'Korunan taslak';
+    gate.complete(XFile('/lost.jpg'));
+    await recovery;
+    expect(c.selection, isNull);
+    expect(c.textController.text, 'Korunan taslak');
+    expect(c.errorMessage, contains('taslağı korumak'));
+  });
 }

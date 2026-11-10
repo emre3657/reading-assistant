@@ -91,7 +91,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       textRecognitionService: widget.textRecognitionService,
       rotationService: widget.rotationService,
       previewImageBuilder: widget.previewImageBuilder,
-    )..recoverLostImage();
+    );
+    if (!_addingPage && !widget.returnText) {
+      unawaited(_controller.recoverLostImage());
+    }
 
     _controller.addListener(_onImportChanged);
 
@@ -248,10 +251,13 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     );
   }
 
-  Future<void> _selectImage() async {
+  Future<void> _selectImage({bool camera = false}) async {
     if (_listening.isActive) return;
 
-    final candidate = await _controller.pickImage();
+    final candidate = await _controller.pickImage(
+      camera: camera,
+      recoverToHome: !_addingPage && !widget.returnText,
+    );
     if (candidate == null) return;
 
     var applied = false;
@@ -794,7 +800,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
-                      onPressed: listeningActive ? null : _selectImage,
+                      onPressed: listeningActive ? null : () => _selectImage(),
                       icon: const Icon(Icons.photo_library),
                       label: const Text('Görseli değiştir'),
                     ),
@@ -806,10 +812,18 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                     ),
                   ] else
                     FilledButton.icon(
-                      onPressed: listeningActive ? null : _selectImage,
+                      onPressed: listeningActive ? null : () => _selectImage(),
                       icon: const Icon(Icons.photo_library),
                       label: const Text('Galeriden görsel seç'),
                     ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: listeningActive
+                        ? null
+                        : () => _selectImage(camera: true),
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: const Text('Fotoğraf çek'),
+                  ),
                 ],
                 if (!widget.returnText &&
                     !hasImage &&

@@ -20,6 +20,11 @@ class _Picker extends ImagePickerService {
   bool get canRecoverLostImage => false;
   @override
   Future<XFile?> pickFromGallery() async => XFile('page.png');
+  @override
+  Future<XFile?> takePhoto({required bool recoverToHome}) async {
+    expect(recoverToHome, isFalse);
+    return XFile('camera.png');
+  }
 }
 
 class _Ocr extends TextRecognitionService {
@@ -93,10 +98,30 @@ void main() {
   testWidgets('offers gallery and manual entry in one screen', (tester) async {
     await _open(tester, _Store(), _Ocr());
     expect(find.text('Galeriden görsel seç'), findsOneWidget);
+    expect(find.text('Fotoğraf çek'), findsOneWidget);
     expect(find.text('Metin yaz veya yapıştır'), findsOneWidget);
     expect(find.text('Kitabım'), findsOneWidget);
     expect(find.text('Metni kullan'), findsNothing);
     expect(find.byType(ImageImportScreen), findsOneWidget);
+  });
+
+  testWidgets('camera OCR saves the new page to the correct content', (
+    tester,
+  ) async {
+    final store = _Store();
+    final ocr = _Ocr();
+    await _open(tester, store, ocr);
+    await tester.tap(find.text('Fotoğraf çek'));
+    await tester.pumpAndSettle();
+    expect(ocr.calls, 0);
+    await tester.tap(find.text('Metni çıkar'));
+    await tester.pumpAndSettle();
+    expect(ocr.calls, 1);
+    await tester.tap(find.byKey(const ValueKey('save-page')));
+    await tester.pumpAndSettle();
+    expect(store.owner, 7);
+    expect(store.savedText, 'Görselden çıkarılan sayfa.');
+    expect(store.calls, 1);
   });
 
   testWidgets('gallery OCR stays inline and saves directly to same content', (

@@ -9,6 +9,7 @@ Android ve iOS hedeflenir. Geliştirme ve manuel kontroller Android Pixel 5 emü
 ### Metin oluşturma ve OCR
 
 - Galeriden görsel seçme, önizleme, değiştirme ve kaldırma.
+- Kamerayla fotoğraf çekip aynı önizleme ve metin çıkarma akışında kullanma.
 - Görseli sola veya sağa 90° döndürme.
 - Latin karakter modeliyle cihaz üzerinde metin çıkarma.
 - Görsel kullanmadan metin yazma veya yapıştırma.
@@ -93,6 +94,7 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - Sayfa numarası girerek atlama yoktur; otomatik sayfa geçişi yalnızca çok sayfalı kayıtlı içerik okuma ekranındadır.
 - Arka planda/ekran kilitliyken dinleme desteklenmez.
 - Metin sürüm geçmişi, uygulama içi yedekleme ve bulut senkronizasyonu yoktur.
-- Galeri eklentisinin geçici kopyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
+- Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
+- Android, sayfa eklerken kamera açıkken uygulamayı sonlandırırsa fotoğraf yanlış içeriğe uygulanmaz; ilgili sayfada yeniden çekmek gerekir.
 
 Kod ve çalışma kuralları için [Copilot talimatlarına](.github/copilot-instructions.md) bakın.
