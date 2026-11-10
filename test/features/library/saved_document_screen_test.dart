@@ -210,7 +210,9 @@ void main() {
       final book = FakeDocumentStore([_doc(category: DocumentCategory.book)]);
       await _show(tester, book, FakeSpeechService());
       expect(
-        tester.widget<SelectableText>(find.byType(SelectableText)).textAlign,
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('saved-reading-text')))
+            .textAlign,
         TextAlign.justify,
       );
 
@@ -218,7 +220,9 @@ void main() {
       final note = FakeDocumentStore([_doc()]);
       await _show(tester, note, FakeSpeechService());
       expect(
-        tester.widget<SelectableText>(find.byType(SelectableText)).textAlign,
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('saved-reading-text')))
+            .textAlign,
         TextAlign.start,
       );
     });
@@ -341,7 +345,9 @@ void main() {
       expect(find.text('Kayıt güncellendi.'), findsOneWidget);
 
       expect(
-        tester.widget<SelectableText>(find.byType(SelectableText)).textAlign,
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('saved-reading-text')))
+            .textAlign,
         TextAlign.start,
       );
       await _startReading(tester);

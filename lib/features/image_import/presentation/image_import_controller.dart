@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../listening/presentation/sentence_highlight.dart';
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
 import '../services/ocr_result.dart';
@@ -61,7 +62,8 @@ class ImageImportController extends ChangeNotifier {
   final PreviewImageBuilder previewImageBuilder;
 
   /// The text shown in the editable field. Owned and disposed here.
-  final TextEditingController textController = TextEditingController();
+  final HighlightingTextEditingController textController =
+      HighlightingTextEditingController();
 
   ImageSelection? _selection;
   int _quarterTurns = 0;

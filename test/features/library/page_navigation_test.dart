@@ -599,7 +599,7 @@ void main() {
       ScrollableState scrollable() => tester.state<ScrollableState>(
         find
             .ancestor(
-              of: find.byType(SelectableText),
+              of: find.byKey(const ValueKey('saved-reading-text')),
               matching: find.byType(Scrollable),
             )
             .last,

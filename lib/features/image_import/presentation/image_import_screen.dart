@@ -102,6 +102,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         widget.speechService ?? (_ownedSpeechService = SpeechService());
 
     _listening = ListeningController(speechService: speechService);
+    _controller.textController.attachListening(_listening);
     _listening.addListener(_onListeningChanged);
 
     WidgetsBinding.instance.addObserver(this);

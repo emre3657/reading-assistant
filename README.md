@@ -24,6 +24,7 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 
 - Başlatma, duraklatma, devam etme ve durdurma.
 - Önceki/sonraki cümle ve başa dönme.
+- Okunan cümleyi metinde vurgulama.
 - 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
 - Ekranın altında küçültülebilen dinleme paneli; hız seçenekleri üstteki “Okuma ayarları” menüsündedir.
 

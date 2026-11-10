@@ -117,6 +117,16 @@ class ListeningController extends ChangeNotifier {
   int get currentSentence => _canNavigate ? _index + 1 : 0;
   int get sentenceCount => _canNavigate ? _sentences.length : 0;
 
+  /// The current sentence only while the displayed text matches this session.
+  SentenceSpan? sentenceForText(String displayedText) {
+    if (!_canNavigate ||
+        displayedText != _text ||
+        _index >= _sentences.length) {
+      return null;
+    }
+    return _sentences[_index];
+  }
+
   void _setState(ListeningStatus status, [String? message]) {
     _status = status;
     _message = message;

@@ -6,6 +6,7 @@ import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
+import '../../listening/presentation/sentence_highlight.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
@@ -60,6 +61,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   // Owned here; created once and disposed in dispose().
   final _textController = TextEditingController();
+  final _readController = HighlightingTextEditingController();
   final _formKey = GlobalKey<FormState>();
   final _scrollController = ScrollController();
 
@@ -106,6 +108,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   void initState() {
     super.initState();
     _saved = widget.document;
+    _readController.text = _saved.text;
     _pageId = widget.pageId;
     _pageNumber = widget.pageNumber;
     _resumeSentence = widget.initialSentence;
@@ -117,6 +120,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       speechService: speechService,
       onSentenceStarted: _saveListeningPosition,
     );
+    _readController.attachListening(_listening);
     _listening.addListener(_onListeningChanged);
 
     WidgetsBinding.instance.addObserver(this);
@@ -179,6 +183,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     WidgetsBinding.instance.removeObserver(this);
     _listening.removeListener(_onListeningChanged);
     _preferences?.removeListener(_onPreferencesChanged);
+    _readController.dispose();
     _listening.dispose();
     _ownedSpeechService?.dispose();
     _textController.dispose();
@@ -274,6 +279,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     VoidCallback? alsoSet,
   }) {
     final target = pages[index];
+    _readController.text = target.text;
     setState(() {
       _pages = pages;
       _pageId = target.id;
@@ -661,6 +667,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         text: text,
         createdAt: _saved.createdAt,
       );
+      _readController.text = text;
       _resumeSentence = null;
       _saving = false;
       _editing = false;
@@ -726,8 +733,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                 Text('Sayfa $_pageNumber'),
               ],
               const SizedBox(height: 16),
-              SelectableText(
-                document.text,
+              TextField(
+                key: const ValueKey('saved-reading-text'),
+                controller: _readController,
+                readOnly: true,
+                showCursor: false,
+                maxLines: null,
+                decoration: const InputDecoration.collapsed(hintText: ''),
                 textAlign: document.category == DocumentCategory.book
                     ? TextAlign.justify
                     : TextAlign.start,
