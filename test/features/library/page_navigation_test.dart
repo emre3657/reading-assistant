@@ -358,61 +358,6 @@ void main() {
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
-
-    testWidgets('editing draft survives a failed direct page load', (
-      tester,
-    ) async {
-      final store = _Store(_threePages());
-      await _show(tester, store, FakeSpeechService());
-      await _tap(tester, _editButton);
-      await tester.enterText(_textField, 'Taslak.');
-      await tester.pump();
-      await _goToPage(tester, '3');
-      store.pagesError = StateError('db');
-      await _tap(tester, find.text('Kaydetmeden geç'));
-      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
-      expect(find.text('Taslak.'), findsOneWidget);
-      expect(
-        find.text('Sayfa açılamadı. Mevcut sayfa korundu.'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('edited draft uses existing confirmation and save failures', (
-      tester,
-    ) async {
-      final store = _Store(_threePages());
-      await _show(tester, store, FakeSpeechService());
-      await _tap(tester, _editButton);
-      await tester.enterText(_textField, 'Taslak metin.');
-      await tester.pump();
-      await _goToPage(tester, '3');
-      await _tap(tester, find.text('Düzenlemeye devam et'));
-      expect(find.text('Taslak metin.'), findsOneWidget);
-      await _goToPage(tester, '3');
-      store.updateError = StateError('db');
-      await _tap(tester, find.text('Kaydet ve geç'));
-      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
-      expect(find.text('Taslak metin.'), findsOneWidget);
-      expect(find.textContaining('Kayıt güncellenemedi'), findsOneWidget);
-      store.updateError = null;
-      await _goToPage(tester, '3');
-      await _tap(tester, find.text('Kaydet ve geç'));
-      expect(store.updates, [(pageId: 30, text: 'Taslak metin.')]);
-      expect(find.text('Sayfa 3 / 3'), findsOneWidget);
-    });
-
-    testWidgets('discarding an edit moves without writing', (tester) async {
-      final store = _Store(_threePages());
-      await _show(tester, store, FakeSpeechService());
-      await _tap(tester, _editButton);
-      await tester.enterText(_textField, 'Taslak.');
-      await tester.pump();
-      await _goToPage(tester, '3');
-      await _tap(tester, find.text('Kaydetmeden geç'));
-      expect(find.text('Üçüncü sayfa metni.'), findsOneWidget);
-      expect(store.updates, isEmpty);
-    });
   });
 
   group('page navigation', () {
@@ -653,60 +598,99 @@ void main() {
     });
   });
 
-  group('page navigation with unsaved edits', () {
-    Future<void> editAndMove(WidgetTester tester, _Store store) async {
-      await _show(tester, store, FakeSpeechService());
-      await _tap(tester, _editButton);
-      await tester.enterText(_textField, 'Taslak metin.');
-      await tester.pump();
-      await _tap(tester, _next);
+  group('page navigation during editing', () {
+    void expectNavigationHidden() {
+      expect(_previous, findsNothing);
+      expect(_next, findsNothing);
+      expect(find.byKey(const ValueKey('go-to-page')), findsNothing);
     }
 
-    testWidgets('keep editing preserves page and draft', (tester) async {
-      final store = _Store(_threePages());
-      await editAndMove(tester, store);
-      expect(find.text('Kaydet ve geç'), findsOneWidget);
-
-      await _tap(tester, find.text('Düzenlemeye devam et'));
-      expect(find.text('Taslak metin.'), findsOneWidget);
+    Future<void> edit(WidgetTester tester, _Store store) async {
+      await _show(tester, store, FakeSpeechService());
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      await _tap(tester, _editButton);
+      expectNavigationHidden();
+      await tester.enterText(_textField, 'Taslak metin.');
+      await tester.pump();
+    }
+
+    testWidgets('cancel unchanged restores the navigation bar', (tester) async {
+      final store = _Store(_threePages());
+      await _show(tester, store, FakeSpeechService());
+      await _tap(tester, _editButton);
+      expectNavigationHidden();
+      await _tap(tester, find.text('Düzenlemekten vazgeç'));
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      await _tap(tester, _next);
+      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(store.updates, isEmpty);
     });
 
-    testWidgets('discard opens the target page without writing', (
+    testWidgets('keep editing or discard retains the expected state', (
       tester,
     ) async {
       final store = _Store(_threePages());
-      await editAndMove(tester, store);
+      await edit(tester, store);
+      await _tap(tester, find.text('Düzenlemekten vazgeç'));
+      await _tap(tester, find.text('Düzenlemeye devam et'));
+      expect(find.text('Taslak metin.'), findsOneWidget);
+      expectNavigationHidden();
+      await _tap(tester, find.text('Düzenlemekten vazgeç'));
+      await _tap(tester, find.text('Kaydetmeden vazgeç'));
+      expect(find.text('Birinci sayfa metni.'), findsOneWidget);
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expect(store.updates, isEmpty);
+      await _tap(tester, _next);
+      expect(find.text('İkinci sayfa metni.'), findsOneWidget);
+    });
 
-      await _tap(tester, find.text('Kaydetmeden geç'));
+    testWidgets('successful save restores navigation and updates the page', (
+      tester,
+    ) async {
+      final store = _Store(_threePages());
+      await edit(tester, store);
+      await _tap(tester, find.byKey(const ValueKey('save-document')));
+      expect(store.updates, [(pageId: 30, text: 'Taslak metin.')]);
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expect(find.text('Taslak metin.'), findsOneWidget);
+      await _tap(tester, _next);
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(find.text('İkinci sayfa metni.'), findsOneWidget);
       expect(_textField, findsNothing);
-      expect(store.updates, isEmpty);
     });
 
-    testWidgets('save and go writes the current page then moves', (
+    testWidgets('saving from the cancel confirmation restores navigation', (
       tester,
     ) async {
       final store = _Store(_threePages());
-      await editAndMove(tester, store);
-
-      await _tap(tester, find.text('Kaydet ve geç'));
+      await edit(tester, store);
+      await _tap(tester, find.text('Düzenlemekten vazgeç'));
+      await _tap(tester, find.text('Kaydet ve bitir'));
       expect(store.updates, [(pageId: 30, text: 'Taslak metin.')]);
-      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
-      expect(find.text('İkinci sayfa metni.'), findsOneWidget);
-    });
-
-    testWidgets('a save error keeps the page and the draft', (tester) async {
-      final store = _Store(_threePages())..updateError = StateError('db');
-      await editAndMove(tester, store);
-
-      await _tap(tester, find.text('Kaydet ve geç'));
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
       expect(find.text('Taslak metin.'), findsOneWidget);
-      expect(find.textContaining('Kayıt güncellenemedi'), findsOneWidget);
     });
+
+    testWidgets(
+      'save errors keep the draft and navigation hidden until retry',
+      (tester) async {
+        final store = _Store(_threePages())..updateError = StateError('db');
+        await edit(tester, store);
+        await _tap(tester, find.byKey(const ValueKey('save-document')));
+        expectNavigationHidden();
+        expect(find.text('Taslak metin.'), findsOneWidget);
+        expect(find.textContaining('Kayıt güncellenemedi'), findsOneWidget);
+        await _tap(tester, find.text('Düzenlemekten vazgeç'));
+        await _tap(tester, find.text('Kaydet ve bitir'));
+        expectNavigationHidden();
+        expect(find.text('Taslak metin.'), findsOneWidget);
+        expect(find.textContaining('Kayıt güncellenemedi'), findsOneWidget);
+        store.updateError = null;
+        await _tap(tester, find.byKey(const ValueKey('save-document')));
+        expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+        expect(store.updates, [(pageId: 30, text: 'Taslak metin.')]);
+      },
+    );
 
     testWidgets('invalid text keeps the page and the draft', (tester) async {
       final store = _Store(_threePages());
@@ -714,10 +698,9 @@ void main() {
       await _tap(tester, _editButton);
       await tester.enterText(_textField, '   ');
       await tester.pump();
-      await _tap(tester, _next);
-      await _tap(tester, find.text('Kaydet ve geç'));
+      await _tap(tester, find.byKey(const ValueKey('save-document')));
 
-      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expectNavigationHidden();
       expect(find.text('Metin boş olamaz.'), findsOneWidget);
       expect(store.updates, isEmpty);
     });

@@ -607,6 +607,30 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         .showSnackBar(const SnackBar(content: Text('Kayıt güncellendi.')));
   }
 
+  Future<void> _cancelEditing() async {
+    if (_saving || _exitInProgress) return;
+    _exitInProgress = true;
+    final session = _editSession;
+    try {
+      if (_hasChanges) {
+        final choice = await _confirmChanges(
+          content: 'Düzenlemeyi bırakmadan önce değişiklikleri kaydetmek ister misin?',
+          discardLabel: 'Kaydetmeden vazgeç',
+          saveLabel: 'Kaydet ve bitir',
+        );
+        if (!mounted || session != _editSession || _saving) return;
+        if (choice == null || choice == _ExitChoice.keepEditing) return;
+        if (choice == _ExitChoice.save) {
+          await _persist();
+          return;
+        }
+      }
+      if (mounted) _leaveEditing();
+    } finally {
+      _exitInProgress = false;
+    }
+  }
+
   /// Returns true only when a changed record was successfully updated.
   /// An unchanged form leaves editing without a write or success notice.
   Future<bool> _persist() async {
@@ -843,14 +867,16 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                   const SizedBox(height: 16),
                   const LinearProgressIndicator(semanticsLabel: 'Kaydediliyor'),
                 ],
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: _saving ? null : _cancelEditing,
+                  child: const Text('Düzenlemekten vazgeç'),
+                ),
               ],
             ),
           ),
         ),
       ),
-      bottomNavigationBar: _buildPageNavigation() == null
-          ? null
-          : SafeArea(child: _buildPageNavigation()!),
     );
   }
 }
