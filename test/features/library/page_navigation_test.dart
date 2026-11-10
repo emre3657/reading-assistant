@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show SemanticsAction;
 
 import 'fake_reading_positions.dart';
 
@@ -8,7 +9,9 @@ import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
+import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 
+import '../listening/fake_preferences_store.dart';
 import '../listening/fake_speech_service.dart';
 
 // Fake store and fake speech engine: these cover our own navigation and state
@@ -61,6 +64,9 @@ final _editButton = find.byIcon(Icons.edit_outlined);
 bool _enabled(Finder finder) =>
     (finder.evaluate().single.widget as ButtonStyleButton).onPressed != null;
 
+bool _pageButtonEnabled(Finder finder) =>
+    (finder.evaluate().single.widget as IconButton).onPressed != null;
+
 Finder _button(String label) => find.ancestor(
   of: find.text(label),
   matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
@@ -80,33 +86,36 @@ Future<void> _show(
 
   final open = store.pageList[openIndex];
   await tester.pumpWidget(
-    MaterialApp(
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(textScaler: TextScaler.linear(textScale)),
-        child: child!,
-      ),
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: TextButton(
-            onPressed: () => Navigator.of(context).push<void>(
-              MaterialPageRoute(
-                builder: (_) => SavedDocumentScreen(
-                  document: SavedDocument(
-                    id: 7,
-                    title: 'Başlık',
-                    category: DocumentCategory.note,
-                    text: open.text,
-                    createdAt: DateTime(2024),
+    ReadingPreferencesScope(
+      preferences: ReadingPreferences(store: FakePreferencesStore()),
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => SavedDocumentScreen(
+                    document: SavedDocument(
+                      id: 7,
+                      title: 'Başlık',
+                      category: DocumentCategory.note,
+                      text: open.text,
+                      createdAt: DateTime(2024),
+                    ),
+                    pageId: open.id,
+                    pageNumber: openIndex + 1,
+                    store: store,
+                    speechService: speech,
                   ),
-                  pageId: open.id,
-                  pageNumber: openIndex + 1,
-                  store: store,
-                  speechService: speech,
                 ),
               ),
+              child: const Text('aç'),
             ),
-            child: const Text('aç'),
           ),
         ),
       ),
@@ -130,7 +139,282 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openGoToPage(WidgetTester tester) async {
+  await _tap(tester, find.byKey(const ValueKey('go-to-page')));
+}
+
+Future<void> _goToPage(WidgetTester tester, String number) async {
+  await _openGoToPage(tester);
+  await tester.enterText(
+    find.byKey(const ValueKey('page-number-input')),
+    number,
+  );
+  await _tap(tester, find.text('Git'));
+}
+
 void main() {
+  group('direct page navigation', () {
+    testWidgets('uses stored order with gaps and reordered pages', (
+      tester,
+    ) async {
+      final store = _Store([
+        _page(20, 1, 'Üçüncü sayfa metni.'),
+        _page(30, 4, 'Birinci sayfa metni.'),
+        _page(10, 12, 'İkinci sayfa metni.'),
+      ]);
+      await _show(tester, store, FakeSpeechService(), openIndex: 1);
+      await _goToPage(tester, '3');
+      expect(find.text('İkinci sayfa metni.'), findsOneWidget);
+      expect(find.text('Sayfa 3 / 3'), findsOneWidget);
+      await _goToPage(tester, '1');
+      expect(find.text('Üçüncü sayfa metni.'), findsOneWidget);
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expect(store.updates, isEmpty);
+      expect(store.positionWrites, 0);
+    });
+
+    testWidgets(
+      'validates input without stopping reading; cancel and current page do nothing',
+      (tester) async {
+        final store = _Store(_threePages());
+        final speech = FakeSpeechService();
+        await _show(tester, store, speech);
+        await _tap(tester, _button('Sesli oku'));
+        final calls = store.pagesCalls;
+        final writes = store.positionWrites;
+        await _openGoToPage(tester);
+        expect(find.text('Geçerli aralık: 1–3'), findsOneWidget);
+        final field = find.byKey(const ValueKey('page-number-input'));
+        expect(
+          tester
+              .widget<TextField>(
+                find.descendant(of: field, matching: find.byType(TextField)),
+              )
+              .keyboardType,
+          TextInputType.number,
+        );
+        await _tap(tester, find.text('Git'));
+        expect(find.text('Sayfa numarası girin.'), findsOneWidget);
+        await tester.enterText(field, '1.5');
+        await _tap(tester, find.text('Git'));
+        expect(find.text('Geçerli bir tam sayı girin.'), findsOneWidget);
+        await tester.enterText(field, '4');
+        await _tap(tester, find.text('Git'));
+        expect(
+          find.text('1–3 arasında bir sayfa numarası girin.'),
+          findsOneWidget,
+        );
+        expect(speech.isSpeaking, isTrue);
+        expect(speech.stopCalls, 0);
+        await _tap(tester, find.text('Vazgeç'));
+        expect(speech.isSpeaking, isTrue);
+        await _goToPage(tester, '1');
+        expect(speech.isSpeaking, isTrue);
+        expect(speech.stopCalls, 0);
+        expect(store.pagesCalls, calls);
+        expect(store.positionWrites, writes);
+        expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      },
+    );
+
+    testWidgets('moving stops playback and does not start the target', (
+      tester,
+    ) async {
+      final store = _Store(_threePages());
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech);
+      await _tap(tester, _button('Sesli oku'));
+      final writes = store.positionWrites;
+      await _goToPage(tester, '3');
+      expect(speech.stopCalls, 1);
+      expect(speech.isSpeaking, isFalse);
+      expect(speech.spoken, ['Birinci sayfa metni.']);
+      expect(store.positionWrites, writes);
+      expect(find.text('Üçüncü sayfa metni.'), findsOneWidget);
+      await _tap(tester, _button('Sesli oku'));
+      expect(speech.spoken.last, 'Üçüncü sayfa metni.');
+    });
+
+    testWidgets('single page indicator is not a button', (tester) async {
+      await _show(
+        tester,
+        _Store([_page(1, 0, 'Tek sayfa.')]),
+        FakeSpeechService(),
+      );
+      expect(find.byKey(const ValueKey('go-to-page')), findsNothing);
+      expect(find.text('Sayfa 1 / 1'), findsOneWidget);
+    });
+
+    testWidgets('failed speech stop prevents direct navigation', (
+      tester,
+    ) async {
+      final speech = FakeSpeechService(stopError: StateError('stop'));
+      await _show(tester, _Store(_threePages()), speech);
+      await _tap(tester, _button('Sesli oku'));
+      await _goToPage(tester, '3');
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expect(find.text('Birinci sayfa metni.'), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget);
+    });
+
+    testWidgets('rapid taps open only one dialog', (tester) async {
+      await _show(tester, _Store(_threePages()), FakeSpeechService());
+      final button = find.byKey(const ValueKey('go-to-page'));
+      final center = tester.getCenter(button);
+      final first = await tester.startGesture(center, pointer: 1);
+      final second = await tester.startGesture(center, pointer: 2);
+      await first.up();
+      await second.up();
+      await tester.pumpAndSettle();
+      expect(find.text('Sayfa numarası'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await _tap(tester, find.text('Vazgeç'));
+      await _goToPage(tester, '2');
+      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+    });
+
+    testWidgets('indicator exposes a labelled accessible button', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _show(tester, _Store(_threePages()), FakeSpeechService());
+      expect(find.bySemanticsLabel('Sayfaya git. Sayfa 1 / 3'), findsOneWidget);
+      final node = tester.getSemantics(
+        find.byKey(const ValueKey('go-to-page')),
+      );
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+      handle.dispose();
+    });
+
+    testWidgets(
+      'load error and rapid touches keep the page and start one move',
+      (tester) async {
+        final store = _Store(_threePages());
+        await _show(tester, store, FakeSpeechService());
+        await _openGoToPage(tester);
+        await tester.enterText(
+          find.byKey(const ValueKey('page-number-input')),
+          '3',
+        );
+        store.pagesGate = Completer<void>();
+        final before = store.pagesCalls;
+        await tester.tap(find.text('Git'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(_enabled(find.byKey(const ValueKey('go-to-page'))), isFalse);
+        expect(store.pagesCalls, before + 1);
+        store.pagesError = StateError('db');
+        store.pagesGate!.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+        expect(find.text('Birinci sayfa metni.'), findsOneWidget);
+        expect(
+          find.text('Sayfa açılamadı. Mevcut sayfa korundu.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('dialog is usable at large text on a narrow screen', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        _Store(_threePages()),
+        FakeSpeechService(),
+        size: const Size(320, 560),
+        textScale: 2,
+      );
+      await _openGoToPage(tester);
+      expect(tester.takeException(), isNull);
+      await tester.enterText(
+        find.byKey(const ValueKey('page-number-input')),
+        '2',
+      );
+      await _tap(tester, find.text('Git'));
+      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('number dialog remains usable with the keyboard visible', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        _Store(_threePages()),
+        FakeSpeechService(),
+        size: const Size(320, 650),
+        textScale: 1.5,
+      );
+      addTearDown(tester.view.resetViewInsets);
+      await _openGoToPage(tester);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 220);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('page-number-input')),
+        '2',
+      );
+      await _tap(tester, find.text('Git'));
+      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('editing draft survives a failed direct page load', (
+      tester,
+    ) async {
+      final store = _Store(_threePages());
+      await _show(tester, store, FakeSpeechService());
+      await _tap(tester, _editButton);
+      await tester.enterText(_textField, 'Taslak.');
+      await tester.pump();
+      await _goToPage(tester, '3');
+      store.pagesError = StateError('db');
+      await _tap(tester, find.text('Kaydetmeden geç'));
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expect(find.text('Taslak.'), findsOneWidget);
+      expect(
+        find.text('Sayfa açılamadı. Mevcut sayfa korundu.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('edited draft uses existing confirmation and save failures', (
+      tester,
+    ) async {
+      final store = _Store(_threePages());
+      await _show(tester, store, FakeSpeechService());
+      await _tap(tester, _editButton);
+      await tester.enterText(_textField, 'Taslak metin.');
+      await tester.pump();
+      await _goToPage(tester, '3');
+      await _tap(tester, find.text('Düzenlemeye devam et'));
+      expect(find.text('Taslak metin.'), findsOneWidget);
+      await _goToPage(tester, '3');
+      store.updateError = StateError('db');
+      await _tap(tester, find.text('Kaydet ve geç'));
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expect(find.text('Taslak metin.'), findsOneWidget);
+      expect(find.textContaining('Kayıt güncellenemedi'), findsOneWidget);
+      store.updateError = null;
+      await _goToPage(tester, '3');
+      await _tap(tester, find.text('Kaydet ve geç'));
+      expect(store.updates, [(pageId: 30, text: 'Taslak metin.')]);
+      expect(find.text('Sayfa 3 / 3'), findsOneWidget);
+    });
+
+    testWidgets('discarding an edit moves without writing', (tester) async {
+      final store = _Store(_threePages());
+      await _show(tester, store, FakeSpeechService());
+      await _tap(tester, _editButton);
+      await tester.enterText(_textField, 'Taslak.');
+      await tester.pump();
+      await _goToPage(tester, '3');
+      await _tap(tester, find.text('Kaydetmeden geç'));
+      expect(find.text('Üçüncü sayfa metni.'), findsOneWidget);
+      expect(store.updates, isEmpty);
+    });
+  });
+
   group('page navigation', () {
     testWidgets('moves by stored order, ignoring position gaps', (
       tester,
@@ -139,17 +423,17 @@ void main() {
       await _show(tester, store, FakeSpeechService());
 
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
-      expect(_enabled(_previous), isFalse);
-      expect(_enabled(_next), isTrue);
+      expect(_pageButtonEnabled(_previous), isFalse);
+      expect(_pageButtonEnabled(_next), isTrue);
 
       await _tap(tester, _next);
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(find.text('İkinci sayfa metni.'), findsOneWidget);
-      expect(_enabled(_previous), isTrue);
+      expect(_pageButtonEnabled(_previous), isTrue);
 
       await _tap(tester, _next);
       expect(find.text('Üçüncü sayfa metni.'), findsOneWidget);
-      expect(_enabled(_next), isFalse);
+      expect(_pageButtonEnabled(_next), isFalse);
 
       await _tap(tester, _previous);
       expect(find.text('İkinci sayfa metni.'), findsOneWidget);
@@ -265,9 +549,9 @@ void main() {
       store.pagesGate = Completer<void>();
       await tester.tap(_next);
       await tester.pump();
-      expect(_enabled(_next), isFalse);
-      expect(_enabled(_previous), isFalse);
-      await tester.tap(_next, warnIfMissed: false);
+      expect(_pageButtonEnabled(_next), isFalse);
+      expect(_pageButtonEnabled(_previous), isFalse);
+      await tester.tap(_next);
       await tester.pump();
       expect(_button('Sesli oku').evaluate(), isNotEmpty);
       expect(
@@ -342,11 +626,27 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      for (final finder in [_previous, _next]) {
+      final indicator = find.byKey(const ValueKey('go-to-page'));
+      for (final finder in [_previous, indicator, _next]) {
         final size = tester.getSize(finder);
         expect(size.width, greaterThanOrEqualTo(48));
         expect(size.height, greaterThanOrEqualTo(48));
+        expect(finder.hitTestable(), findsOneWidget);
       }
+      final previousRect = tester.getRect(_previous);
+      final indicatorRect = tester.getRect(indicator);
+      final nextRect = tester.getRect(_next);
+      expect(previousRect.center.dy, closeTo(indicatorRect.center.dy, 0.1));
+      expect(nextRect.center.dy, closeTo(indicatorRect.center.dy, 0.1));
+      expect(previousRect.right, lessThanOrEqualTo(indicatorRect.left));
+      expect(indicatorRect.right, lessThanOrEqualTo(nextRect.left));
+      await _tap(tester, indicator);
+      expect(find.text('Sayfa numarası'), findsOneWidget);
+      await _tap(tester, find.text('Vazgeç'));
+      await _tap(tester, _previous);
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      await _tap(tester, _next);
+      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       await tester.ensureVisible(find.byTooltip('Paneli küçült'));
       await _tap(tester, find.byTooltip('Paneli küçült'));
       expect(tester.takeException(), isNull);

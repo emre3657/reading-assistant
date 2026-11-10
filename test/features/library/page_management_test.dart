@@ -445,6 +445,11 @@ void main() {
       find.byKey(const ValueKey('document-text')),
       'İkinci değişti.',
     );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('save-document')).hitTestable(),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('save-document')));
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();

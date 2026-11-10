@@ -11,6 +11,7 @@ import '../data/document_page.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
 import 'page_navigation_bar.dart';
+import 'go_to_page_dialog.dart';
 
 /// Reads and edits one page. Shared title/category are edited separately
 /// at content level. Listening and editing lock each other.
@@ -74,6 +75,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   bool _editing = false;
   bool _saving = false;
   bool _transitioning = false;
+  bool _pageDialogOpen = false;
   bool _exitInProgress = false;
   bool _allowPop = false;
   bool _panelExpanded = true;
@@ -200,8 +202,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// Moves to the previous (-1) or next (+1) page in stored order.
-  Future<void> _navigate(int delta) async {
+  /// Moves by a relative offset or a 1-based number in stored order.
+  Future<void> _navigate({int? delta, int? pageNumber}) async {
+    assert((delta == null) != (pageNumber == null));
     if (_transitioning ||
         _saving ||
         _exitInProgress ||
@@ -245,9 +248,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         _showMessage('Bu sayfa bulunamadı. Sayfa değiştirilemedi.');
         return;
       }
-      final targetIndex = index + delta;
+      final targetIndex = pageNumber == null ? index + delta! : pageNumber - 1;
       if (targetIndex < 0 || targetIndex >= pages.length) {
         setState(() => _pages = pages);
+        if (pageNumber != null) {
+          _showMessage('Bu sayfa bulunamadı. Sayfa değiştirilemedi.');
+        }
         return;
       }
       _applyPage(pages, targetIndex);
@@ -422,13 +428,39 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     final blocked =
         _transitioning ||
         _saving ||
+        _exitInProgress ||
         _listening.status == ListeningStatus.stopping;
     return PageNavigationBar(
       current: index + 1,
       total: total,
-      onPrevious: blocked || index == 0 ? null : () => _navigate(-1),
-      onNext: blocked || index == total - 1 ? null : () => _navigate(1),
+      onPrevious: blocked || index == 0 ? null : () => _navigate(delta: -1),
+      onNext: blocked || index == total - 1 ? null : () => _navigate(delta: 1),
+      onGoToPage: blocked || _pageDialogOpen ? null : _showGoToPage,
     );
+  }
+
+  Future<void> _showGoToPage() async {
+    if (_pageDialogOpen ||
+        _transitioning ||
+        _saving ||
+        _exitInProgress ||
+        _listening.status == ListeningStatus.stopping ||
+        !_hasPageNavigation ||
+        _pages!.length <= 1) {
+      return;
+    }
+    _pageDialogOpen = true;
+    int? number;
+    try {
+      number = await showDialog<int>(
+        context: context,
+        builder: (_) => GoToPageDialog(total: _pages!.length),
+      );
+    } finally {
+      _pageDialogOpen = false;
+    }
+    if (!mounted || number == null || number == _pageIndex + 1) return;
+    await _navigate(pageNumber: number);
   }
 
   @override

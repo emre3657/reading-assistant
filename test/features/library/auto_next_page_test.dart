@@ -8,6 +8,7 @@ import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
+import 'package:reading_assistant/features/library/presentation/page_navigation_bar.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 
 import '../listening/fake_speech_service.dart';
@@ -74,6 +75,9 @@ Finder _button(String label) => find.ancestor(
 
 bool _enabled(Finder finder) =>
     (finder.evaluate().single.widget as ButtonStyleButton).onPressed != null;
+
+bool _pageButtonEnabled(Finder finder) =>
+    (finder.evaluate().single.widget as IconButton).onPressed != null;
 
 bool _switchOn(WidgetTester tester) => tester
     .widget<Switch>(find.descendant(of: _switch, matching: find.byType(Switch)))
@@ -376,12 +380,12 @@ void main() {
       await tester.pump();
       expect(find.text('Sonraki sayfa açılıyor…'), findsOneWidget);
       expect(_enabled(_button('Durdur')), isTrue);
-      expect(_enabled(_next), isFalse);
+      expect(_pageButtonEnabled(_next), isFalse);
       expect(_enabled(_button('Sesli oku')), isFalse);
       await tester.tap(_button('Durdur'));
       await tester.pump();
       expect(find.text('Sonraki sayfa açılıyor…'), findsNothing);
-      expect(_enabled(_next), isTrue);
+      expect(_pageButtonEnabled(_next), isTrue);
 
       store.pagesGate!.complete();
       await tester.pumpAndSettle();
@@ -429,7 +433,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(_enabled(_next), isFalse);
+      expect(_pageButtonEnabled(_next), isFalse);
       expect(_enabled(_button('Sesli oku')), isFalse);
       expect(
         tester
@@ -533,7 +537,7 @@ void main() {
         findsOneWidget,
       );
       expect(speech.spoken, hasLength(2));
-      expect(_enabled(_next), isTrue);
+      expect(_pageButtonEnabled(_next), isTrue);
       expect(find.text('Birinci sayfa. İkinci cümle.'), findsOneWidget);
     });
 
@@ -565,12 +569,7 @@ void main() {
       (tester) async {
         await _show(tester, _Store(_threePages()), FakeSpeechService());
         final panel = find.byKey(const ValueKey('listening-panel'));
-        final row = find
-            .ancestor(
-              of: find.byKey(const ValueKey('page-indicator')),
-              matching: find.byType(Material),
-            )
-            .first;
+        final row = find.byType(PageNavigationBar);
         expect(tester.getSize(panel).width, 800);
         expect(tester.getSize(row).width, 800);
         expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
@@ -594,12 +593,7 @@ void main() {
         tester.getSize(find.byKey(const ValueKey('listening-panel'))).width,
         800,
       );
-      final row = find
-          .ancestor(
-            of: find.byKey(const ValueKey('page-indicator')),
-            matching: find.byType(Material),
-          )
-          .first;
+      final row = find.byType(PageNavigationBar);
       expect(tester.getSize(row).width, 800);
       await _openMore(tester);
       expect(_switch, findsNothing);

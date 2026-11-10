@@ -40,7 +40,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Onay alarak tek sayfayı veya içeriğin tamamını silme.
-- Sayfa okuma ekranında önceki/sonraki sayfa düğmeleri ve "Sayfa 2 / 5" göstergesi; sayfalar kayıtlı sırayla gezilir, geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Kaydedilmemiş düzenlemede devam etme, kaydetmeden geçme veya kaydedip geçme sorulur.
+- Sayfa okuma ekranında önceki/sonraki düğmeleri veya sayfa göstergesine dokunup numara girerek kayıtlı sırada gezinme; geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Kaydedilmemiş düzenlemede devam etme, kaydetmeden geçme veya kaydedip geçme sorulur.
 - Çok sayfalı içeriklerde “Okuma ayarları”ndaki varsayılan kapalı “Sonraki sayfayı otomatik oku” anahtarı, sayfa doğal olarak bittiğinde sonraki sayfayı okur. Son veya boş sayfada okuma biter. Bekleyen geçiş Durdur, anahtarı kapatma veya arka plana geçme ile iptal edilir.
 - Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.
 
@@ -91,7 +91,7 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - OCR, Türkçe karakterleri, dipnotları ve kaynak numaralarını yanlış okuyabilir. Otomatik yazım düzeltme yoktur.
 - Görsel yönü kullanıcı tarafından düzeltilir. Çok sütunlu metin ve tablolarda okuma sırası garanti edilmez.
 - Satır birleştirme ve cümle bölme sezgiseldir; şiir ve şarkı sözlerinde satır birleştirme kapalı bırakılabilir.
-- Sayfa numarası girerek atlama yoktur; otomatik sayfa geçişi yalnızca çok sayfalı kayıtlı içerik okuma ekranındadır.
+- Otomatik sayfa geçişi yalnızca çok sayfalı kayıtlı içerik okuma ekranındadır.
 - Arka planda/ekran kilitliyken dinleme desteklenmez.
 - Metin sürüm geçmişi, uygulama içi yedekleme ve bulut senkronizasyonu yoktur.
 - Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.

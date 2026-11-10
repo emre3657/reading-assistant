@@ -10,6 +10,7 @@ class PageNavigationBar extends StatelessWidget {
     required this.total,
     required this.onPrevious,
     required this.onNext,
+    required this.onGoToPage,
   });
 
   /// 1-based number of the open page.
@@ -19,6 +20,7 @@ class PageNavigationBar extends StatelessWidget {
   /// Null disables the control (first/last page or a move in progress).
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
+  final VoidCallback? onGoToPage;
 
   @override
   Widget build(BuildContext context) {
@@ -42,30 +44,51 @@ class PageNavigationBar extends StatelessWidget {
                   constraints: const BoxConstraints(minHeight: 48),
                   child: Center(heightFactor: 1, child: indicator),
                 )
-              : Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
+              : Row(
                   children: [
-                    TextButton.icon(
+                    IconButton(
                       key: const ValueKey('previous-page'),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(48, 48),
+                      tooltip: 'Önceki sayfa',
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
                       ),
                       onPressed: onPrevious,
                       icon: const Icon(Icons.chevron_left),
-                      label: const Text('Önceki sayfa'),
                     ),
-                    Semantics(liveRegion: true, child: indicator),
-                    TextButton.icon(
+                    Expanded(
+                      child: Center(
+                        heightFactor: 1,
+                        child: Semantics(
+                          label: 'Sayfaya git. Sayfa $current / $total',
+                          button: true,
+                          enabled: onGoToPage != null,
+                          onTap: onGoToPage,
+                          liveRegion: true,
+                          excludeSemantics: true,
+                          child: TextButton(
+                            key: const ValueKey('go-to-page'),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(48, 48),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                            ),
+                            onPressed: onGoToPage,
+                            child: indicator,
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
                       key: const ValueKey('next-page'),
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(48, 48),
+                      tooltip: 'Sonraki sayfa',
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
                       ),
                       onPressed: onNext,
-                      iconAlignment: IconAlignment.end,
                       icon: const Icon(Icons.chevron_right),
-                      label: const Text('Sonraki sayfa'),
                     ),
                   ],
                 ),
