@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
@@ -8,6 +10,7 @@ import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
 import '../../listening/presentation/sentence_highlight.dart';
 import '../../listening/presentation/sentence_follow.dart';
+import '../../listening/services/sentence_splitter.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
@@ -51,6 +54,32 @@ class SavedDocumentScreen extends StatefulWidget {
 
 enum _ExitChoice { keepEditing, discard, save }
 
+class _SentenceBubbleLayout extends SingleChildLayoutDelegate {
+  const _SentenceBubbleLayout(this.line);
+
+  final Rect line;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints.loose(constraints.biggest);
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    const gap = 4.0;
+    final left = (line.center.dx - childSize.width / 2).clamp(
+      0.0,
+      size.width - childSize.width,
+    );
+    final above = line.top - childSize.height - gap;
+    final top = above >= 0 ? above : line.bottom + gap;
+    return Offset(left, top.clamp(0.0, size.height - childSize.height));
+  }
+
+  @override
+  bool shouldRelayout(_SentenceBubbleLayout oldDelegate) =>
+      line != oldDelegate.line;
+}
+
 class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     with WidgetsBindingObserver {
   static const _lockedHint = 'Düzenlemek için okumayı durdur';
@@ -62,11 +91,15 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   // Owned here; created once and disposed in dispose().
   final _textController = TextEditingController();
-  final _readController = HighlightingTextEditingController();
+  final _readController = HighlightingTextEditingController(
+    neutralReading: true,
+  );
   final _formKey = GlobalKey<FormState>();
   final _scrollController = ScrollController();
   final _followKey = GlobalKey<SentenceFollowState>();
   final _followTextKey = GlobalKey();
+  final _readerBodyKey = GlobalKey();
+  final _sentenceTapGroup = Object();
 
   late SavedDocument _saved;
 
@@ -85,6 +118,17 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   bool _allowPop = false;
   bool _panelExpanded = true;
   int? _resumeSentence;
+  int? _selectedSentence;
+  int? _pendingReadFrom;
+  int? _selectedOffset;
+  Rect? _selectedLine;
+  Size? _readerSize;
+  bool _anchorUpdateScheduled = false;
+  int _readFromToken = 0;
+  int? _tapPointer;
+  Offset? _tapOrigin;
+  Timer? _tapTimer;
+  bool _tapMoved = false;
   bool _positionErrorShown = false;
 
   bool _autoPending = false;
@@ -125,6 +169,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     );
     _readController.attachListening(_listening);
     _listening.addListener(_onListeningChanged);
+    _scrollController.addListener(_scheduleAnchorUpdate);
 
     WidgetsBinding.instance.addObserver(this);
   }
@@ -183,6 +228,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   @override
   void dispose() {
     _autoToken++;
+    _readFromToken++;
+    _tapTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _listening.removeListener(_onListeningChanged);
     _preferences?.removeListener(_onPreferencesChanged);
@@ -190,6 +237,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _listening.dispose();
     _ownedSpeechService?.dispose();
     _textController.dispose();
+    _scrollController.removeListener(_scheduleAnchorUpdate);
     _scrollController.dispose();
     _pageList.dispose();
     super.dispose();
@@ -282,6 +330,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     VoidCallback? alsoSet,
   }) {
     final target = pages[index];
+    _readFromToken++;
+    _clearSentenceSelection();
     _readController.text = target.text;
     setState(() {
       _pages = pages;
@@ -313,6 +363,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         status == ListeningStatus.completed &&
         _lastStatus != ListeningStatus.completed;
     _lastStatus = status;
+    if (status == ListeningStatus.failed || status == ListeningStatus.idle) {
+      _pendingReadFrom = null;
+    }
     if (finishedNow && _pageId != null) {
       unawaited(_recordCompletion(_pageId!));
     }
@@ -329,6 +382,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   void _saveListeningPosition(int sentenceIndex) {
+    if (_pendingReadFrom == sentenceIndex) {
+      _pendingReadFrom = null;
+      if (mounted && _selectedSentence == sentenceIndex) {
+        setState(_clearSentenceSelection);
+      }
+    }
     final pageId = _pageId;
     if (pageId == null) return;
     unawaited(_savePosition(pageId, sentenceIndex, _saved.text));
@@ -478,6 +537,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _readFromToken++;
       _cancelAutoAdvance();
       _listening.stop();
     }
@@ -491,10 +551,214 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         !(_preferences?.ready ?? false)) {
       return;
     }
-    final initialSentence = _resumeSentence ?? 0;
+    _beginListening(_resumeSentence ?? 0);
+  }
+
+  void _beginListening(int initialSentence) {
     _resumeSentence = null;
     _followKey.currentState?.newSession();
     _listening.start(_saved.text, initialSentence: initialSentence);
+  }
+
+  void _clearSentenceSelection() {
+    _tapPointer = null;
+    _tapOrigin = null;
+    _tapTimer?.cancel();
+    _selectedSentence = null;
+    _selectedOffset = null;
+    _selectedLine = null;
+    _readController.selectSentence(null);
+  }
+
+  void _dismissSentenceSelection() {
+    if (_selectedSentence != null && mounted) {
+      setState(_clearSentenceSelection);
+    }
+  }
+
+  RenderEditable? _readerEditable() {
+    RenderEditable? editable;
+    void visit(Element element) {
+      if (editable != null) return;
+      if (element is StatefulElement && element.state is EditableTextState) {
+        editable = (element.state as EditableTextState).renderEditable;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    _followTextKey.currentContext?.visitChildElements(visit);
+    return editable;
+  }
+
+  void _scheduleAnchorUpdate() {
+    if (_selectedOffset == null || _anchorUpdateScheduled) return;
+    _anchorUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _anchorUpdateScheduled = false;
+      if (!mounted || _selectedOffset == null) return;
+      final render = _readerEditable();
+      final body = _readerBodyKey.currentContext?.findRenderObject();
+      final offset = _selectedOffset!;
+      if (render == null ||
+          !render.attached ||
+          body is! RenderBox ||
+          !body.attached ||
+          offset >= _saved.text.length) {
+        return;
+      }
+      var end = offset + 1;
+      final unit = _saved.text.codeUnitAt(offset);
+      if (unit >= 0xD800 && unit <= 0xDBFF && end < _saved.text.length) end++;
+      final boxes = render.getBoxesForSelection(
+        TextSelection(baseOffset: offset, extentOffset: end),
+      );
+      if (boxes.isEmpty) return;
+      final box = boxes.first.toRect();
+      final line = Rect.fromPoints(
+        body.globalToLocal(render.localToGlobal(box.topLeft)),
+        body.globalToLocal(render.localToGlobal(box.bottomRight)),
+      );
+      if (line.bottom <= 0 || line.top >= body.size.height) {
+        _dismissSentenceSelection();
+      } else if (_selectedLine != line) {
+        setState(() => _selectedLine = line);
+      }
+    });
+  }
+
+  void _onTextPointerDown(PointerDownEvent event) {
+    if (_tapPointer != null || event.buttons != kPrimaryButton) {
+      _tapMoved = true;
+      return;
+    }
+    _tapPointer = event.pointer;
+    _tapOrigin = event.position;
+    _tapMoved = false;
+    _tapTimer?.cancel();
+    _tapTimer = Timer(kLongPressTimeout, () {
+      _tapMoved = true;
+      _dismissSentenceSelection();
+    });
+  }
+
+  void _onTextPointerMove(PointerMoveEvent event) {
+    if (event.pointer == _tapPointer &&
+        (event.position - _tapOrigin!).distance > kTouchSlop) {
+      _tapMoved = true;
+      _dismissSentenceSelection();
+    }
+  }
+
+  void _onTextPointerUp(PointerUpEvent event) {
+    if (event.pointer != _tapPointer) return;
+    final isTap = !_tapMoved;
+    _tapTimer?.cancel();
+    _tapPointer = null;
+    _tapOrigin = null;
+    if (isTap) _selectSentenceAt(event.position);
+  }
+
+  void _onTextPointerCancel(PointerCancelEvent event) {
+    if (event.pointer == _tapPointer) {
+      _tapPointer = null;
+      _tapOrigin = null;
+      _tapTimer?.cancel();
+    }
+  }
+
+  void _selectSentenceAt(Offset globalPosition) {
+    if (_editing || _transitioning || _saving || _exitInProgress) return;
+    final render = _readerEditable();
+    if (render == null || !render.attached) return;
+    final text = _saved.text;
+    final position = render.getPositionForPoint(globalPosition).offset;
+    final local = render.globalToLocal(globalPosition);
+    int? hit;
+    Rect? hitBox;
+    for (final offset in [position, position - 1]) {
+      if (offset < 0 || offset >= text.length) continue;
+      var start = offset;
+      var end = offset + 1;
+      final unit = text.codeUnitAt(offset);
+      if (unit >= 0xDC00 && unit <= 0xDFFF && start > 0) start--;
+      if (unit >= 0xD800 && unit <= 0xDBFF && end < text.length) end++;
+      final boxes = render.getBoxesForSelection(
+        TextSelection(baseOffset: start, extentOffset: end),
+      );
+      for (final box in boxes) {
+        if (box.toRect().contains(local)) {
+          hit = start;
+          hitBox = box.toRect();
+          break;
+        }
+      }
+      if (hit != null) break;
+    }
+    if (hit == null || text[hit].trim().isEmpty) {
+      _dismissSentenceSelection();
+      return;
+    }
+    final sentences = splitSentences(text);
+    final index = sentences.indexWhere(
+      (sentence) => hit! >= sentence.start && hit < sentence.end,
+    );
+    if (index < 0) return;
+    if (_selectedSentence == index) {
+      _dismissSentenceSelection();
+      return;
+    }
+    final body = _readerBodyKey.currentContext?.findRenderObject();
+    if (body is! RenderBox || !body.attached || hitBox == null) return;
+    final topLeft = body.globalToLocal(render.localToGlobal(hitBox.topLeft));
+    final bottomRight = body.globalToLocal(
+      render.localToGlobal(hitBox.bottomRight),
+    );
+    setState(() {
+      _selectedSentence = index;
+      _selectedOffset = hit;
+      _selectedLine = Rect.fromPoints(topLeft, bottomRight);
+      _readController.selectSentence(sentences[index]);
+    });
+  }
+
+  Future<void> _readFromSelection() async {
+    final index = _selectedSentence;
+    if (index == null ||
+        _editing ||
+        _saving ||
+        _exitInProgress ||
+        (_transitioning && !_autoPending) ||
+        !(_preferences?.ready ?? false) ||
+        (_listening.isActive && !_listening.canStop)) {
+      return;
+    }
+    if (_autoPending) _cancelAutoAdvance();
+    final token = ++_readFromToken;
+    final pageId = _pageId;
+    final text = _saved.text;
+    setState(() => _transitioning = true);
+    try {
+      if (_listening.isActive) {
+        await _listening.stop();
+        if (!mounted || token != _readFromToken) return;
+        if (_listening.status == ListeningStatus.failed) {
+          _showMessage(_listening.message ?? 'Okuma durdurulamadı.');
+          return;
+        }
+      }
+      if (!mounted ||
+          token != _readFromToken ||
+          _pageId != pageId ||
+          _saved.text != text ||
+          _selectedSentence != index) {
+        return;
+      }
+      _pendingReadFrom = index;
+      _beginListening(index);
+    } finally {
+      if (mounted) setState(() => _transitioning = false);
+    }
   }
 
   void _startEditing() {
@@ -503,6 +767,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     FocusManager.instance.primaryFocus?.unfocus();
 
     setState(() {
+      _readFromToken++;
+      _clearSentenceSelection();
       _editSession++;
       _editing = true;
       _error = null;
@@ -746,46 +1012,112 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         ],
       ),
       body: SafeArea(
-        child: SentenceFollow(
-          key: _followKey,
-          listening: _listening,
-          preferences: _preferences!,
-          textController: _readController,
-          textKey: _followTextKey,
-          scrollController: _scrollController,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final size = constraints.biggest;
+            if (_readerSize != size) {
+              _readerSize = size;
+              _scheduleAnchorUpdate();
+            }
+            return Stack(
+              key: _readerBodyKey,
               children: [
-                Text(
-                  document.category.label,
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                if (_pageNumber != null) ...[
-                  const SizedBox(height: 8),
-                  Text('Sayfa $_pageNumber'),
-                ],
-                const SizedBox(height: 16),
-                KeyedSubtree(
-                  key: _followTextKey,
-                  child: TextField(
-                    key: const ValueKey('saved-reading-text'),
-                    controller: _readController,
-                    readOnly: true,
-                    showCursor: false,
-                    maxLines: null,
-                    decoration: const InputDecoration.collapsed(hintText: ''),
-                    textAlign: document.category == DocumentCategory.book
-                        ? TextAlign.justify
-                        : TextAlign.start,
-                    style: Theme.of(context).textTheme.bodyLarge,
+                SentenceFollow(
+                  key: _followKey,
+                  listening: _listening,
+                  preferences: _preferences!,
+                  textController: _readController,
+                  textKey: _followTextKey,
+                  scrollController: _scrollController,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification is UserScrollNotification &&
+                          notification.direction != ScrollDirection.idle) {
+                        _dismissSentenceSelection();
+                      }
+                      return false;
+                    },
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            document.category.label,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          if (_pageNumber != null) ...[
+                            const SizedBox(height: 8),
+                            Text('Sayfa $_pageNumber'),
+                          ],
+                          const SizedBox(height: 16),
+                          KeyedSubtree(
+                            key: _followTextKey,
+                            child: TapRegion(
+                              groupId: _sentenceTapGroup,
+                              onTapOutside: (_) => _dismissSentenceSelection(),
+                              child: Listener(
+                                onPointerDown: _onTextPointerDown,
+                                onPointerMove: _onTextPointerMove,
+                                onPointerUp: _onTextPointerUp,
+                                onPointerCancel: _onTextPointerCancel,
+                                child: TextField(
+                                  key: const ValueKey('saved-reading-text'),
+                                  controller: _readController,
+                                  readOnly: true,
+                                  showCursor: false,
+                                  maxLines: null,
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: '',
+                                  ),
+                                  textAlign:
+                                      document.category == DocumentCategory.book
+                                      ? TextAlign.justify
+                                      : TextAlign.start,
+                                  style: Theme.of(context).textTheme.bodyLarge,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
+                if (_selectedLine case final line?)
+                  CustomSingleChildLayout(
+                    delegate: _SentenceBubbleLayout(line),
+                    child: TapRegion(
+                      groupId: _sentenceTapGroup,
+                      child: Material(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHigh,
+                        elevation: 4,
+                        borderRadius: BorderRadius.circular(12),
+                        child: TextButton.icon(
+                          key: const ValueKey('read-from-sentence'),
+                          onPressed:
+                              (!_transitioning || _autoPending) &&
+                                  !_saving &&
+                                  !_exitInProgress &&
+                                  (_preferences?.ready ?? false) &&
+                                  (!listeningActive || _listening.canStop)
+                              ? _readFromSelection
+                              : null,
+                          icon: const Icon(Icons.play_arrow),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 48),
+                          ),
+                          label: const Text('Buradan oku'),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
-            ),
-          ),
+            );
+          },
         ),
       ),
       bottomNavigationBar: _buildBottomBar(document, listeningActive),
@@ -813,7 +1145,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     if (pageNavigation == null) {
       return controls == null ? null : ListeningSurface(child: controls);
     }
-    if (controls == null) return SafeArea(child: pageNavigation);
+    if (controls == null) {
+      return SafeArea(child: pageNavigation);
+    }
     return ListeningSurface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
