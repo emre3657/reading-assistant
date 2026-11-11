@@ -1,20 +1,22 @@
-enum DocumentCategory {
-  book('Kitap'),
-  note('Not'),
-  recipe('Yemek tarifi'),
-  lesson('Ders notu'),
-  lyrics('Şarkı sözü');
+class DocumentCategory {
+  const DocumentCategory(this.name, this.label);
 
-  const DocumentCategory(this.label);
+  static const book = DocumentCategory('book', 'Kitap');
+  static const note = DocumentCategory('note', 'Not');
+  static const recipe = DocumentCategory('recipe', 'Yemek tarifi');
+  static const lesson = DocumentCategory('lesson', 'Ders notu');
+  static const lyrics = DocumentCategory('lyrics', 'Şarkı sözü');
+  static const values = [book, note, recipe, lesson, lyrics];
 
+  final String name;
   final String label;
 
-  static DocumentCategory fromName(String name) {
-    return values.firstWhere(
-      (category) => category.name == name,
-      orElse: () => DocumentCategory.note,
-    );
-  }
+  @override
+  bool operator ==(Object other) =>
+      other is DocumentCategory && other.name == name;
+
+  @override
+  int get hashCode => name.hashCode;
 }
 
 class SavedDocument {
@@ -36,7 +38,10 @@ class SavedDocument {
     return SavedDocument(
       id: map['id'] as int,
       title: map['title'] as String,
-      category: DocumentCategory.fromName(map['category'] as String),
+      category: DocumentCategory(
+        map['category'] as String,
+        map['category_label'] as String,
+      ),
       text: map['text'] as String,
       createdAt: DateTime.fromMillisecondsSinceEpoch(
         map['created_at'] as int,

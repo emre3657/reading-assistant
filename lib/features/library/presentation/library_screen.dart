@@ -3,13 +3,12 @@ import 'package:flutter/material.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
+import '../data/turkish_text.dart';
 import 'document_contents_screen.dart';
 import 'document_details_dialog.dart';
+import 'categories_screen.dart';
 
 enum _DocumentAction { edit, delete }
-
-String _normalizeTitle(String value) =>
-    value.replaceAll('I', 'ı').replaceAll('İ', 'i').toLowerCase();
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key, this.store, this.speechService});
@@ -55,6 +54,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _manageCategories() async {
+    if (_busy) return;
+    setState(() => _opening = true);
+    try {
+      final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => CategoriesScreen(store: _store)),
+      );
+      if (mounted && changed == true) _reload();
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
   }
 
   Future<void> _open(SavedDocument document) async {
@@ -213,6 +225,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
       appBar: AppBar(
         title: const Text('Kayıtlarım'),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Kayıtlarım menüsü',
+            enabled: !_busy,
+            onSelected: (_) => _manageCategories(),
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'categories',
+                child: Text('Kategorileri yönet'),
+              ),
+            ],
+          ),
           IconButton(
             onPressed: _busy ? null : _reload,
             tooltip: 'Yenile',
@@ -290,13 +313,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           );
         }
-        final query = _normalizeTitle(_searchController.text.trim());
+        final query = normalizeTurkishCase(_searchController.text.trim());
         final filtered = query.isEmpty
             ? documents
             : documents
                   .where(
                     (document) =>
-                        _normalizeTitle(document.title).contains(query),
+                        normalizeTurkishCase(document.title).contains(query),
                   )
                   .toList();
         if (filtered.isEmpty) {

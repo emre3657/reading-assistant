@@ -1,6 +1,82 @@
 import 'package:sqflite/sqflite.dart';
 
-const documentDatabaseVersion = 6;
+import 'saved_document.dart';
+import 'turkish_text.dart';
+
+const documentDatabaseVersion = 7;
+
+String normalizeCategoryName(String name) => normalizeTurkishCase(name.trim());
+
+const createCategoriesSql = '''
+CREATE TABLE categories (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  normalized_label TEXT NOT NULL UNIQUE
+)
+''';
+
+Future<void> createCategories(DatabaseExecutor database) async {
+  await database.execute(createCategoriesSql);
+  await ensureBuiltInCategories(database);
+  final legacy = await database.rawQuery(
+    'SELECT DISTINCT category FROM documents WHERE category NOT IN (SELECT id FROM categories)',
+  );
+  for (final row in legacy) {
+    final id = row['category'] as String;
+    var label = id.trim().isEmpty ? 'Eski kategori' : id.trim();
+    var suffix = 1;
+    final base = label;
+    while ((await database.query(
+      'categories',
+      columns: ['id'],
+      where: 'normalized_label = ?',
+      whereArgs: [normalizeCategoryName(label)],
+    )).isNotEmpty) {
+      label = '$base (${suffix++})';
+    }
+    await database.insert('categories', {
+      'id': id,
+      'label': label,
+      'normalized_label': normalizeCategoryName(label),
+    });
+  }
+  await database.execute('''
+    CREATE TRIGGER validate_document_category_insert
+    BEFORE INSERT ON documents
+    WHEN NOT EXISTS (SELECT 1 FROM categories WHERE id = NEW.category)
+    BEGIN SELECT RAISE(ABORT, 'Invalid category'); END
+  ''');
+  await database.execute('''
+    CREATE TRIGGER validate_document_category_update
+    BEFORE UPDATE OF category ON documents
+    WHEN NOT EXISTS (SELECT 1 FROM categories WHERE id = NEW.category)
+    BEGIN SELECT RAISE(ABORT, 'Invalid category'); END
+  ''');
+  await database.execute('''
+    CREATE TRIGGER prevent_referenced_category_delete
+    BEFORE DELETE ON categories
+    WHEN EXISTS (SELECT 1 FROM documents WHERE category = OLD.id)
+    BEGIN SELECT RAISE(ABORT, 'Category is in use'); END
+  ''');
+}
+
+Future<void> ensureBuiltInCategories(DatabaseExecutor database) async {
+  for (final category in DocumentCategory.values) {
+    final existing = await database.query(
+      'categories',
+      columns: ['id'],
+      where: 'id = ?',
+      whereArgs: [category.name],
+    );
+    if (existing.isEmpty) {
+      await database.insert('categories', {
+        'id': category.name,
+        'label': category.label,
+        'normalized_label': normalizeCategoryName(category.label),
+      });
+    }
+  }
+}
 
 const createDocumentsSql = '''
 CREATE TABLE documents (
@@ -77,6 +153,7 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(createReadingPreferencesSql);
   await database.execute(addFollowSentenceSql);
   await database.execute(addReadingTextSizeSql);
+  await createCategories(database);
 }
 
 const addFollowSentenceSql =
@@ -111,5 +188,8 @@ Future<void> upgradeDocumentSchema(
   }
   if (oldVersion < 6 && newVersion >= 6) {
     await database.execute(addReadingTextSizeSql);
+  }
+  if (oldVersion < 7 && newVersion >= 7) {
+    await createCategories(database);
   }
 }

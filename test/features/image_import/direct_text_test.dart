@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/presentation/save_document_dialog.dart';
+import 'package:reading_assistant/features/library/data/document_store.dart';
+import 'package:reading_assistant/features/library/data/saved_document.dart';
 
 import '../listening/fake_speech_service.dart';
 
@@ -13,6 +15,11 @@ class _Picker extends ImagePickerService {
   bool get canRecoverLostImage => false;
   @override
   Future<XFile?> pickFromGallery() async => result;
+}
+
+class _Store extends DocumentStore {
+  @override
+  Future<List<DocumentCategory>> categories() async => DocumentCategory.values;
 }
 
 final _field = find.byKey(const ValueKey('import-text'));
@@ -32,6 +39,7 @@ Future<void> _show(
         pickerService: picker,
         speechService: speech,
         returnText: returnText,
+        store: _Store(),
       ),
     ),
   );

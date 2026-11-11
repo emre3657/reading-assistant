@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
+import 'category_editor.dart';
 
 Future<SavedDocument?> showDocumentDetailsDialog({
   required BuildContext context,
@@ -30,6 +31,7 @@ class _DocumentDetailsDialogState extends State<_DocumentDetailsDialog> {
   late DocumentCategory _category;
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
+  bool _categoriesReady = false;
   bool _closing = false;
   String? _error;
 
@@ -47,7 +49,7 @@ class _DocumentDetailsDialogState extends State<_DocumentDetailsDialog> {
   }
 
   Future<void> _save() async {
-    if (_saving || _closing) return;
+    if (_saving || _closing || !_categoriesReady) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusManager.instance.primaryFocus?.unfocus();
     final title = _title.text.trim();
@@ -130,26 +132,13 @@ class _DocumentDetailsDialogState extends State<_DocumentDetailsDialog> {
                 },
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<DocumentCategory>(
+              CategoryPicker(
                 key: const ValueKey('document-details-category'),
-                initialValue: _category,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Kategori',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  for (final category in DocumentCategory.values)
-                    DropdownMenuItem(
-                      value: category,
-                      child: Text(category.label),
-                    ),
-                ],
-                onChanged: _saving
-                    ? null
-                    : (value) {
-                        if (value != null) setState(() => _category = value);
-                      },
+                store: widget.store,
+                value: _category,
+                enabled: !_saving,
+                onReady: (ready) => setState(() => _categoriesReady = ready),
+                onChanged: (value) => setState(() => _category = value),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),
@@ -177,7 +166,7 @@ class _DocumentDetailsDialogState extends State<_DocumentDetailsDialog> {
           ),
           FilledButton(
             key: const ValueKey('save-document-details'),
-            onPressed: _saving ? null : _save,
+            onPressed: _saving || !_categoriesReady ? null : _save,
             child: Text(_saving ? 'Kaydediliyor…' : 'Kaydet'),
           ),
         ],

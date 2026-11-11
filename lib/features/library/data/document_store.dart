@@ -5,6 +5,10 @@ import 'document_schema.dart';
 import 'reading_position.dart';
 import 'saved_document.dart';
 
+class DuplicateCategoryException implements Exception {
+  const DuplicateCategoryException();
+}
+
 class DocumentStore {
   /// An injected opener must return an already configured current database.
   DocumentStore({this.databaseOpener});
@@ -155,11 +159,76 @@ class DocumentStore {
         onConfigure: configureDocumentDatabase,
         onCreate: createDocumentSchema,
         onUpgrade: upgradeDocumentSchema,
+        onOpen: ensureBuiltInCategories,
       );
     } catch (_) {
       _databaseFuture = null;
       rethrow;
     }
+  }
+
+  Future<List<DocumentCategory>> categories() async {
+    final database = await _database;
+    final rows = await database.query('categories', orderBy: 'rowid');
+    return [
+      for (final row in rows)
+        DocumentCategory(row['id'] as String, row['label'] as String),
+    ];
+  }
+
+  Future<DocumentCategory> createCategory(String name) async {
+    final label = name.trim();
+    if (label.isEmpty) throw ArgumentError('Category name is empty.');
+    final database = await _database;
+    return database.transaction((txn) async {
+      final normalized = normalizeCategoryName(label);
+      if ((await txn.query(
+        'categories',
+        columns: ['id'],
+        where: 'normalized_label = ?',
+        whereArgs: [normalized],
+      )).isNotEmpty) {
+        throw const DuplicateCategoryException();
+      }
+      final random = await txn.rawQuery(
+        'SELECT lower(hex(randomblob(16))) AS id',
+      );
+      final category = DocumentCategory('custom_${random.single['id']}', label);
+      await txn.insert('categories', {
+        'id': category.name,
+        'label': label,
+        'normalized_label': normalized,
+      });
+      return category;
+    });
+  }
+
+  Future<DocumentCategory> renameCategory(
+    DocumentCategory category,
+    String name,
+  ) async {
+    final label = name.trim();
+    if (label.isEmpty) throw ArgumentError('Category name is empty.');
+    final database = await _database;
+    return database.transaction((txn) async {
+      final normalized = normalizeCategoryName(label);
+      if ((await txn.query(
+        'categories',
+        columns: ['id'],
+        where: 'normalized_label = ? AND id != ?',
+        whereArgs: [normalized, category.name],
+      )).isNotEmpty) {
+        throw const DuplicateCategoryException();
+      }
+      final count = await txn.update(
+        'categories',
+        {'label': label, 'normalized_label': normalized},
+        where: 'id = ?',
+        whereArgs: [category.name],
+      );
+      if (count != 1) throw StateError('Category not found.');
+      return DocumentCategory(category.name, label);
+    });
   }
 
   Future<int> save({
@@ -291,13 +360,14 @@ class DocumentStore {
   Future<List<SavedDocument>> list() async {
     final database = await _database;
     final rows = await database.rawQuery('''
-      SELECT d.id, d.title, d.category, d.created_at,
+      SELECT d.id, d.title, d.category, c.label AS category_label, d.created_at,
         COALESCE((
           SELECT p.text FROM pages p
           WHERE p.document_id = d.id
           ORDER BY p.position, p.id LIMIT 1
         ), '') AS text
       FROM documents d
+      JOIN categories c ON c.id = d.category
       ORDER BY d.created_at DESC, d.id DESC
     ''');
     return rows.map(SavedDocument.fromMap).toList(growable: false);
@@ -307,12 +377,12 @@ class DocumentStore {
     final database = await _database;
     final rows = await database.rawQuery(
       '''
-      SELECT d.id, d.title, d.category, d.created_at,
+      SELECT d.id, d.title, d.category, c.label AS category_label, d.created_at,
         COALESCE((
           SELECT p.text FROM pages p WHERE p.document_id = d.id
           ORDER BY p.position, p.id LIMIT 1
         ), '') AS text
-      FROM documents d WHERE d.id = ?
+      FROM documents d JOIN categories c ON c.id = d.category WHERE d.id = ?
     ''',
       [id],
     );

@@ -11,6 +11,7 @@ import '../../listening/services/speech_service.dart';
 
 import '../../library/presentation/library_screen.dart';
 import '../../library/presentation/save_document_dialog.dart';
+import '../../library/data/document_store.dart';
 
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
@@ -34,6 +35,7 @@ class ImageImportScreen extends StatefulWidget {
     this.returnText = false,
     this.onSavePage,
     this.pageDocumentTitle,
+    this.store,
   });
 
   final ImagePickerService pickerService;
@@ -50,6 +52,7 @@ class ImageImportScreen extends StatefulWidget {
   /// Appends the visible text to an existing content. The caller owns storage.
   final Future<void> Function(String text)? onSavePage;
   final String? pageDocumentTitle;
+  final DocumentStore? store;
 
   @override
   State<ImageImportScreen> createState() => _ImageImportScreenState();
@@ -455,7 +458,8 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       final saved = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (context) => SaveDocumentDialog(text: text),
+        builder: (context) =>
+            SaveDocumentDialog(text: text, store: widget.store),
       );
 
       if (!mounted || saved != true) return;

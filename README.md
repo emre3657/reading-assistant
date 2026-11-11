@@ -36,10 +36,11 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 
 ### İçerikler ve sayfalar
 
-İçerikler **Kitap, Not, Yemek tarifi, Ders notu ve Şarkı sözü** kategorilerinde SQLite veritabanında saklanır. Her içerik birden fazla sıralı sayfa içerebilir.
+İçerikler yerleşik veya kullanıcı tarafından oluşturulan kategorilerle SQLite veritabanında saklanır. Her içerik birden fazla sıralı sayfa içerebilir.
 
 - İlk ekrandaki metni yeni içeriğin ilk sayfası olarak kaydetme.
 - “Kayıtlarım” ekranında içerikleri listeleme, başlığa göre arama ve açma.
+- Kayıt sırasında kategori oluşturma; “Kategorileri yönet” ile yerleşik ve özel kategorileri yeniden adlandırma.
 - Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
@@ -53,7 +54,7 @@ Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Sil
 
 Sayfa ekleme ve metin düzenleme ekranlarından kaydedilmemiş metinle çıkarken düzenlemeye devam etme, kaydetmeden çıkma veya kaydedip çıkma seçenekleri sunulur. Kaydetme hatasında taslak korunur.
 
-Kayıtlı kitap metinleri iki yana, diğer kategoriler ve sayfa düzenleme alanları başlangıç yönüne hizalanır.
+Yerleşik Kitap kategorisindeki metinler adı değiştirilse bile iki yana, diğer kategoriler ve sayfa düzenleme alanları başlangıç yönüne hizalanır.
 
 ## Çevrimdışı çalışma ve veriler
 

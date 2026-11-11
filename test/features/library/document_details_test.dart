@@ -12,6 +12,9 @@ import 'package:reading_assistant/features/library/presentation/document_details
 import 'package:reading_assistant/features/library/presentation/library_screen.dart';
 
 class _DetailsStore extends DocumentStore with FakeReadingPositions {
+  @override
+  Future<List<DocumentCategory>> categories() async => DocumentCategory.values;
+
   SavedDocument document = SavedDocument(
     id: 7,
     title: 'Başlık',
