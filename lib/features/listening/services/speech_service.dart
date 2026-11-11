@@ -28,6 +28,8 @@ enum SpeechOutcome {
   failed,
 }
 
+typedef SpeechProgress = void Function(int start, int end);
+
 /// `flutter_tts` rate value that stands for the app's base speed (1×).
 ///
 /// In `flutter_tts 4.2.5` the Dart value is not the engine value: Android
@@ -55,12 +57,18 @@ double speechRateFor(double multiplier) =>
 class SpeechService {
   SpeechService({FlutterTts? tts}) : _tts = tts ?? FlutterTts() {
     _tts.setErrorHandler(_onError);
+    _tts.setProgressHandler(_onProgress);
   }
 
   static const turkishLocale = 'tr-TR';
+  // The plugin omits utterance IDs. A repeated hash is ambiguous even after
+  // stop or across service instances; collisions only suppress highlighting.
+  static final Set<int> _spokenTextHashes = {};
 
   final FlutterTts _tts;
   Completer<SpeechOutcome>? _pending;
+  String? _progressText;
+  SpeechProgress? _progress;
 
   /// Selects a Turkish voice and checks what the platform can tell about its
   /// offline availability. Throws when the platform call itself fails.
@@ -100,9 +108,12 @@ class SpeechService {
 
   /// Speaks one piece of text. The returned future completes when the
   /// platform reports the end, an error, or [stop] is called.
-  Future<SpeechOutcome> speak(String text) {
+  Future<SpeechOutcome> speak(String text, {SpeechProgress? onProgress}) {
     final signal = Completer<SpeechOutcome>();
     _pending = signal;
+    final unique = _spokenTextHashes.add(text.hashCode);
+    _progressText = unique ? text : null;
+    _progress = unique ? onProgress : null;
     _tts
         .speak(text)
         .then(
@@ -113,7 +124,11 @@ class SpeechService {
           onError: (Object _) => _complete(signal, SpeechOutcome.failed),
         );
     return signal.future.whenComplete(() {
-      if (identical(_pending, signal)) _pending = null;
+      if (identical(_pending, signal)) {
+        _pending = null;
+        _progressText = null;
+        _progress = null;
+      }
     });
   }
 
@@ -121,6 +136,8 @@ class SpeechService {
   Future<void> stop() async {
     final pending = _pending;
     if (pending != null) _complete(pending, SpeechOutcome.stopped);
+    _progressText = null;
+    _progress = null;
     await _tts.stop();
   }
 
@@ -130,9 +147,28 @@ class SpeechService {
     final pending = _pending;
     if (pending != null) _complete(pending, SpeechOutcome.stopped);
     _tts.setErrorHandler((_) {});
+    _progressText = null;
+    _progress = null;
+    _tts.setProgressHandler((_, _, _, _) {});
     try {
       await _tts.stop();
     } catch (_) {}
+  }
+
+  void _onProgress(String text, int start, int end, String word) {
+    if (_progressText != text || _pending == null || _pending!.isCompleted) {
+      return;
+    }
+    if (start < 0 ||
+        end <= start ||
+        end > text.length ||
+        text.substring(start, end) != word ||
+        word.trim().isEmpty ||
+        word.contains(RegExp(r'\s'))) {
+      _progress?.call(-1, -1);
+      return;
+    }
+    _progress?.call(start, end);
   }
 
   void _onError(dynamic message) {

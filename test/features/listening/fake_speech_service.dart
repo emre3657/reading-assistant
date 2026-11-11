@@ -22,6 +22,7 @@ class FakeSpeechService implements SpeechService {
   int stopCalls = 0;
   bool disposed = false;
   Completer<SpeechOutcome>? _current;
+  final List<SpeechProgress?> progressCallbacks = [];
 
   bool get isSpeaking => _current != null;
 
@@ -49,13 +50,16 @@ class FakeSpeechService implements SpeechService {
   }
 
   @override
-  Future<SpeechOutcome> speak(String text) {
+  Future<SpeechOutcome> speak(String text, {SpeechProgress? onProgress}) {
     spoken.add(text);
+    progressCallbacks.add(onProgress);
     spokenRates.add(_rate);
     final completer = Completer<SpeechOutcome>();
     _current = completer;
     return completer.future;
   }
+
+  void progress(int start, int end) => progressCallbacks.last?.call(start, end);
 
   void finishCurrent() => _complete(SpeechOutcome.completed);
 

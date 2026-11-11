@@ -75,6 +75,8 @@ class ListeningController extends ChangeNotifier {
   List<SentenceSpan> _sentences = const [];
   int _chunkLength = preferredChunkLength;
   int _index = 0;
+  final ValueNotifier<SentenceSpan?> wordProgress = ValueNotifier(null);
+  int _chunkRevision = 0;
 
   ReadingSpeed _speed = ReadingSpeed.normal;
 
@@ -127,6 +129,9 @@ class ListeningController extends ChangeNotifier {
     return _sentences[_index];
   }
 
+  SentenceSpan? wordForText(String displayedText) =>
+      sentenceForText(displayedText) == null ? null : wordProgress.value;
+
   void _setState(ListeningStatus status, [String? message]) {
     _status = status;
     _message = message;
@@ -134,6 +139,8 @@ class ListeningController extends ChangeNotifier {
   }
 
   void _clearDocument() {
+    _chunkRevision++;
+    wordProgress.value = null;
     _text = '';
     _sentences = const [];
     _index = 0;
@@ -150,6 +157,7 @@ class ListeningController extends ChangeNotifier {
     }
 
     final run = ++_run;
+    wordProgress.value = null;
     _setState(ListeningStatus.starting);
 
     final SpeechSetup setup;
@@ -205,6 +213,7 @@ class ListeningController extends ChangeNotifier {
   Future<void> resume() async {
     if (_disposed || !canResume) return;
     final run = ++_run;
+    wordProgress.value = null;
     _setState(ListeningStatus.speaking);
     unawaited(_play(run));
   }
@@ -238,6 +247,8 @@ class ListeningController extends ChangeNotifier {
     if (_disposed || !_canNavigate) return;
     if (target < 0 || target >= _sentences.length) return;
     final wasPaused = _status == ListeningStatus.paused;
+    _chunkRevision++;
+    wordProgress.value = null;
     _index = target;
     if (wasPaused) {
       notifyListeners();
@@ -264,6 +275,7 @@ class ListeningController extends ChangeNotifier {
   Future<void> stop() async {
     if (_disposed || !canStop) return;
     final run = ++_run;
+    wordProgress.value = null;
     _setState(ListeningStatus.stopping);
     String? error;
     try {
@@ -313,7 +325,10 @@ class ListeningController extends ChangeNotifier {
       final span = _sentences[_index];
       final sentence = _text.substring(span.start, span.end);
       var sentenceStarted = false;
+      var chunkOffset = 0;
       for (final chunk in splitSpeechText(sentence, maxLength: _chunkLength)) {
+        final sourceStart = span.start + chunkOffset;
+        chunkOffset += chunk.length;
         if (chunk.trim().isEmpty) continue;
         // Checked right before each piece, so a stop, pause or jump never
         // lets the next piece of the old run begin.
@@ -322,13 +337,39 @@ class ListeningController extends ChangeNotifier {
           sentenceStarted = true;
           onSentenceStarted?.call(_index);
         }
+        final revision = ++_chunkRevision;
+        wordProgress.value = null;
         var outcome = SpeechOutcome.failed;
         try {
-          outcome = await speechService.speak(chunk);
+          outcome = await speechService.speak(
+            chunk,
+            onProgress: (start, end) {
+              if (_disposed ||
+                  run != _run ||
+                  revision != _chunkRevision ||
+                  _status != ListeningStatus.speaking) {
+                return;
+              }
+              if (start < 0 ||
+                  end <= start ||
+                  end > chunk.length ||
+                  _splitsSurrogate(chunk, start) ||
+                  _splitsSurrogate(chunk, end)) {
+                wordProgress.value = null;
+                return;
+              }
+              wordProgress.value = SentenceSpan(
+                sourceStart + start,
+                sourceStart + end,
+              );
+            },
+          );
         } catch (_) {
           outcome = SpeechOutcome.failed;
         }
         if (_disposed || run != _run) return;
+        _chunkRevision++;
+        wordProgress.value = null;
         if (outcome == SpeechOutcome.failed) {
           // Clean up the engine first, so that a quick restart is not cut off
           // by this late stop.
@@ -369,7 +410,16 @@ class ListeningController extends ChangeNotifier {
     final wasActive = isActive;
     _disposed = true;
     _run++;
+    wordProgress.dispose();
     if (wasActive) unawaited(_stopQuietly());
     super.dispose();
   }
+
+  bool _splitsSurrogate(String text, int offset) =>
+      offset > 0 &&
+      offset < text.length &&
+      text.codeUnitAt(offset - 1) >= 0xD800 &&
+      text.codeUnitAt(offset - 1) <= 0xDBFF &&
+      text.codeUnitAt(offset) >= 0xDC00 &&
+      text.codeUnitAt(offset) <= 0xDFFF;
 }

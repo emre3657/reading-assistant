@@ -8,6 +8,7 @@ TextSpan sentenceHighlightSpan({
   required String text,
   required TextStyle? style,
   required SentenceSpan? sentence,
+  SentenceSpan? word,
   SentenceSpan? selectedSentence,
   bool neutralReading = false,
   TextRange? composing,
@@ -26,6 +27,7 @@ TextSpan sentenceHighlightSpan({
   }
 
   final highlight = contentRange(sentence);
+  final spokenWord = contentRange(word);
   final selected = contentRange(selectedSentence);
   if (highlight == null && selected == null) {
     return TextSpan(text: text, style: style);
@@ -34,10 +36,12 @@ TextSpan sentenceHighlightSpan({
   final readingColor = (neutralReading ? scheme.onSurface : scheme.primary)
       .withValues(alpha: 0.12);
   final selectionColor = scheme.primary.withValues(alpha: 0.18);
+  final wordColor = Colors.amber.withValues(alpha: 0.24);
   final boundaries = <int>{
     0,
     text.length,
     if (highlight != null) ...[highlight.$1, highlight.$2],
+    if (spokenWord != null) ...[spokenWord.$1, spokenWord.$2],
     if (selected != null) ...[selected.$1, selected.$2],
   };
   if (composing != null &&
@@ -56,9 +60,16 @@ TextSpan sentenceHighlightSpan({
           text: text.substring(points[i], points[i + 1]),
           style: TextStyle(
             backgroundColor:
-                highlight != null &&
+                spokenWord != null &&
+                    highlight != null &&
+                    points[i] >= spokenWord.$1 &&
+                    points[i + 1] <= spokenWord.$2 &&
                     points[i] >= highlight.$1 &&
                     points[i + 1] <= highlight.$2
+                ? wordColor
+                : highlight != null &&
+                      points[i] >= highlight.$1 &&
+                      points[i + 1] <= highlight.$2
                 ? readingColor
                 : selected != null &&
                       points[i] >= selected.$1 &&
@@ -96,10 +107,14 @@ class HighlightingTextEditingController extends TextEditingController {
   void attachListening(ListeningController listening) {
     if (_listening == listening) return;
     _listening?.removeListener(_onListeningChanged);
+    _listening?.wordProgress.removeListener(_onWordChanged);
     _listening = listening;
     _lastSentence = listening.sentenceForText(text);
     listening.addListener(_onListeningChanged);
+    listening.wordProgress.addListener(_onWordChanged);
   }
+
+  void _onWordChanged() => notifyListeners();
 
   void _onListeningChanged() {
     final sentence = _listening?.sentenceForText(text);
@@ -128,6 +143,7 @@ class HighlightingTextEditingController extends TextEditingController {
       text: text,
       style: style,
       sentence: sentence,
+      word: _listening?.wordForText(text),
       selectedSentence: selected,
       neutralReading: neutralReading,
       composing: withComposing && value.isComposingRangeValid
@@ -139,6 +155,7 @@ class HighlightingTextEditingController extends TextEditingController {
   @override
   void dispose() {
     _listening?.removeListener(_onListeningChanged);
+    _listening?.wordProgress.removeListener(_onWordChanged);
     super.dispose();
   }
 }

@@ -86,6 +86,31 @@ String get _longText => List.generate(
 ).join('\n\n');
 
 void main() {
+  testWidgets('word progress does not trigger sentence auto-scroll', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setFollowSentence(true);
+    final speech = FakeSpeechService();
+    final scroll = await _show(
+      tester,
+      text: _longText,
+      speech: speech,
+      preferences: preferences,
+      initialSentence: 20,
+    );
+    await _tap(tester, find.text('Sesli oku'));
+    final offset = scroll.offset;
+    expect(offset, greaterThan(0));
+    speech.progress(0, 5);
+    await tester.pumpAndSettle();
+    speech.progress(6, 14);
+    await tester.pumpAndSettle();
+    expect(scroll.offset, offset);
+    expect(speech.isSpeaking, isTrue);
+  });
+
   testWidgets('reduced motion moves immediately without disturbing selection', (
     tester,
   ) async {

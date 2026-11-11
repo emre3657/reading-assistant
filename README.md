@@ -25,6 +25,7 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 - Başlatma, duraklatma, devam etme ve durdurma.
 - Önceki/sonraki cümle ve başa dönme.
 - Okunan cümleyi metinde vurgulama.
+- Ses motoru desteklediğinde okunan kelimeyi ayrıca vurgulama; aynı parça uygulama oturumunda tekrar okunduğunda güvenlik için kelime vurgusu gösterilmez.
 - Kayıtlı sayfada bir cümleye dokunup “Buradan oku” ile okumaya o cümleden başlama.
 - İsteğe bağlı olarak okunan cümleyi otomatik takip etme; elle kaydırınca takip duraklatılır.
 - 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
