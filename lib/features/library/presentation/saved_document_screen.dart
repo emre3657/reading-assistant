@@ -195,6 +195,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       unawaited(_listening.setSpeed(preferences.speed));
     }
     if (!preferences.autoNextPage && _autoPending) _cancelAutoAdvance();
+    _scheduleAnchorUpdate();
     if (mounted) setState(() {});
     if (_preferencesErrorRevision != preferences.errorRevision) {
       _preferencesErrorRevision = preferences.errorRevision;
@@ -1029,6 +1030,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                   textController: _readController,
                   textKey: _followTextKey,
                   scrollController: _scrollController,
+                  followTextSizeChanges: true,
                   child: NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
                       if (notification is UserScrollNotification &&
@@ -1075,7 +1077,16 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                                       document.category == DocumentCategory.book
                                       ? TextAlign.justify
                                       : TextAlign.start,
-                                  style: Theme.of(context).textTheme.bodyLarge,
+                                  style: Theme.of(context).textTheme.bodyLarge
+                                      ?.copyWith(
+                                        fontSize:
+                                            (Theme.of(context)
+                                                    .textTheme
+                                                    .bodyLarge
+                                                    ?.fontSize ??
+                                                16) *
+                                            _preferences!.textSize.multiplier,
+                                      ),
                                 ),
                               ),
                             ),
@@ -1159,7 +1170,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   Widget _buildEditScreen(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
+    final document = _saved;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sayfa metnini düzenle'),
@@ -1188,7 +1199,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                   key: const ValueKey('document-text'),
                   controller: _textController,
                   enabled: !_saving,
-                  textAlign: TextAlign.start,
+                  textAlign: document.category == DocumentCategory.book
+                      ? TextAlign.justify
+                      : TextAlign.start,
                   keyboardType: TextInputType.multiline,
                   textCapitalization: TextCapitalization.sentences,
                   minLines: 8,

@@ -43,6 +43,26 @@ Future<void> showReadingSettings(
                 ),
               ),
               const SizedBox(height: 16),
+              InputDecorator(
+                decoration: const InputDecoration(labelText: 'Yazı boyutu'),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<ReadingTextSize>(
+                    key: const ValueKey('reading-text-size'),
+                    value: preferences.textSize,
+                    isExpanded: true,
+                    items: [
+                      for (final size in ReadingTextSize.values)
+                        DropdownMenuItem(value: size, child: Text(size.label)),
+                    ],
+                    onChanged: preferences.ready
+                        ? (size) {
+                            if (size != null) preferences.setTextSize(size);
+                          }
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               SwitchListTile(
                 key: const ValueKey('follow-sentence'),
                 contentPadding: EdgeInsets.zero,

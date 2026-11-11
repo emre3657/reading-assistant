@@ -703,6 +703,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             textController: controller.textController,
             textKey: _followTextKey,
             scrollController: _contentScrollController,
+            followTextSizeChanges: true,
             child: SingleChildScrollView(
               key: const ValueKey('content-scroll'),
               controller: _contentScrollController,
@@ -914,6 +915,22 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                               _addingPage ? 'new-page-text' : 'import-text',
                             ),
                             controller: controller.textController,
+                            style:
+                                _preferences!.textSize == ReadingTextSize.normal
+                                ? null
+                                : TextStyle(
+                                    fontSize:
+                                        ((Theme.of(context).useMaterial3
+                                                    ? Theme.of(context)
+                                                          .textTheme
+                                                          .bodyLarge
+                                                    : Theme.of(context)
+                                                          .textTheme
+                                                          .titleMedium)
+                                                ?.fontSize ??
+                                            16) *
+                                        _preferences!.textSize.multiplier,
+                                  ),
                             textAlign: _addingPage
                                 ? TextAlign.start
                                 : TextAlign.justify,

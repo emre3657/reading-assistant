@@ -135,6 +135,41 @@ List<(int, int, TextStyle?)> _segments(WidgetTester tester) {
 
 void main() {
   testWidgets(
+    'size reflow reanchors selection bubble and preserves tap target',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      final speech = FakeSpeechService();
+      await _show(
+        tester,
+        _Store(),
+        speech,
+        preferences: preferences,
+        textScale: 1.5,
+      );
+      await tester.tapAt(_character(tester, 7));
+      await tester.pumpAndSettle();
+      expect(_readFrom.hitTestable(), findsOneWidget);
+      final before = tester.getTopLeft(_readFrom);
+      preferences.setTextSize(ReadingTextSize.extraLarge);
+      await tester.pumpAndSettle();
+      expect(_readFrom.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(_readFrom), isNot(before));
+      expect(
+        _segments(tester)
+            .where((s) => s.$3?.backgroundColor != null)
+            .map((s) => (s.$1, s.$2)),
+        [(6, 11)],
+      );
+      await _tap(tester, _readFrom);
+      expect(speech.spoken, ['Aynı. ']);
+    },
+  );
+
+  testWidgets(
     'repeated sentence tap selects only the tapped occurrence; reading starts on request',
     (tester) async {
       final store = _Store();

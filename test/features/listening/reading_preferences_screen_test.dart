@@ -46,6 +46,299 @@ Future<void> _createText(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('text size applies immediately without restarting speech', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    final speech = FakeSpeechService();
+    final store = _PageStore();
+    await tester.pumpWidget(
+      _app(
+        preferences,
+        SavedDocumentScreen(
+          document: SavedDocument(
+            id: 7,
+            title: 'Not',
+            category: DocumentCategory.note,
+            text: 'Bir.',
+            createdAt: DateTime(2024),
+          ),
+          pageId: 1,
+          store: store,
+          speechService: speech,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('saved-reading-text'));
+    final originalSize = tester.widget<TextField>(field).style!.fontSize!;
+    expect(originalSize, 16);
+    await tester.tap(find.text('Sesli oku'));
+    await tester.pumpAndSettle();
+    speech.progress(0, 3);
+    await tester.pumpAndSettle();
+    expect(store.positionWrites, 1);
+    final stopCalls = speech.stopCalls;
+    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.pumpAndSettle();
+    expect(find.text('Normal'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reading-text-size')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Çok büyük').last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(field).style!.fontSize, originalSize * 1.5);
+    expect(speech.spoken, ['Bir.']);
+    expect(speech.stopCalls, stopCalls);
+    expect(speech.isSpeaking, isTrue);
+    expect(store.positionWrites, 1);
+    final span =
+        tester
+                .state<EditableTextState>(find.byType(EditableText).first)
+                .renderEditable
+                .text!
+            as TextSpan;
+    expect(span.toPlainText(), 'Bir.');
+    expect(span.children![0].toPlainText(), 'Bir');
+    expect(
+      (span.children![0] as TextSpan).style!.backgroundColor,
+      Colors.amber.withValues(alpha: 0.24),
+    );
+    expect(span.children![1].toPlainText(), '.');
+    expect((span.children![1] as TextSpan).style!.backgroundColor, isNotNull);
+    await tester.tap(find.text('Kapat'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Durdur'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Düzenle'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(
+            find.descendant(
+              of: find.byKey(const ValueKey('document-text')),
+              matching: find.byType(TextField),
+            ),
+          )
+          .style,
+      isNull,
+    );
+  });
+
+  for (final newPage in [false, true]) {
+    testWidgets(
+      'text size persists through draft playback states (${newPage ? 'new page' : 'home'})',
+      (tester) async {
+        final store = FakePreferencesStore();
+        final preferences = ReadingPreferences(store: store);
+        final speech = FakeSpeechService();
+        await preferences.load();
+        await tester.pumpWidget(
+          _app(preferences, _import(speech, newPage: newPage)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Metin yaz veya yapıştır'));
+        await tester.pumpAndSettle();
+        final field = find.byKey(
+          ValueKey(newPage ? 'new-page-text' : 'import-text'),
+        );
+        await tester.enterText(field, 'Bir iki.');
+        await tester.pumpAndSettle();
+        final controller = tester.widget<TextField>(field).controller!;
+        controller.selection = const TextSelection(
+          baseOffset: 1,
+          extentOffset: 4,
+        );
+        await tester.pump();
+        final selection = controller.selection;
+        final focus = FocusManager.instance.primaryFocus;
+        expect(focus?.hasFocus, isTrue);
+        final editable = tester.state<EditableTextState>(
+          find.byType(EditableText),
+        );
+        final baseSize = editable.renderEditable.text!.style!.fontSize!;
+        expect(baseSize, 16);
+        preferences.setTextSize(ReadingTextSize.large);
+        await tester.pumpAndSettle();
+        expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.25);
+        expect(controller.selection, selection);
+        expect(controller.text, 'Bir iki.');
+        expect(FocusManager.instance.primaryFocus, same(focus));
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        FocusManager.instance.primaryFocus?.unfocus();
+        tester.testTextInput.hide();
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Sesli oku'));
+        await tester.pumpAndSettle();
+        speech.progress(0, 3);
+        await tester.pumpAndSettle();
+        final stopCalls = speech.stopCalls;
+        preferences.setTextSize(ReadingTextSize.extraLarge);
+        await tester.pumpAndSettle();
+        expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        expect(speech.spoken, ['Bir iki.']);
+        expect(speech.stopCalls, stopCalls);
+        expect(speech.isSpeaking, isTrue);
+        final span = editable.renderEditable.text! as TextSpan;
+        expect(span.children![0].toPlainText(), 'Bir');
+        expect(
+          (span.children![0] as TextSpan).style!.backgroundColor,
+          Colors.amber.withValues(alpha: 0.24),
+        );
+        expect(
+          (span.children![1] as TextSpan).style!.backgroundColor,
+          isNotNull,
+        );
+        await tester.tap(find.text('Duraklat'));
+        await tester.pumpAndSettle();
+        expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        await tester.tap(find.text('Devam et'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Durdur'));
+        await tester.pumpAndSettle();
+        expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        expect(controller.text, 'Bir iki.');
+        await tester.tap(find.text('Sesli oku'));
+        await tester.pumpAndSettle();
+        speech.finishCurrent();
+        await tester.pumpAndSettle();
+        expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        expect(controller.text, 'Bir iki.');
+
+        await preferences.pendingWrites;
+        final reopened = ReadingPreferences(store: store);
+        await reopened.load();
+        expect(reopened.textSize, ReadingTextSize.extraLarge);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _app(reopened, _import(FakeSpeechService(), newPage: newPage)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Metin yaz veya yapıştır'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(field).style!.fontSize, baseSize * 1.5);
+      },
+    );
+
+    testWidgets(
+      'large system scale keeps draft scrollable (${newPage ? 'new page' : 'home'})',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final preferences = ReadingPreferences(store: FakePreferencesStore());
+        await preferences.load();
+        preferences.setTextSize(ReadingTextSize.extraLarge);
+        await tester.pumpWidget(
+          ReadingPreferencesScope(
+            preferences: preferences,
+            child: MaterialApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: const TextScaler.linear(1.7)),
+                child: child!,
+              ),
+              home: _import(FakeSpeechService(), newPage: newPage),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final create = find.text('Metin yaz veya yapıştır');
+        await tester.ensureVisible(create);
+        await tester.pumpAndSettle();
+        expect(create.hitTestable(), findsOneWidget);
+        await tester.tap(create);
+        await tester.pumpAndSettle();
+        final field = find.byKey(
+          ValueKey(newPage ? 'new-page-text' : 'import-text'),
+        );
+        await tester.enterText(
+          field,
+          List.filled(30, 'Uzun metin burada okunur.').join('\n\n'),
+        );
+        FocusManager.instance.primaryFocus?.unfocus();
+        tester.testTextInput.hide();
+        await tester.pumpAndSettle();
+        final render = tester
+            .state<EditableTextState>(find.byType(EditableText))
+            .renderEditable;
+        expect(render.text!.style!.fontSize, 24);
+        expect(render.textScaler.scale(24), closeTo(40.8, 0.001));
+        final scroll = tester
+            .widget<SingleChildScrollView>(
+              find.byKey(const ValueKey('content-scroll')),
+            )
+            .controller!;
+        expect(scroll.position.maxScrollExtent, greaterThan(0));
+        scroll.jumpTo(0);
+        await tester.pumpAndSettle();
+        await tester.dragFrom(const Offset(160, 300), const Offset(0, -180));
+        await tester.pumpAndSettle();
+        expect(scroll.offset, greaterThan(0));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('large system text scale and narrow reader remain scrollable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setTextSize(ReadingTextSize.extraLarge);
+    final text = List.filled(30, 'Uzun metin burada okunur.').join('\n\n');
+    await tester.pumpWidget(
+      ReadingPreferencesScope(
+        preferences: preferences,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: SavedDocumentScreen(
+            document: SavedDocument(
+              id: 7,
+              title: 'Not',
+              category: DocumentCategory.note,
+              text: text,
+              createdAt: DateTime(2024),
+            ),
+            store: _PageStore(),
+            speechService: FakeSpeechService(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('saved-reading-text'));
+    expect(tester.widget<TextField>(field).style!.fontSize, 24);
+    final editable = tester
+        .state<EditableTextState>(find.byType(EditableText))
+        .renderEditable;
+    expect(editable.textScaler.scale(24), 48);
+    final scroll = tester
+        .widget<SingleChildScrollView>(
+          find
+              .ancestor(of: field, matching: find.byType(SingleChildScrollView))
+              .first,
+        )
+        .controller!;
+    expect(scroll.position.maxScrollExtent, greaterThan(0));
+    await tester.dragFrom(const Offset(160, 300), const Offset(0, -180));
+    await tester.pumpAndSettle();
+    expect(scroll.offset, greaterThan(0));
+    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.pumpAndSettle();
+    expect(find.text('Yazı boyutu'), findsOneWidget);
+    expect(find.text('Çok büyük'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('first playback waits for loaded speed without starting itself', (
     tester,
   ) async {
@@ -94,15 +387,21 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('1.25×').last);
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reading-text-size')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Büyük').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
     expect(preferences.speed, ReadingSpeed.fast);
+    expect(preferences.textSize, ReadingTextSize.large);
 
     await tester.pumpWidget(_app(preferences, _import(speech, newPage: true)));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Okuma ayarları'));
     await tester.pumpAndSettle();
     expect(find.text('1.25×'), findsOneWidget);
+    expect(find.text('Büyük'), findsOneWidget);
     expect(
       tester
           .widget<SwitchListTile>(find.byKey(const ValueKey('follow-sentence')))
@@ -135,6 +434,7 @@ void main() {
     await tester.tap(find.byTooltip('Okuma ayarları'));
     await tester.pumpAndSettle();
     expect(find.text('1.25×'), findsOneWidget);
+    expect(find.text('Büyük'), findsOneWidget);
     expect(
       tester
           .widget<SwitchListTile>(find.byKey(const ValueKey('follow-sentence')))

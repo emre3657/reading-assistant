@@ -86,6 +86,72 @@ String get _longText => List.generate(
 ).join('\n\n');
 
 void main() {
+  testWidgets('text size reflow follows the active sentence without restart', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setFollowSentence(true);
+    final speech = FakeSpeechService();
+    final scroll = await _show(
+      tester,
+      text: _longText,
+      speech: speech,
+      preferences: preferences,
+      initialSentence: 20,
+    );
+    await _tap(tester, find.text('Sesli oku'));
+    final oldOffset = scroll.offset;
+    final oldCalls = speech.stopCalls;
+    preferences.setTextSize(ReadingTextSize.extraLarge);
+    await tester.pumpAndSettle();
+    expect(scroll.offset, greaterThan(oldOffset));
+    final editable = tester
+        .state<EditableTextState>(find.byType(EditableText))
+        .renderEditable;
+    final start = _longText.indexOf('Cümle numarası 20');
+    final box = editable
+        .getBoxesForSelection(
+          TextSelection(baseOffset: start, extentOffset: start + 5),
+        )
+        .first;
+    final y = editable.localToGlobal(Offset(box.left, box.top)).dy;
+    expect(y, greaterThanOrEqualTo(kToolbarHeight));
+    expect(y, lessThan(650));
+    expect(speech.spoken.length, 1);
+    expect(speech.stopCalls, oldCalls);
+    expect(speech.isSpeaking, isTrue);
+  });
+
+  testWidgets('text size reflow respects a paused, suspended follow', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setFollowSentence(true);
+    final speech = FakeSpeechService();
+    final scroll = await _show(
+      tester,
+      text: _longText,
+      speech: speech,
+      preferences: preferences,
+      initialSentence: 20,
+    );
+    await _tap(tester, find.text('Sesli oku'));
+    await tester.dragFrom(const Offset(200, 170), const Offset(0, 170));
+    await tester.pumpAndSettle();
+    expect(find.text('Okunan cümleye dön'), findsOneWidget);
+    await _tap(tester, find.text('Duraklat'));
+    final before = scroll.offset;
+    preferences.setTextSize(ReadingTextSize.extraLarge);
+    await tester.pumpAndSettle();
+    expect(scroll.offset, before);
+    expect(find.text('Okunan cümleye dön'), findsOneWidget);
+    await _tap(tester, find.text('Okunan cümleye dön'));
+    expect(scroll.offset, greaterThan(before));
+    expect(speech.isSpeaking, isFalse);
+  });
+
   testWidgets('word progress does not trigger sentence auto-scroll', (
     tester,
   ) async {
@@ -188,6 +254,26 @@ void main() {
         await tester.pumpAndSettle();
       }
       expect(scroll.offset, greaterThan(0));
+      final beforeResize = scroll.offset;
+      final spokenCount = speech.spoken.length;
+      final stopCalls = speech.stopCalls;
+      preferences.setTextSize(ReadingTextSize.extraLarge);
+      await tester.pumpAndSettle();
+      expect(scroll.offset, greaterThan(beforeResize));
+      final editable = tester
+          .state<EditableTextState>(find.byType(EditableText))
+          .renderEditable;
+      final start = _longText.indexOf('Cümle numarası 15');
+      final box = editable
+          .getBoxesForSelection(
+            TextSelection(baseOffset: start, extentOffset: start + 5),
+          )
+          .first;
+      final y = editable.localToGlobal(Offset(box.left, box.top)).dy;
+      expect(y, greaterThanOrEqualTo(kToolbarHeight));
+      expect(y, lessThan(650));
+      expect(speech.spoken.length, spokenCount);
+      expect(speech.stopCalls, stopCalls);
       expect(tester.widget<TextField>(field).controller!.text, _longText);
       expect(tester.testTextInput.isVisible, isFalse);
       expect(speech.isSpeaking, isTrue);

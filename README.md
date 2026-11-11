@@ -29,6 +29,7 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 - Kayıtlı sayfada bir cümleye dokunup “Buradan oku” ile okumaya o cümleden başlama.
 - İsteğe bağlı olarak okunan cümleyi otomatik takip etme; elle kaydırınca takip duraklatılır.
 - 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
+- İlk ekran, sayfa ekleme ve kayıtlı sayfa okuma metni için Normal, Büyük ve Çok büyük yazı boyutları.
 - Ekranın altında küçültülebilen dinleme paneli; hız seçenekleri üstteki “Okuma ayarları” menüsündedir.
 
 Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirilirse aynı cümle yeni hızla yeniden başlar. Aktif ve duraklatılmış oturumlarda metin düzenleme kilitlidir; düzenlemek için okuma durdurulmalıdır.
@@ -58,7 +59,7 @@ Kayıtlı kitap metinleri iki yana, diğer kategoriler ve sayfa düzenleme alanl
 
 - Hesap, backend, bulut OCR/TTS servisi veya API anahtarı kullanılmaz.
 - Metinler yerel SQLite veritabanında tutulur. İçerik bilgileri `documents`, sayfalar `pages` tablosundadır.
-- Okuma hızı, cümle takibi ve otomatik sonraki sayfa tercihleri uygulama genelinde cihazda saklanır.
+- Okuma hızı, yazı boyutu, cümle takibi ve otomatik sonraki sayfa tercihleri uygulama genelinde cihazda saklanır.
 - Fotoğraflar kayıtlı içeriğin parçası olarak saklanmaz; kullanıcının galerisindeki orijinaller silinmez.
 - Ham OCR ve yerleşim bilgisi yalnızca mevcut oturumda tutulur. Veritabanına görünen metin kaydedilir.
 

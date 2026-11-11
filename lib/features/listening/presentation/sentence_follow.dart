@@ -15,6 +15,7 @@ class SentenceFollow extends StatefulWidget {
     required this.textKey,
     required this.scrollController,
     required this.child,
+    this.followTextSizeChanges = false,
   });
 
   final ListeningController listening;
@@ -23,6 +24,7 @@ class SentenceFollow extends StatefulWidget {
   final GlobalKey textKey;
   final ScrollController scrollController;
   final Widget child;
+  final bool followTextSizeChanges;
 
   @override
   SentenceFollowState createState() => SentenceFollowState();
@@ -36,6 +38,7 @@ class SentenceFollowState extends State<SentenceFollow> {
   bool _animating = false;
   int _token = 0;
   (String, int, int)? _sentence;
+  ReadingTextSize? _textSize;
 
   @override
   void initState() {
@@ -90,6 +93,8 @@ class SentenceFollowState extends State<SentenceFollow> {
     final changed = sentence != _sentence;
     final resumed = speaking && !_wasSpeaking;
     final enabledNow = enabled && !_wasEnabled;
+    final sizeChanged = _textSize != widget.preferences.textSize;
+    _textSize = widget.preferences.textSize;
     _sentence = sentence;
     _wasSpeaking = speaking;
     _wasEnabled = enabled;
@@ -98,7 +103,10 @@ class SentenceFollowState extends State<SentenceFollow> {
         speaking &&
         !_suspended &&
         sentence != null &&
-        (changed || resumed || enabledNow)) {
+        (changed ||
+            resumed ||
+            enabledNow ||
+            (sizeChanged && widget.followTextSizeChanges))) {
       _schedule(sentence);
     }
     if (mounted) setState(() {});

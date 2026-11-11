@@ -22,6 +22,7 @@ class FakePreferencesStore extends DocumentStore {
     required String speed,
     required bool autoNextPage,
     required bool followSentence,
+    required String textSize,
   }) async {
     saveCalls++;
     await saveGate?.future;
@@ -30,6 +31,7 @@ class FakePreferencesStore extends DocumentStore {
       'speed': speed,
       'auto_next_page': autoNextPage ? 1 : 0,
       'follow_sentence': followSentence ? 1 : 0,
+      'text_size': textSize,
     };
   }
 }

@@ -5,6 +5,16 @@ import 'package:flutter/material.dart';
 import '../../library/data/document_store.dart';
 import 'listening_controller.dart';
 
+enum ReadingTextSize {
+  normal('Normal', 1),
+  large('Büyük', 1.25),
+  extraLarge('Çok büyük', 1.5);
+
+  const ReadingTextSize(this.label, this.multiplier);
+  final String label;
+  final double multiplier;
+}
+
 class ReadingPreferences extends ChangeNotifier {
   ReadingPreferences({DocumentStore? store})
     : _store = store ?? DocumentStore.instance;
@@ -17,6 +27,7 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingSpeed _speed = ReadingSpeed.normal;
   bool _autoNextPage = false;
   bool _followSentence = false;
+  ReadingTextSize _textSize = ReadingTextSize.normal;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -26,6 +37,7 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingSpeed get speed => _speed;
   bool get autoNextPage => _autoNextPage;
   bool get followSentence => _followSentence;
+  ReadingTextSize get textSize => _textSize;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -43,6 +55,11 @@ class ReadingPreferences extends ChangeNotifier {
           ReadingSpeed.normal;
       _autoNextPage = row?['auto_next_page'] == 1;
       _followSentence = row?['follow_sentence'] == 1;
+      _textSize =
+          ReadingTextSize.values
+              .where((size) => size.name == row?['text_size'])
+              .firstOrNull ??
+          ReadingTextSize.normal;
     } catch (_) {
       _errorMessage =
           'Okuma tercihleri yüklenemedi. Varsayılanlar kullanılıyor.';
@@ -74,16 +91,25 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setTextSize(ReadingTextSize value) {
+    if (!_ready || _textSize == value) return;
+    _textSize = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
     final follow = _followSentence;
+    final textSize = _textSize.name;
     _writeTail = _writeTail.then((_) async {
       try {
         await _store.saveReadingPreferences(
           speed: speed,
           autoNextPage: auto,
           followSentence: follow,
+          textSize: textSize,
         );
         _saveFailureReported = false;
       } catch (_) {

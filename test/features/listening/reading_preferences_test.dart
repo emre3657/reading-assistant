@@ -20,18 +20,21 @@ void main() {
     expect(preferences.speed, ReadingSpeed.normal);
     expect(preferences.autoNextPage, isFalse);
     expect(preferences.followSentence, isFalse);
+    expect(preferences.textSize, ReadingTextSize.normal);
     expect(store.saveCalls, 0);
 
     store.values = {
       'speed': 'invalid',
       'auto_next_page': 42,
       'follow_sentence': 42,
+      'text_size': 'invalid',
     };
     final invalid = ReadingPreferences(store: store);
     await invalid.load();
     expect(invalid.speed, ReadingSpeed.normal);
     expect(invalid.autoNextPage, isFalse);
     expect(invalid.followSentence, isFalse);
+    expect(invalid.textSize, ReadingTextSize.normal);
   });
 
   test(
@@ -44,6 +47,7 @@ void main() {
       final preferences = ReadingPreferences(store: store);
       final loading = preferences.load();
       preferences.setSpeed(ReadingSpeed.slow);
+      preferences.setTextSize(ReadingTextSize.large);
       expect(store.saveCalls, 0);
       store.loadGate!.complete();
       await loading;
@@ -54,6 +58,8 @@ void main() {
       preferences.setSpeed(ReadingSpeed.faster);
       preferences.setAutoNextPage(false);
       preferences.setFollowSentence(true);
+      preferences.setTextSize(ReadingTextSize.large);
+      preferences.setTextSize(ReadingTextSize.extraLarge);
       preferences.setFollowSentence(false);
       preferences.setFollowSentence(true);
       await Future<void>.delayed(Duration.zero);
@@ -64,8 +70,9 @@ void main() {
         'speed': 'faster',
         'auto_next_page': 0,
         'follow_sentence': 1,
+        'text_size': 'extraLarge',
       });
-      expect(store.saveCalls, 6);
+      expect(store.saveCalls, 8);
     },
   );
 
@@ -82,10 +89,12 @@ void main() {
       preferences.setSpeed(ReadingSpeed.fast);
       preferences.setAutoNextPage(true);
       preferences.setFollowSentence(true);
+      preferences.setTextSize(ReadingTextSize.large);
       await preferences.pendingWrites;
       expect(preferences.speed, ReadingSpeed.fast);
       expect(preferences.autoNextPage, isTrue);
       expect(preferences.followSentence, isTrue);
+      expect(preferences.textSize, ReadingTextSize.large);
       expect(preferences.errorRevision, 2);
       expect(preferences.errorMessage, contains('kaydedilemedi'));
       store.saveError = null;
@@ -117,6 +126,7 @@ void main() {
       preferences.setSpeed(ReadingSpeed.faster);
       preferences.setAutoNextPage(true);
       preferences.setFollowSentence(true);
+      preferences.setTextSize(ReadingTextSize.extraLarge);
       await preferences.pendingWrites;
       await database.close();
       final reopened = await databaseFactoryFfi.openDatabase(
@@ -130,7 +140,81 @@ void main() {
       expect(restored.speed, ReadingSpeed.faster);
       expect(restored.autoNextPage, isTrue);
       expect(restored.followSentence, isTrue);
+      expect(restored.textSize, ReadingTextSize.extraLarge);
       await reopened.close();
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
+
+  test('v5 migration preserves content, position and preferences', () async {
+    final dir = await Directory.systemTemp.createTemp('text-size-migration-');
+    final path = '${dir.path}${Platform.pathSeparator}test.db';
+    try {
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 5,
+          singleInstance: false,
+          onConfigure: configureDocumentDatabase,
+          onCreate: (db, _) async {
+            await db.execute(createDocumentsSql);
+            await db.execute(createPagesSql);
+            await db.execute(createReadingPositionsSql);
+            await db.execute(invalidateReadingPositionSql);
+            await db.execute(createReadingPreferencesSql);
+            await db.execute(addFollowSentenceSql);
+          },
+        ),
+      );
+      await old.insert('documents', {
+        'id': 42,
+        'title': 'Eski',
+        'category': 'note',
+        'created_at': 7,
+      });
+      await old.insert('pages', {
+        'id': 9,
+        'document_id': 42,
+        'position': 4,
+        'text': 'Bir. İki.',
+      });
+      await old.insert('reading_positions', {
+        'document_id': 42,
+        'page_id': 9,
+        'sentence_index': 1,
+        'page_text': 'Bir. İki.',
+      });
+      await old.insert('reading_preferences', {
+        'id': 1,
+        'speed': 'fast',
+        'auto_next_page': 1,
+        'follow_sentence': 1,
+      });
+      await old.close();
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: documentDatabaseVersion,
+          singleInstance: false,
+          onConfigure: configureDocumentDatabase,
+          onUpgrade: upgradeDocumentSchema,
+        ),
+      );
+      expect((await upgraded.query('documents')).single['title'], 'Eski');
+      expect((await upgraded.query('pages')).single['position'], 4);
+      expect(
+        (await upgraded.query('reading_positions')).single['sentence_index'],
+        1,
+      );
+      expect((await upgraded.query('reading_preferences')).single, {
+        'id': 1,
+        'speed': 'fast',
+        'auto_next_page': 1,
+        'follow_sentence': 1,
+        'text_size': 'normal',
+      });
+      await upgraded.close();
     } finally {
       await dir.delete(recursive: true);
     }
