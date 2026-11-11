@@ -16,6 +16,7 @@ class ReadingPreferences extends ChangeNotifier {
   bool _ready = false;
   ReadingSpeed _speed = ReadingSpeed.normal;
   bool _autoNextPage = false;
+  bool _followSentence = false;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -24,6 +25,7 @@ class ReadingPreferences extends ChangeNotifier {
   bool get ready => _ready;
   ReadingSpeed get speed => _speed;
   bool get autoNextPage => _autoNextPage;
+  bool get followSentence => _followSentence;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -40,6 +42,7 @@ class ReadingPreferences extends ChangeNotifier {
               .firstOrNull ??
           ReadingSpeed.normal;
       _autoNextPage = row?['auto_next_page'] == 1;
+      _followSentence = row?['follow_sentence'] == 1;
     } catch (_) {
       _errorMessage =
           'Okuma tercihleri yüklenemedi. Varsayılanlar kullanılıyor.';
@@ -64,12 +67,24 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setFollowSentence(bool value) {
+    if (!_ready || _followSentence == value) return;
+    _followSentence = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
+    final follow = _followSentence;
     _writeTail = _writeTail.then((_) async {
       try {
-        await _store.saveReadingPreferences(speed: speed, autoNextPage: auto);
+        await _store.saveReadingPreferences(
+          speed: speed,
+          autoNextPage: auto,
+          followSentence: follow,
+        );
         _saveFailureReported = false;
       } catch (_) {
         if (!_saveFailureReported) {

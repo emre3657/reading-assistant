@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
-const documentDatabaseVersion = 4;
+const documentDatabaseVersion = 5;
 
 const createDocumentsSql = '''
 CREATE TABLE documents (
@@ -75,7 +75,11 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(createReadingPositionsSql);
   await database.execute(invalidateReadingPositionSql);
   await database.execute(createReadingPreferencesSql);
+  await database.execute(addFollowSentenceSql);
 }
+
+const addFollowSentenceSql =
+    'ALTER TABLE reading_preferences ADD COLUMN follow_sentence INTEGER NOT NULL DEFAULT 0';
 
 Future<void> upgradeDocumentSchema(
   Database database,
@@ -97,5 +101,8 @@ Future<void> upgradeDocumentSchema(
   }
   if (oldVersion < 4 && newVersion >= 4) {
     await database.execute(createReadingPreferencesSql);
+  }
+  if (oldVersion < 5 && newVersion >= 5) {
+    await database.execute(addFollowSentenceSql);
   }
 }

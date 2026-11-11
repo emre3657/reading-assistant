@@ -42,6 +42,16 @@ Future<void> showReadingSettings(
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                key: const ValueKey('follow-sentence'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Okunan cümleyi takip et'),
+                value: preferences.followSentence,
+                onChanged: preferences.ready
+                    ? preferences.setFollowSentence
+                    : null,
+              ),
               if (showAutoNextPage?.call() ?? false) ...[
                 const SizedBox(height: 16),
                 SwitchListTile(

@@ -6,6 +6,7 @@ import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
+import '../../listening/presentation/sentence_follow.dart';
 import '../../listening/services/speech_service.dart';
 
 import '../../library/presentation/library_screen.dart';
@@ -64,6 +65,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   SpeechService? _ownedSpeechService;
 
   final _joinSectionKey = GlobalKey();
+  final _followKey = GlobalKey<SentenceFollowState>();
+  final _followTextKey = GlobalKey();
+  final _contentScrollController = ScrollController();
 
   int _lastRecognitionId = 0;
   int _scrollToken = 0;
@@ -163,6 +167,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     _controller.removeListener(_onImportChanged);
     _controller.dispose();
     _preferences?.removeListener(_onPreferencesChanged);
+    _contentScrollController.dispose();
 
     _listening.removeListener(_onListeningChanged);
     _listening.dispose();
@@ -387,6 +392,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     FocusManager.instance.primaryFocus?.unfocus();
 
+    _followKey.currentState?.newSession();
     await _listening.start(_controller.textController.text);
   }
 
@@ -690,235 +696,253 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       body: AbsorbPointer(
         absorbing: _pageLocked,
         child: SafeArea(
-          child: SingleChildScrollView(
-            key: const ValueKey('content-scroll'),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_addingPage) ...[
-                  Text(
-                    widget.pageDocumentTitle ?? '',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (_pageError != null) ...[
-                  Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      _pageError!,
-                      style: TextStyle(color: colorScheme.error),
+          child: SentenceFollow(
+            key: _followKey,
+            listening: _listening,
+            preferences: _preferences!,
+            textController: controller.textController,
+            textKey: _followTextKey,
+            scrollController: _contentScrollController,
+            child: SingleChildScrollView(
+              key: const ValueKey('content-scroll'),
+              controller: _contentScrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_addingPage) ...[
+                    Text(
+                      widget.pageDocumentTitle ?? '',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (_pageSaving) ...[
-                  const LinearProgressIndicator(
-                    semanticsLabel: 'Sayfa kaydediliyor',
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (selection != null)
-                  ImagePreview(
-                    key: ValueKey(selection.id),
-                    image: selection.image,
-                    quarterTurns: controller.quarterTurns,
-                    onError: () => controller.onPreviewError(selection.id),
-                  )
-                else
-                  const _EmptyState(),
-                if (errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      errorMessage,
-                      style: TextStyle(color: colorScheme.error),
-                    ),
-                  ),
-                ],
-                if (infoMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Semantics(liveRegion: true, child: Text(infoMessage)),
-                ],
-                const SizedBox(height: 16),
-                if (controller.isBusy)
-                  Center(
-                    child: Column(
-                      children: [
-                        const CircularProgressIndicator(
-                          semanticsLabel: 'Yükleniyor',
-                        ),
-                        if (controller.isRecognizing) ...[
-                          const SizedBox(height: 8),
-                          const Text('Metin çıkarılıyor…'),
-                        ],
-                      ],
-                    ),
-                  )
-                else ...[
-                  if (hasImage) ...[
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: listeningActive
-                              ? null
-                              : () => controller.rotate(3),
-                          icon: const Icon(Icons.rotate_left),
-                          label: const Text('Sola döndür'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: listeningActive
-                              ? null
-                              : () => controller.rotate(1),
-                          icon: const Icon(Icons.rotate_right),
-                          label: const Text('Sağa döndür'),
-                        ),
-                      ],
-                    ),
-                    if (controller.quarterTurns != 0) ...[
-                      const SizedBox(height: 8),
-                      Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          'Görsel saat yönünde '
-                          '${controller.quarterTurns * 90}° döndürüldü. '
-                          'Metin çıkarma bu yönle yapılır.',
-                          textAlign: TextAlign.center,
-                        ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_pageError != null) ...[
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _pageError!,
+                        style: TextStyle(color: colorScheme.error),
                       ),
-                    ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_pageSaving) ...[
+                    const LinearProgressIndicator(
+                      semanticsLabel: 'Sayfa kaydediliyor',
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (selection != null)
+                    ImagePreview(
+                      key: ValueKey(selection.id),
+                      image: selection.image,
+                      quarterTurns: controller.quarterTurns,
+                      onError: () => controller.onPreviewError(selection.id),
+                    )
+                  else
+                    const _EmptyState(),
+                  if (errorMessage != null) ...[
                     const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: listeningActive ? null : _extractText,
-                      icon: const Icon(Icons.text_snippet),
-                      label: const Text('Metni çıkar'),
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: listeningActive ? null : () => _selectImage(),
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('Görseli değiştir'),
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: listeningActive ? null : _removeImage,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Görseli kaldır'),
-                    ),
-                  ] else
-                    FilledButton.icon(
-                      onPressed: listeningActive ? null : () => _selectImage(),
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('Galeriden görsel seç'),
-                    ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: listeningActive
-                        ? null
-                        : () => _selectImage(camera: true),
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: const Text('Fotoğraf çek'),
-                  ),
-                ],
-                if (!widget.returnText &&
-                    !hasImage &&
-                    !controller.hasRecognizedText &&
-                    !_manualEntry) ...[
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    key: const ValueKey('create-text'),
-                    onPressed: controller.isBusy || listeningActive
-                        ? null
-                        : () {
-                            setState(() => _manualEntry = true);
-                            _scheduleScrollToText();
-                          },
-                    icon: const Icon(Icons.edit_note),
-                    label: const Text('Metin yaz veya yapıştır'),
-                  ),
-                ],
-                if (controller.hasRecognizedText || _manualEntry) ...[
-                  const SizedBox(height: 24),
-                  if (controller.hasRecognizedText)
-                    SwitchListTile(
-                      key: _joinSectionKey,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Satırları birleştir'),
-                      subtitle: const Text(
-                        'Satırları birleştirir; paragraf ve başlık ayrımlarını '
-                        'tahmin eder.',
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        errorMessage,
+                        style: TextStyle(color: colorScheme.error),
                       ),
-                      value: controller.joinLines,
-                      onChanged: controller.isBusy || listeningActive
+                    ),
+                  ],
+                  if (infoMessage != null) ...[
+                    const SizedBox(height: 16),
+                    Semantics(liveRegion: true, child: Text(infoMessage)),
+                  ],
+                  const SizedBox(height: 16),
+                  if (controller.isBusy)
+                    Center(
+                      child: Column(
+                        children: [
+                          const CircularProgressIndicator(
+                            semanticsLabel: 'Yükleniyor',
+                          ),
+                          if (controller.isRecognizing) ...[
+                            const SizedBox(height: 8),
+                            const Text('Metin çıkarılıyor…'),
+                          ],
+                        ],
+                      ),
+                    )
+                  else ...[
+                    if (hasImage) ...[
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: listeningActive
+                                ? null
+                                : () => controller.rotate(3),
+                            icon: const Icon(Icons.rotate_left),
+                            label: const Text('Sola döndür'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: listeningActive
+                                ? null
+                                : () => controller.rotate(1),
+                            icon: const Icon(Icons.rotate_right),
+                            label: const Text('Sağa döndür'),
+                          ),
+                        ],
+                      ),
+                      if (controller.quarterTurns != 0) ...[
+                        const SizedBox(height: 8),
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            'Görsel saat yönünde '
+                            '${controller.quarterTurns * 90}° döndürüldü. '
+                            'Metin çıkarma bu yönle yapılır.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: listeningActive ? null : _extractText,
+                        icon: const Icon(Icons.text_snippet),
+                        label: const Text('Metni çıkar'),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: listeningActive
+                            ? null
+                            : () => _selectImage(),
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Görseli değiştir'),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: listeningActive ? null : _removeImage,
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Görseli kaldır'),
+                      ),
+                    ] else
+                      FilledButton.icon(
+                        onPressed: listeningActive
+                            ? null
+                            : () => _selectImage(),
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Galeriden görsel seç'),
+                      ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: listeningActive
                           ? null
-                          : _setJoinLines,
+                          : () => _selectImage(camera: true),
+                      icon: const Icon(Icons.camera_alt_outlined),
+                      label: const Text('Fotoğraf çek'),
                     ),
-                  const SizedBox(height: 8),
-                  Row(
-                    key: controller.hasRecognizedText ? null : _joinSectionKey,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          _addingPage
-                              ? 'Sayfa metni'
-                              : controller.hasRecognizedText
-                              ? 'Çıkarılan metin'
-                              : 'Metin',
-                          style: Theme.of(context).textTheme.titleSmall,
+                  ],
+                  if (!widget.returnText &&
+                      !hasImage &&
+                      !controller.hasRecognizedText &&
+                      !_manualEntry) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      key: const ValueKey('create-text'),
+                      onPressed: controller.isBusy || listeningActive
+                          ? null
+                          : () {
+                              setState(() => _manualEntry = true);
+                              _scheduleScrollToText();
+                            },
+                      icon: const Icon(Icons.edit_note),
+                      label: const Text('Metin yaz veya yapıştır'),
+                    ),
+                  ],
+                  if (controller.hasRecognizedText || _manualEntry) ...[
+                    const SizedBox(height: 24),
+                    if (controller.hasRecognizedText)
+                      SwitchListTile(
+                        key: _joinSectionKey,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Satırları birleştir'),
+                        subtitle: const Text(
+                          'Satırları birleştirir; paragraf ve başlık ayrımlarını '
+                          'tahmin eder.',
+                        ),
+                        value: controller.joinLines,
+                        onChanged: controller.isBusy || listeningActive
+                            ? null
+                            : _setJoinLines,
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      key: controller.hasRecognizedText
+                          ? null
+                          : _joinSectionKey,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _addingPage
+                                ? 'Sayfa metni'
+                                : controller.hasRecognizedText
+                                ? 'Çıkarılan metin'
+                                : 'Metin',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ),
+                        if (listeningActive) const _EditLockIcon(),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Semantics(
+                      label: listeningActive
+                          ? 'Metin, düzenleme kilitli. '
+                                'Düzenlemek için okumayı durdur'
+                          : (controller.hasRecognizedText
+                                ? 'Çıkarılan metin'
+                                : 'Metin'),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: listeningActive ? _showEditLockNotice : null,
+                        child: KeyedSubtree(
+                          key: _followTextKey,
+                          child: TextField(
+                            key: ValueKey(
+                              _addingPage ? 'new-page-text' : 'import-text',
+                            ),
+                            controller: controller.textController,
+                            textAlign: _addingPage
+                                ? TextAlign.start
+                                : TextAlign.justify,
+                            readOnly:
+                                controller.isRecognizing ||
+                                listeningActive ||
+                                _pageLocked,
+                            canRequestFocus: !listeningActive,
+                            enableInteractiveSelection: !listeningActive,
+                            // While locked, the parent handles taps.
+                            ignorePointers: listeningActive,
+                            minLines: 6,
+                            maxLines: null,
+                            keyboardType: TextInputType.multiline,
+                            textInputAction: TextInputAction.newline,
+                            decoration: InputDecoration(
+                              hintText: controller.hasRecognizedText
+                                  ? null
+                                  : 'Metnini yaz veya buraya yapıştır.',
+                              alignLabelWithHint: true,
+                              border: const OutlineInputBorder(),
+                            ),
+                          ),
                         ),
                       ),
-                      if (listeningActive) const _EditLockIcon(),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Semantics(
-                    label: listeningActive
-                        ? 'Metin, düzenleme kilitli. '
-                              'Düzenlemek için okumayı durdur'
-                        : (controller.hasRecognizedText
-                              ? 'Çıkarılan metin'
-                              : 'Metin'),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: listeningActive ? _showEditLockNotice : null,
-                      child: TextField(
-                        key: ValueKey(
-                          _addingPage ? 'new-page-text' : 'import-text',
-                        ),
-                        controller: controller.textController,
-                        textAlign: _addingPage
-                            ? TextAlign.start
-                            : TextAlign.justify,
-                        readOnly:
-                            controller.isRecognizing ||
-                            listeningActive ||
-                            _pageLocked,
-                        canRequestFocus: !listeningActive,
-                        enableInteractiveSelection: !listeningActive,
-                        // While locked, the parent handles taps.
-                        ignorePointers: listeningActive,
-                        minLines: 6,
-                        maxLines: null,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        decoration: InputDecoration(
-                          hintText: controller.hasRecognizedText
-                              ? null
-                              : 'Metnini yaz veya buraya yapıştır.',
-                          alignLabelWithHint: true,
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

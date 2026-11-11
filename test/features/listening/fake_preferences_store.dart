@@ -21,10 +21,15 @@ class FakePreferencesStore extends DocumentStore {
   Future<void> saveReadingPreferences({
     required String speed,
     required bool autoNextPage,
+    required bool followSentence,
   }) async {
     saveCalls++;
     await saveGate?.future;
     if (saveError != null) throw saveError!;
-    values = {'speed': speed, 'auto_next_page': autoNextPage ? 1 : 0};
+    values = {
+      'speed': speed,
+      'auto_next_page': autoNextPage ? 1 : 0,
+      'follow_sentence': followSentence ? 1 : 0,
+    };
   }
 }

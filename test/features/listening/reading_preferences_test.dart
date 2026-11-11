@@ -19,13 +19,19 @@ void main() {
     await preferences.load();
     expect(preferences.speed, ReadingSpeed.normal);
     expect(preferences.autoNextPage, isFalse);
+    expect(preferences.followSentence, isFalse);
     expect(store.saveCalls, 0);
 
-    store.values = {'speed': 'invalid', 'auto_next_page': 42};
+    store.values = {
+      'speed': 'invalid',
+      'auto_next_page': 42,
+      'follow_sentence': 42,
+    };
     final invalid = ReadingPreferences(store: store);
     await invalid.load();
     expect(invalid.speed, ReadingSpeed.normal);
     expect(invalid.autoNextPage, isFalse);
+    expect(invalid.followSentence, isFalse);
   });
 
   test(
@@ -47,12 +53,19 @@ void main() {
       preferences.setSpeed(ReadingSpeed.slow);
       preferences.setSpeed(ReadingSpeed.faster);
       preferences.setAutoNextPage(false);
+      preferences.setFollowSentence(true);
+      preferences.setFollowSentence(false);
+      preferences.setFollowSentence(true);
       await Future<void>.delayed(Duration.zero);
       expect(store.saveCalls, 1);
       store.saveGate!.complete();
       await preferences.pendingWrites;
-      expect(store.values, {'speed': 'faster', 'auto_next_page': 0});
-      expect(store.saveCalls, 3);
+      expect(store.values, {
+        'speed': 'faster',
+        'auto_next_page': 0,
+        'follow_sentence': 1,
+      });
+      expect(store.saveCalls, 6);
     },
   );
 
@@ -68,9 +81,11 @@ void main() {
       expect(preferences.errorMessage, contains('yüklenemedi'));
       preferences.setSpeed(ReadingSpeed.fast);
       preferences.setAutoNextPage(true);
+      preferences.setFollowSentence(true);
       await preferences.pendingWrites;
       expect(preferences.speed, ReadingSpeed.fast);
       expect(preferences.autoNextPage, isTrue);
+      expect(preferences.followSentence, isTrue);
       expect(preferences.errorRevision, 2);
       expect(preferences.errorMessage, contains('kaydedilemedi'));
       store.saveError = null;
@@ -101,6 +116,7 @@ void main() {
       await preferences.load();
       preferences.setSpeed(ReadingSpeed.faster);
       preferences.setAutoNextPage(true);
+      preferences.setFollowSentence(true);
       await preferences.pendingWrites;
       await database.close();
       final reopened = await databaseFactoryFfi.openDatabase(
@@ -113,11 +129,108 @@ void main() {
       await restored.load();
       expect(restored.speed, ReadingSpeed.faster);
       expect(restored.autoNextPage, isTrue);
+      expect(restored.followSentence, isTrue);
       await reopened.close();
     } finally {
       await dir.delete(recursive: true);
     }
   });
+
+  test(
+    'v4 migration preserves existing data and rolls back on failure',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('follow-migration-');
+      final path = '${dir.path}${Platform.pathSeparator}test.db';
+      try {
+        final old = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 4,
+            singleInstance: false,
+            onConfigure: configureDocumentDatabase,
+            onCreate: (db, _) async {
+              await db.execute(createDocumentsSql);
+              await db.execute(createPagesSql);
+              await db.execute(createReadingPositionsSql);
+              await db.execute(invalidateReadingPositionSql);
+              await db.execute(createReadingPreferencesSql);
+            },
+          ),
+        );
+        await old.insert('documents', {
+          'id': 42,
+          'title': 'Eski',
+          'category': 'note',
+          'created_at': 7,
+        });
+        await old.insert('pages', {
+          'id': 9,
+          'document_id': 42,
+          'position': 4,
+          'text': 'Bir. İki.',
+        });
+        await old.insert('reading_positions', {
+          'document_id': 42,
+          'page_id': 9,
+          'sentence_index': 1,
+          'page_text': 'Bir. İki.',
+        });
+        await old.insert('reading_preferences', {
+          'id': 1,
+          'speed': 'fast',
+          'auto_next_page': 1,
+        });
+        await old.close();
+        await expectLater(
+          databaseFactoryFfi.openDatabase(
+            path,
+            options: OpenDatabaseOptions(
+              version: 5,
+              singleInstance: false,
+              onUpgrade: (db, from, to) async {
+                await upgradeDocumentSchema(db, from, to);
+                throw StateError('migration failed');
+              },
+            ),
+          ),
+          throwsStateError,
+        );
+        final rollback = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(version: 4, singleInstance: false),
+        );
+        expect(await rollback.getVersion(), 4);
+        expect(
+          (await rollback.query('reading_preferences')).single
+              .containsKey('follow_sentence'),
+          isFalse,
+        );
+        await rollback.close();
+        final upgraded = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 5,
+            singleInstance: false,
+            onConfigure: configureDocumentDatabase,
+            onUpgrade: upgradeDocumentSchema,
+          ),
+        );
+        expect((await upgraded.query('documents')).single['created_at'], 7);
+        expect((await upgraded.query('pages')).single['position'], 4);
+        expect(
+          (await upgraded.query('reading_positions')).single['sentence_index'],
+          1,
+        );
+        final row = (await upgraded.query('reading_preferences')).single;
+        expect(row['speed'], 'fast');
+        expect(row['auto_next_page'], 1);
+        expect(row['follow_sentence'], 0);
+        await upgraded.close();
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    },
+  );
 
   test('v3 upgrade preserves data and a failed upgrade rolls back', () async {
     final dir = await Directory.systemTemp.createTemp('preferences-migration-');

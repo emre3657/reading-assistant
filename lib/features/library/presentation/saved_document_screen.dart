@@ -7,6 +7,7 @@ import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
 import '../../listening/presentation/sentence_highlight.dart';
+import '../../listening/presentation/sentence_follow.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
@@ -64,6 +65,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   final _readController = HighlightingTextEditingController();
   final _formKey = GlobalKey<FormState>();
   final _scrollController = ScrollController();
+  final _followKey = GlobalKey<SentenceFollowState>();
+  final _followTextKey = GlobalKey();
 
   late SavedDocument _saved;
 
@@ -490,6 +493,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     }
     final initialSentence = _resumeSentence ?? 0;
     _resumeSentence = null;
+    _followKey.currentState?.newSession();
     _listening.start(_saved.text, initialSentence: initialSentence);
   }
 
@@ -742,34 +746,45 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                document.category.label,
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-              if (_pageNumber != null) ...[
-                const SizedBox(height: 8),
-                Text('Sayfa $_pageNumber'),
+        child: SentenceFollow(
+          key: _followKey,
+          listening: _listening,
+          preferences: _preferences!,
+          textController: _readController,
+          textKey: _followTextKey,
+          scrollController: _scrollController,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  document.category.label,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                if (_pageNumber != null) ...[
+                  const SizedBox(height: 8),
+                  Text('Sayfa $_pageNumber'),
+                ],
+                const SizedBox(height: 16),
+                KeyedSubtree(
+                  key: _followTextKey,
+                  child: TextField(
+                    key: const ValueKey('saved-reading-text'),
+                    controller: _readController,
+                    readOnly: true,
+                    showCursor: false,
+                    maxLines: null,
+                    decoration: const InputDecoration.collapsed(hintText: ''),
+                    textAlign: document.category == DocumentCategory.book
+                        ? TextAlign.justify
+                        : TextAlign.start,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ),
               ],
-              const SizedBox(height: 16),
-              TextField(
-                key: const ValueKey('saved-reading-text'),
-                controller: _readController,
-                readOnly: true,
-                showCursor: false,
-                maxLines: null,
-                decoration: const InputDecoration.collapsed(hintText: ''),
-                textAlign: document.category == DocumentCategory.book
-                    ? TextAlign.justify
-                    : TextAlign.start,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            ],
+            ),
           ),
         ),
       ),

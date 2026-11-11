@@ -132,12 +132,14 @@ class DocumentStore {
   Future<void> saveReadingPreferences({
     required String speed,
     required bool autoNextPage,
+    required bool followSentence,
   }) async {
     final database = await _database;
     await database.insert('reading_preferences', {
       'id': 1,
       'speed': speed,
       'auto_next_page': autoNextPage ? 1 : 0,
+      'follow_sentence': followSentence ? 1 : 0,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 

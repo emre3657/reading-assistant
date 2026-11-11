@@ -82,6 +82,14 @@ void main() {
     await tester.tap(find.byTooltip('Okuma ayarları'));
     await tester.pumpAndSettle();
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const ValueKey('follow-sentence')))
+          .value,
+      isFalse,
+    );
+    await tester.tap(find.byKey(const ValueKey('follow-sentence')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('reading-speed')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('1.25×').last);
@@ -95,6 +103,12 @@ void main() {
     await tester.tap(find.byTooltip('Okuma ayarları'));
     await tester.pumpAndSettle();
     expect(find.text('1.25×'), findsOneWidget);
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const ValueKey('follow-sentence')))
+          .value,
+      isTrue,
+    );
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
@@ -121,6 +135,12 @@ void main() {
     await tester.tap(find.byTooltip('Okuma ayarları'));
     await tester.pumpAndSettle();
     expect(find.text('1.25×'), findsOneWidget);
+    expect(
+      tester
+          .widget<SwitchListTile>(find.byKey(const ValueKey('follow-sentence')))
+          .value,
+      isTrue,
+    );
     await tester.tap(find.byKey(const ValueKey('auto-next-page')));
     await tester.pumpAndSettle();
     expect(preferences.autoNextPage, isTrue);
@@ -145,13 +165,13 @@ void main() {
     await tester.tap(find.text('Sesli oku'));
     await tester.pump();
     await tester.pump();
-    preferences.setAutoNextPage(true);
+    preferences.setFollowSentence(true);
     await preferences.pendingWrites;
     await tester.pump();
     await tester.pump();
     expect(find.text('Okuma tercihleri kalıcı kaydedilemedi.'), findsOneWidget);
     expect(speech.isSpeaking, isTrue);
-    expect(preferences.autoNextPage, isTrue);
+    expect(preferences.followSentence, isTrue);
   });
 
   testWidgets('older live screen adopts changes made on a pushed reader', (
