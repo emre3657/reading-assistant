@@ -401,7 +401,7 @@ void main() {
       final store = _Store(_threePages());
       await _show(tester, store, speech);
 
-      await _tap(tester, find.byTooltip('Okuma ayarları'));
+      await _tap(tester, find.byTooltip('Görünüm ve sesli okuma'));
       await _tap(tester, find.byKey(const ValueKey('reading-speed')));
       await _tap(tester, find.text('1.5×').last);
       await _tap(tester, find.text('Kapat'));

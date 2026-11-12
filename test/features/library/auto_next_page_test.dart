@@ -130,7 +130,7 @@ Future<void> _show(
 }
 
 Future<void> _openMore(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Okuma ayarları'));
+  await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
   await tester.pumpAndSettle();
 }
 
@@ -150,6 +150,7 @@ Future<void> _setSpeed(WidgetTester tester, String speed) async {
 
 Future<void> _turnOn(WidgetTester tester) async {
   await _openMore(tester);
+  await tester.ensureVisible(_switch);
   await tester.tap(_switch);
   await tester.pumpAndSettle();
   await _closeSettings(tester);

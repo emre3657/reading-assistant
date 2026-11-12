@@ -145,6 +145,7 @@ class DocumentStore {
     required bool autoNextPage,
     required bool followSentence,
     required String textSize,
+    required String textAlignment,
   }) async {
     final database = await _database;
     await database.insert('reading_preferences', {
@@ -153,6 +154,7 @@ class DocumentStore {
       'auto_next_page': autoNextPage ? 1 : 0,
       'follow_sentence': followSentence ? 1 : 0,
       'text_size': textSize,
+      'text_alignment': textAlignment,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 

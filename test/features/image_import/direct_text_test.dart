@@ -81,7 +81,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.text('Okuma hızı'), findsOneWidget);
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);

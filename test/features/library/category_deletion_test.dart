@@ -44,6 +44,7 @@ void main() {
         autoNextPage: true,
         followSentence: true,
         textSize: 'large',
+        textAlignment: 'center',
       );
       final beforeDocs = await db.query('documents');
       final beforePages = await db.query('pages');

@@ -46,6 +46,88 @@ Future<void> _createText(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'edit appearance settings preserve draft and do not mark it dirty',
+    (tester) async {
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      await tester.pumpWidget(
+        _app(
+          preferences,
+          SavedDocumentScreen(
+            document: SavedDocument(
+              id: 7,
+              title: 'Not',
+              category: DocumentCategory.note,
+              text: 'Bir iki.',
+              createdAt: DateTime(2024),
+            ),
+            store: _PageStore(),
+            speechService: FakeSpeechService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Düzenle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Görünüm'));
+      await tester.pumpAndSettle();
+      expect(find.text('Görünüm'), findsOneWidget);
+      expect(find.text('Yazı boyutu'), findsOneWidget);
+      expect(find.text('Metin hizalaması'), findsOneWidget);
+      expect(find.text('Okuma hızı'), findsNothing);
+      expect(find.byKey(const ValueKey('auto-next-page')), findsNothing);
+      expect(find.byKey(const ValueKey('follow-sentence')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('reading-text-size')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Büyük').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('reading-text-alignment')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ortaya').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kapat'));
+      await tester.pumpAndSettle();
+      final edit = find.descendant(
+        of: find.byKey(const ValueKey('document-text')),
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(edit).style!.fontSize, 20);
+      expect(tester.widget<TextField>(edit).textAlign, TextAlign.center);
+      await tester.tap(find.text('Düzenlemekten vazgeç'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kaydedilmemiş değişiklikler var'), findsNothing);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('saved-reading-text')))
+            .textAlign,
+        TextAlign.center,
+      );
+      await tester.tap(find.byTooltip('Düzenle'));
+      await tester.pumpAndSettle();
+      await tester.enterText(edit, 'Korunan taslak.');
+      final controller = tester.widget<TextField>(edit).controller!;
+      const selection = TextSelection(baseOffset: 2, extentOffset: 7);
+      controller.selection = selection;
+      await tester.pump();
+      await tester.tap(find.byTooltip('Görünüm'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('reading-text-alignment')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sağa').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kapat'));
+      await tester.pumpAndSettle();
+      expect(controller.text, 'Korunan taslak.');
+      expect(controller.selection, selection);
+      expect(tester.widget<TextField>(edit).textAlign, TextAlign.right);
+      expect(tester.testTextInput.isVisible, isFalse);
+      await tester.tap(find.text('Düzenlemekten vazgeç'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kaydedilmemiş değişiklikler var'), findsOneWidget);
+    },
+  );
+
   testWidgets('text size applies immediately without restarting speech', (
     tester,
   ) async {
@@ -79,14 +161,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(store.positionWrites, 1);
     final stopCalls = speech.stopCalls;
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.text('Normal'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('reading-text-size')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Çok büyük').last);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('reading-text-alignment')),
+    );
+    await tester.tap(find.byKey(const ValueKey('reading-text-alignment')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('İki yana').last);
+    await tester.pumpAndSettle();
     expect(tester.widget<TextField>(field).style!.fontSize, originalSize * 1.5);
+    expect(tester.widget<TextField>(field).textAlign, TextAlign.justify);
     expect(speech.spoken, ['Bir.']);
     expect(speech.stopCalls, stopCalls);
     expect(speech.isSpeaking, isTrue);
@@ -119,8 +209,20 @@ void main() {
               matching: find.byType(TextField),
             ),
           )
-          .style,
-      isNull,
+          .style!
+          .fontSize,
+      originalSize * 1.5,
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.descendant(
+              of: find.byKey(const ValueKey('document-text')),
+              matching: find.byType(TextField),
+            ),
+          )
+          .textAlign,
+      TextAlign.justify,
     );
   });
 
@@ -157,9 +259,12 @@ void main() {
         );
         final baseSize = editable.renderEditable.text!.style!.fontSize!;
         expect(baseSize, 16);
+        expect(tester.widget<TextField>(field).textAlign, TextAlign.start);
         preferences.setTextSize(ReadingTextSize.large);
+        preferences.setTextAlignment(ReadingTextAlignment.center);
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.25);
+        expect(tester.widget<TextField>(field).textAlign, TextAlign.center);
         expect(controller.selection, selection);
         expect(controller.text, 'Bir iki.');
         expect(FocusManager.instance.primaryFocus, same(focus));
@@ -174,8 +279,10 @@ void main() {
         await tester.pumpAndSettle();
         final stopCalls = speech.stopCalls;
         preferences.setTextSize(ReadingTextSize.extraLarge);
+        preferences.setTextAlignment(ReadingTextAlignment.right);
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
         expect(speech.spoken, ['Bir iki.']);
         expect(speech.stopCalls, stopCalls);
         expect(speech.isSpeaking, isTrue);
@@ -192,23 +299,27 @@ void main() {
         await tester.tap(find.text('Duraklat'));
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
         await tester.tap(find.text('Devam et'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Durdur'));
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
         expect(controller.text, 'Bir iki.');
         await tester.tap(find.text('Sesli oku'));
         await tester.pumpAndSettle();
         speech.finishCurrent();
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
+        expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
         expect(controller.text, 'Bir iki.');
 
         await preferences.pendingWrites;
         final reopened = ReadingPreferences(store: store);
         await reopened.load();
         expect(reopened.textSize, ReadingTextSize.extraLarge);
+        expect(reopened.textAlignment, ReadingTextAlignment.right);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();
         await tester.pumpWidget(
@@ -218,6 +329,7 @@ void main() {
         await tester.tap(find.text('Metin yaz veya yapıştır'));
         await tester.pumpAndSettle();
         expect(tester.widget<TextField>(field).style!.fontSize, baseSize * 1.5);
+        expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
       },
     );
 
@@ -332,10 +444,70 @@ void main() {
     await tester.dragFrom(const Offset(160, 300), const Offset(0, -180));
     await tester.pumpAndSettle();
     expect(scroll.offset, greaterThan(0));
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.text('Yazı boyutu'), findsOneWidget);
     expect(find.text('Çok büyük'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('appearance and speech settings remain usable at large scale', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 560);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    await tester.pumpWidget(
+      _app(
+        preferences,
+        SavedDocumentScreen(
+          document: SavedDocument(
+            id: 7,
+            title: 'Not',
+            category: DocumentCategory.note,
+            text: 'Bir iki.',
+            createdAt: DateTime(2024),
+          ),
+          pageId: 1,
+          store: _PageStore(),
+          speechService: FakeSpeechService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Future<void> tapVisible(Finder finder) async {
+      await tester.ensureVisible(finder);
+      await tester.pumpAndSettle();
+      expect(finder.hitTestable(), findsOneWidget);
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
+    await tapVisible(find.byTooltip('Görünüm ve sesli okuma'));
+    await tapVisible(find.byKey(const ValueKey('reading-text-size')));
+    await tapVisible(find.text('Çok büyük').last);
+    await tapVisible(find.byKey(const ValueKey('reading-text-alignment')));
+    await tapVisible(find.text('İki yana').last);
+    await tapVisible(find.byKey(const ValueKey('reading-speed')));
+    await tapVisible(find.text('1.25×').last);
+    await tapVisible(find.byKey(const ValueKey('follow-sentence')));
+    await tapVisible(find.byKey(const ValueKey('auto-next-page')));
+    await tapVisible(find.text('Kapat'));
+    expect(preferences.textSize, ReadingTextSize.extraLarge);
+    expect(preferences.textAlignment, ReadingTextAlignment.justify);
+    expect(preferences.speed, ReadingSpeed.fast);
+    expect(preferences.followSentence, isTrue);
+    expect(preferences.autoNextPage, isTrue);
+    await tapVisible(find.byTooltip('Düzenle'));
+    await tapVisible(find.byTooltip('Görünüm'));
+    await tapVisible(find.byKey(const ValueKey('reading-text-alignment')));
+    await tapVisible(find.text('Sola').last);
+    await tapVisible(find.text('Kapat'));
+    expect(preferences.textAlignment, ReadingTextAlignment.start);
     expect(tester.takeException(), isNull);
   });
 
@@ -372,7 +544,7 @@ void main() {
     final speech = FakeSpeechService();
     await tester.pumpWidget(_app(preferences, _import(speech)));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
     expect(
@@ -381,12 +553,14 @@ void main() {
           .value,
       isFalse,
     );
+    await tester.ensureVisible(find.byKey(const ValueKey('follow-sentence')));
     await tester.tap(find.byKey(const ValueKey('follow-sentence')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('reading-speed')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('1.25×').last);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('reading-text-size')));
     await tester.tap(find.byKey(const ValueKey('reading-text-size')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Büyük').last);
@@ -398,7 +572,7 @@ void main() {
 
     await tester.pumpWidget(_app(preferences, _import(speech, newPage: true)));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.text('1.25×'), findsOneWidget);
     expect(find.text('Büyük'), findsOneWidget);
@@ -431,7 +605,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.text('1.25×'), findsOneWidget);
     expect(find.text('Büyük'), findsOneWidget);
@@ -441,6 +615,7 @@ void main() {
           .value,
       isTrue,
     );
+    await tester.ensureVisible(find.byKey(const ValueKey('auto-next-page')));
     await tester.tap(find.byKey(const ValueKey('auto-next-page')));
     await tester.pumpAndSettle();
     expect(preferences.autoNextPage, isTrue);
@@ -500,19 +675,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('reading-speed')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('0.75×').last);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('auto-next-page')));
     await tester.tap(find.byKey(const ValueKey('auto-next-page')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
     Navigator.of(tester.element(find.byType(SavedDocumentScreen))).pop();
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.text('0.75×'), findsOneWidget);
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
@@ -533,7 +709,7 @@ void main() {
     final preferences = ReadingPreferences(store: store);
     await tester.pumpWidget(_app(preferences, _import(FakeSpeechService())));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('reading-speed')));
     await tester.pumpAndSettle();

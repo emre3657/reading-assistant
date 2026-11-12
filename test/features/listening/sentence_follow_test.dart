@@ -106,6 +106,8 @@ void main() {
     preferences.setTextSize(ReadingTextSize.extraLarge);
     await tester.pumpAndSettle();
     expect(scroll.offset, greaterThan(oldOffset));
+    preferences.setTextAlignment(ReadingTextAlignment.center);
+    await tester.pumpAndSettle();
     final editable = tester
         .state<EditableTextState>(find.byType(EditableText))
         .renderEditable;
@@ -144,6 +146,7 @@ void main() {
     await _tap(tester, find.text('Duraklat'));
     final before = scroll.offset;
     preferences.setTextSize(ReadingTextSize.extraLarge);
+    preferences.setTextAlignment(ReadingTextAlignment.right);
     await tester.pumpAndSettle();
     expect(scroll.offset, before);
     expect(find.text('Okunan cümleye dön'), findsOneWidget);

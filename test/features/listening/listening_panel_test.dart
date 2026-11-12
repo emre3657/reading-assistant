@@ -343,7 +343,7 @@ void main() {
     final restart = find.text('Başa dön');
     await tester.ensureVisible(restart);
     expect(restart.hitTestable(), findsOneWidget);
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('reading-speed')), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -356,7 +356,7 @@ void main() {
     await _extract(tester);
 
     Future<void> openSettings() async {
-      await tester.tap(find.byTooltip('Okuma ayarları'));
+      await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
       await tester.pumpAndSettle();
     }
 

@@ -164,6 +164,11 @@ void main() {
             .map((s) => (s.$1, s.$2)),
         [(6, 11)],
       );
+      final beforeAlignment = tester.getTopLeft(_readFrom);
+      preferences.setTextAlignment(ReadingTextAlignment.right);
+      await tester.pumpAndSettle();
+      expect(_readFrom.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(_readFrom), isNot(beforeAlignment));
       await _tap(tester, _readFrom);
       expect(speech.spoken, ['Aynı. ']);
     },

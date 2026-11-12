@@ -15,6 +15,26 @@ enum ReadingTextSize {
   final double multiplier;
 }
 
+enum ReadingTextAlignment {
+  start('Sola', TextAlign.start),
+  center('Ortaya', TextAlign.center),
+  right('Sağa', TextAlign.right),
+  justify('İki yana', TextAlign.justify);
+
+  const ReadingTextAlignment(this.label, this.textAlign);
+  final String label;
+  final TextAlign textAlign;
+}
+
+TextStyle? readingInputTextStyle(BuildContext context, ReadingTextSize size) {
+  if (size == ReadingTextSize.normal) return null;
+  final theme = Theme.of(context);
+  final defaultStyle = theme.useMaterial3
+      ? theme.textTheme.bodyLarge
+      : theme.textTheme.titleMedium;
+  return TextStyle(fontSize: (defaultStyle?.fontSize ?? 16) * size.multiplier);
+}
+
 class ReadingPreferences extends ChangeNotifier {
   ReadingPreferences({DocumentStore? store})
     : _store = store ?? DocumentStore.instance;
@@ -28,6 +48,7 @@ class ReadingPreferences extends ChangeNotifier {
   bool _autoNextPage = false;
   bool _followSentence = false;
   ReadingTextSize _textSize = ReadingTextSize.normal;
+  ReadingTextAlignment _textAlignment = ReadingTextAlignment.start;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -38,6 +59,7 @@ class ReadingPreferences extends ChangeNotifier {
   bool get autoNextPage => _autoNextPage;
   bool get followSentence => _followSentence;
   ReadingTextSize get textSize => _textSize;
+  ReadingTextAlignment get textAlignment => _textAlignment;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -60,6 +82,11 @@ class ReadingPreferences extends ChangeNotifier {
               .where((size) => size.name == row?['text_size'])
               .firstOrNull ??
           ReadingTextSize.normal;
+      _textAlignment =
+          ReadingTextAlignment.values
+              .where((alignment) => alignment.name == row?['text_alignment'])
+              .firstOrNull ??
+          ReadingTextAlignment.start;
     } catch (_) {
       _errorMessage =
           'Okuma tercihleri yüklenemedi. Varsayılanlar kullanılıyor.';
@@ -98,11 +125,19 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setTextAlignment(ReadingTextAlignment value) {
+    if (!_ready || _textAlignment == value) return;
+    _textAlignment = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
     final follow = _followSentence;
     final textSize = _textSize.name;
+    final textAlignment = _textAlignment.name;
     _writeTail = _writeTail.then((_) async {
       try {
         await _store.saveReadingPreferences(
@@ -110,6 +145,7 @@ class ReadingPreferences extends ChangeNotifier {
           autoNextPage: auto,
           followSentence: follow,
           textSize: textSize,
+          textAlignment: textAlignment,
         );
         _saveFailureReported = false;
       } catch (_) {

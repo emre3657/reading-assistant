@@ -217,11 +217,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   Future<void> _openReadingSettings() async {
+    if (_editing) FocusManager.instance.primaryFocus?.unfocus();
     await showReadingSettings(
       context,
       preferences: _preferences!,
       pageChanges: _pageList,
       showAutoNextPage: () => _hasPageNavigation && _pages!.length > 1,
+      appearanceOnly: _editing,
     );
     if (mounted) _showPreferencesError();
   }
@@ -1001,7 +1003,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         leading: BackButton(onPressed: () => unawaited(_requestExit())),
         actions: [
           IconButton(
-            tooltip: 'Okuma ayarları',
+            tooltip: 'Görünüm ve sesli okuma',
             icon: const Icon(Icons.settings_outlined),
             onPressed: _openReadingSettings,
           ),
@@ -1073,7 +1075,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                                   decoration: const InputDecoration.collapsed(
                                     hintText: '',
                                   ),
-                                  textAlign: TextAlign.start,
+                                  textAlign:
+                                      _preferences!.textAlignment.textAlign,
                                   style: Theme.of(context).textTheme.bodyLarge
                                       ?.copyWith(
                                         fontSize:
@@ -1174,6 +1177,11 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           onPressed: _saving ? null : () => unawaited(_requestExit()),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Görünüm',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _saving ? null : _openReadingSettings,
+          ),
           TextButton(
             key: const ValueKey('save-document'),
             onPressed: _saving ? null : _save,
@@ -1195,7 +1203,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                   key: const ValueKey('document-text'),
                   controller: _textController,
                   enabled: !_saving,
-                  textAlign: TextAlign.start,
+                  textAlign: _preferences!.textAlignment.textAlign,
+                  style: readingInputTextStyle(context, _preferences!.textSize),
                   keyboardType: TextInputType.multiline,
                   textCapitalization: TextCapitalization.sentences,
                   minLines: 8,

@@ -29,8 +29,8 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 - Kayıtlı sayfada bir cümleye dokunup “Buradan oku” ile okumaya o cümleden başlama.
 - İsteğe bağlı olarak okunan cümleyi otomatik takip etme; elle kaydırınca takip duraklatılır.
 - 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
-- İlk ekran, sayfa ekleme ve kayıtlı sayfa okuma metni için Normal, Büyük ve Çok büyük yazı boyutları.
-- Ekranın altında küçültülebilen dinleme paneli; hız seçenekleri üstteki “Okuma ayarları” menüsündedir.
+- İlk ekran, sayfa ekleme ve kayıtlı sayfa okuma/düzenleme metinleri için yazı boyutu ve hizalama seçenekleri.
+- Ekranın altında küçültülebilen dinleme paneli; hız seçenekleri üstteki “Görünüm ve sesli okuma” menüsündedir.
 
 Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirilirse aynı cümle yeni hızla yeniden başlar. Aktif ve duraklatılmış oturumlarda metin düzenleme kilitlidir; düzenlemek için okuma durdurulmalıdır.
 
@@ -47,20 +47,18 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Onay alarak tek sayfayı veya içeriğin tamamını silme.
 - Sayfa okuma ekranında önceki/sonraki düğmeleri veya sayfa göstergesine dokunup numara girerek kayıtlı sırada gezinme; geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Düzenleme sırasında gezinme gizlenir; düzenlemeden vazgeçerken kaydedilmemiş değişiklikler için onay istenir.
-- Çok sayfalı içeriklerde “Okuma ayarları”ndaki varsayılan kapalı “Sonraki sayfayı otomatik oku” anahtarı, sayfa doğal olarak bittiğinde sonraki sayfayı okur. Son veya boş sayfada okuma biter. Bekleyen geçiş Durdur, anahtarı kapatma veya arka plana geçme ile iptal edilir.
+- Çok sayfalı içeriklerde “Görünüm ve sesli okuma” ayarlarındaki varsayılan kapalı “Sonraki sayfayı otomatik oku” anahtarı, sayfa doğal olarak bittiğinde sonraki sayfayı okur. Son veya boş sayfada okuma biter. Bekleyen geçiş Durdur, anahtarı kapatma veya arka plana geçme ile iptal edilir.
 - Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.
 
 Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Silme sonrasında kalan sayfalar ekranda kesintisiz numaralanır.
 
 Sayfa ekleme ve metin düzenleme ekranlarından kaydedilmemiş metinle çıkarken düzenlemeye devam etme, kaydetmeden çıkma veya kaydedip çıkma seçenekleri sunulur. Kaydetme hatasında taslak korunur.
 
-Yerleşik Kitap kategorisindeki metinler adı değiştirilse bile iki yana, diğer kategoriler ve sayfa düzenleme alanları başlangıç yönüne hizalanır.
-
 ## Çevrimdışı çalışma ve veriler
 
 - Hesap, backend, bulut OCR/TTS servisi veya API anahtarı kullanılmaz.
 - Metinler yerel SQLite veritabanında tutulur. İçerik bilgileri `documents`, sayfalar `pages` tablosundadır.
-- Okuma hızı, yazı boyutu, cümle takibi ve otomatik sonraki sayfa tercihleri uygulama genelinde cihazda saklanır.
+- Okuma hızı, yazı boyutu, metin hizalaması, cümle takibi ve otomatik sonraki sayfa tercihleri uygulama genelinde cihazda saklanır.
 - Fotoğraflar kayıtlı içeriğin parçası olarak saklanmaz; kullanıcının galerisindeki orijinaller silinmez.
 - Ham OCR ve yerleşim bilgisi yalnızca mevcut oturumda tutulur. Veritabanına görünen metin kaydedilir.
 

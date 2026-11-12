@@ -399,8 +399,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Okuma ayarları'));
+    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('auto-next-page')));
     await tester.tap(find.byKey(const ValueKey('auto-next-page')));
     await tester.pumpAndSettle();
     await _tap(tester, 'Kapat');
