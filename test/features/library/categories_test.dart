@@ -21,10 +21,50 @@ class _Store extends DocumentStore with FakeReadingPositions {
   final items = <DocumentCategory>[...DocumentCategory.values];
   SavedDocument? document;
   bool failCategory = false;
+  bool failDelete = false;
   int next = 0;
 
   @override
   Future<List<DocumentCategory>> categories() async => List.of(items);
+
+  @override
+  Future<int> categoryDocumentCount(DocumentCategory category) async =>
+      document?.category == category ? 1 : 0;
+
+  @override
+  Future<void> deleteCategory(
+    DocumentCategory category, {
+    DocumentCategory? target,
+  }) async {
+    if (failDelete) throw StateError('disk');
+    if (items.length <= 1) {
+      throw const CategoryDeletionException(
+        CategoryDeletionProblem.lastCategory,
+      );
+    }
+    if (!items.contains(category)) {
+      throw const CategoryDeletionException(
+        CategoryDeletionProblem.missingCategory,
+      );
+    }
+    if ((target == null && document?.category == category) ||
+        (target != null && (target == category || !items.contains(target)))) {
+      throw const CategoryDeletionException(
+        CategoryDeletionProblem.invalidTarget,
+      );
+    }
+    final saved = document;
+    if (saved != null && saved.category == category && target != null) {
+      document = SavedDocument(
+        id: saved.id,
+        title: saved.title,
+        category: target,
+        text: saved.text,
+        createdAt: saved.createdAt,
+      );
+    }
+    items.remove(category);
+  }
 
   @override
   Future<DocumentCategory> createCategory(String name) async {
@@ -144,7 +184,6 @@ void main() {
         onConfigure: configureDocumentDatabase,
         onCreate: createDocumentSchema,
         onUpgrade: upgradeDocumentSchema,
-        onOpen: ensureBuiltInCategories,
       );
       try {
         final db = await databaseFactoryFfi.openDatabase(
@@ -351,10 +390,8 @@ void main() {
     await tester.pumpAndSettle();
     await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
     await _tap(tester, find.text('Kategorileri yönet'));
-    await _tap(
-      tester,
-      find.byTooltip('Tarifler kategorisini yeniden adlandır'),
-    );
+    await _tap(tester, find.byTooltip('Tarifler kategori seçenekleri'));
+    await _tap(tester, find.text('Yeniden adlandır'));
     await tester.enterText(
       find.byKey(const ValueKey('category-name')),
       'Yeni ad',
@@ -415,7 +452,8 @@ void main() {
     await tester.pumpAndSettle();
     await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
     await _tap(tester, find.text('Kategorileri yönet'));
-    await _tap(tester, find.byTooltip('Kitap kategorisini yeniden adlandır'));
+    await _tap(tester, find.byTooltip('Kitap kategori seçenekleri'));
+    await _tap(tester, find.text('Yeniden adlandır'));
     await tester.enterText(find.byKey(const ValueKey('category-name')), 'NOT');
     await _tap(tester, find.widgetWithText(FilledButton, 'Kaydet'));
     expect(find.text('Bu adla bir kategori zaten var.'), findsOneWidget);
@@ -440,6 +478,213 @@ void main() {
     await _tap(tester, find.widgetWithText(FilledButton, 'Kaydet'));
     expect(find.text('Okuduklarım'), findsOneWidget);
     expect(store.items.first, DocumentCategory.book);
+  });
+
+  testWidgets('empty deletion cancel and confirmation update categories', (
+    tester,
+  ) async {
+    final store = _Store();
+    await tester.pumpWidget(MaterialApp(home: LibraryScreen(store: store)));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
+    await _tap(tester, find.text('Kategorileri yönet'));
+    await _tap(tester, find.byTooltip('Kitap kategori seçenekleri'));
+    await _tap(tester, find.text('Sil'));
+    expect(find.text('“Kitap” kategorisi silinecek.'), findsOneWidget);
+    await _tap(tester, find.text('Vazgeç'));
+    expect(store.items.contains(DocumentCategory.book), isTrue);
+    await _tap(tester, find.byTooltip('Kitap kategori seçenekleri'));
+    await _tap(tester, find.text('Sil'));
+    await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+    expect(store.items.contains(DocumentCategory.book), isFalse);
+    expect(find.text('Kitap'), findsNothing);
+  });
+
+  testWidgets(
+    'transfer requires another category, retries failure and refreshes library',
+    (tester) async {
+      final store = _Store();
+      await store.save(
+        title: 'Özgün',
+        category: DocumentCategory.book,
+        text: 'Metin.',
+      );
+      await tester.pumpWidget(MaterialApp(home: LibraryScreen(store: store)));
+      await tester.pumpAndSettle();
+      await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
+      await _tap(tester, find.text('Kategorileri yönet'));
+      await _tap(tester, find.byTooltip('Kitap kategori seçenekleri'));
+      await _tap(tester, find.text('Sil'));
+      expect(find.textContaining('1 kayıt var'), findsOneWidget);
+      expect(find.textContaining('içerikler silinmeyecek'), findsOneWidget);
+      await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+      expect(
+        find.text('Kayıtlar için bir hedef kategori seç.'),
+        findsOneWidget,
+      );
+      final dropdownWidget = tester.widget<DropdownButton<DocumentCategory>>(
+        find.descendant(
+          of: find.byKey(const ValueKey('category-delete-target-null')),
+          matching: find.byType(DropdownButton<DocumentCategory>),
+        ),
+      );
+      expect(
+        dropdownWidget.items!.map((item) => item.value),
+        isNot(contains(DocumentCategory.book)),
+      );
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('category-delete-target-null')),
+      );
+      await _tap(tester, find.text('Not').last);
+      store.failDelete = true;
+      await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+      expect(
+        find.text(
+          'Kategori silinemedi. Kayıtlar korundu, tekrar deneyebilirsin.',
+        ),
+        findsOneWidget,
+      );
+      expect(store.document!.category, DocumentCategory.book);
+      store.failDelete = false;
+      await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+      expect(store.document!.category, DocumentCategory.note);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Özgün'), findsOneWidget);
+      expect(find.text('Not'), findsOneWidget);
+    },
+  );
+
+  testWidgets('last category cannot be deleted and new save uses it', (
+    tester,
+  ) async {
+    final store = _Store()
+      ..items.removeWhere((c) => c != DocumentCategory.book);
+    await tester.pumpWidget(MaterialApp(home: LibraryScreen(store: store)));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
+    await _tap(tester, find.text('Kategorileri yönet'));
+    await _tap(tester, find.byTooltip('Kitap kategori seçenekleri'));
+    await _tap(tester, find.text('Sil'));
+    expect(find.textContaining('Son kalan kategori silinemez'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('confirm-category-delete')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showDialog<bool>(
+                context: context,
+                builder: (_) =>
+                    SaveDocumentDialog(text: 'Metin.', store: store),
+              ),
+              child: const Text('Aç'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _tap(tester, find.text('Aç'));
+    expect(find.text('Kitap'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Başlık'),
+      'Yeni',
+    );
+    await _tap(tester, find.widgetWithText(FilledButton, 'Kaydet'));
+    expect(store.document!.category, DocumentCategory.book);
+  });
+
+  testWidgets('stale target and new records require a valid selection', (
+    tester,
+  ) async {
+    final store = _Store();
+    await tester.pumpWidget(MaterialApp(home: LibraryScreen(store: store)));
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
+    await _tap(tester, find.text('Kategorileri yönet'));
+    await _tap(tester, find.byTooltip('Kitap kategori seçenekleri'));
+    await _tap(tester, find.text('Sil'));
+    await store.save(
+      title: 'Yeni',
+      category: DocumentCategory.book,
+      text: 'Metin.',
+    );
+    await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+    expect(
+      find.textContaining('hedef kategori artık geçerli değil'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('1 kayıt var'), findsOneWidget);
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('category-delete-target-null')),
+    );
+    await _tap(tester, find.text('Not').last);
+    store.items.remove(DocumentCategory.note);
+    await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+    expect(
+      find.textContaining('hedef kategori artık geçerli değil'),
+      findsOneWidget,
+    );
+    expect(store.document!.category, DocumentCategory.book);
+    expect(
+      find.byKey(const ValueKey('category-delete-target-null')),
+      findsOneWidget,
+    );
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('category-delete-target-null')),
+    );
+    await _tap(tester, find.text('Yemek tarifi').last);
+    await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+    expect(store.document!.category, DocumentCategory.recipe);
+  });
+
+  testWidgets('deletion controls fit narrow screen with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = _Store();
+    await store.save(
+      title: 'Başlık',
+      category: DocumentCategory.book,
+      text: 'Metin.',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: LibraryScreen(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
+    await _tap(tester, find.text('Kategorileri yönet'));
+    await _tap(tester, find.byTooltip('Kitap kategori seçenekleri'));
+    await _tap(tester, find.text('Sil'));
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('category-delete-target-null')),
+    );
+    await _tap(tester, find.text('Not').last);
+    await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+    expect(store.document!.category, DocumentCategory.note);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('category controls remain usable with large system text', (
@@ -515,6 +760,43 @@ void main() {
         entry.$2,
       );
       expect(find.text(entry.$1.label), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
+  testWidgets('transferred document uses target category alignment', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    for (final entry in [
+      (DocumentCategory.book, DocumentCategory.note, TextAlign.start),
+      (DocumentCategory.note, DocumentCategory.book, TextAlign.justify),
+    ]) {
+      final store = _Store();
+      await store.save(title: 'Başlık', category: entry.$1, text: 'Metin.');
+      await store.deleteCategory(entry.$1, target: entry.$2);
+      final document = (await store.getDocument(1))!;
+      await tester.pumpWidget(
+        ReadingPreferencesScope(
+          preferences: preferences,
+          child: MaterialApp(
+            home: SavedDocumentScreen(
+              document: document,
+              store: store,
+              speechService: FakeSpeechService(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('saved-reading-text')))
+            .textAlign,
+        entry.$3,
+      );
+      expect(find.text(entry.$2.label), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     }
   });

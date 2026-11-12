@@ -94,6 +94,7 @@ class _SaveDocumentDialogState extends State<SaveDocumentDialog> {
                   store: _store,
                   value: _category,
                   enabled: !_saving,
+                  selectFirstIfMissing: true,
                   onReady: (ready) => setState(() => _categoriesReady = ready),
                   onChanged: (value) => setState(() => _category = value),
                 ),

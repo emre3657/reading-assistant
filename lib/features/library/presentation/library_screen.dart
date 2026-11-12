@@ -189,33 +189,36 @@ class _LibraryScreenState extends State<LibraryScreen> {
             _deleteDocument(document);
         }
       },
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: _DocumentAction.edit,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.edit_outlined),
-              SizedBox(width: 12),
-              Text('Düzenle'),
-            ],
+      itemBuilder: (context) {
+        final errorColor = Theme.of(context).colorScheme.error;
+        return [
+          const PopupMenuItem(
+            value: _DocumentAction.edit,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.edit_outlined),
+                SizedBox(width: 12),
+                Text('Düzenle'),
+              ],
+            ),
           ),
-        ),
-        PopupMenuItem(
-          value: _DocumentAction.delete,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.delete_outline,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(width: 12),
-              const Text('Sil'),
-            ],
+          PopupMenuItem(
+            value: _DocumentAction.delete,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.delete_outline,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                const SizedBox(width: 12),
+                Text('Sil', style: TextStyle(color: errorColor)),
+              ],
+            ),
           ),
-        ),
-      ],
+        ];
+      },
     );
   }
 
@@ -232,7 +235,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: 'categories',
-                child: Text('Kategorileri yönet'),
+                child: Row(
+                  children: [
+                    Icon(Icons.category_outlined, size: 20),
+                    SizedBox(width: 12),
+                    Text('Kategorileri yönet'),
+                  ],
+                ),
               ),
             ],
           ),

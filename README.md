@@ -40,7 +40,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 
 - İlk ekrandaki metni yeni içeriğin ilk sayfası olarak kaydetme.
 - “Kayıtlarım” ekranında içerikleri listeleme, başlığa göre arama ve açma.
-- Kayıt sırasında kategori oluşturma; “Kategorileri yönet” ile yerleşik ve özel kategorileri yeniden adlandırma.
+- Kategori oluşturma, yeniden adlandırma ve kayıtları başka kategoriye taşıyarak silme.
 - Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.

@@ -134,6 +134,7 @@ class CategoryPicker extends StatefulWidget {
     required this.onChanged,
     required this.onReady,
     required this.enabled,
+    this.selectFirstIfMissing = false,
   });
 
   final DocumentStore store;
@@ -141,6 +142,7 @@ class CategoryPicker extends StatefulWidget {
   final ValueChanged<DocumentCategory> onChanged;
   final ValueChanged<bool> onReady;
   final bool enabled;
+  final bool selectFirstIfMissing;
 
   @override
   State<CategoryPicker> createState() => _CategoryPickerState();
@@ -174,7 +176,15 @@ class _CategoryPickerState extends State<CategoryPicker> {
         _categories = categories;
         _loading = false;
       });
-      widget.onReady(categories.contains(widget.value));
+      if (widget.selectFirstIfMissing &&
+          !categories.contains(widget.value) &&
+          categories.isNotEmpty) {
+        widget.onChanged(categories.first);
+      }
+      widget.onReady(
+        categories.contains(widget.value) ||
+            (widget.selectFirstIfMissing && categories.isNotEmpty),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() {

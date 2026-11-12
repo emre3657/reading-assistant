@@ -1073,10 +1073,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                                   decoration: const InputDecoration.collapsed(
                                     hintText: '',
                                   ),
-                                  textAlign:
-                                      document.category == DocumentCategory.book
-                                      ? TextAlign.justify
-                                      : TextAlign.start,
+                                  textAlign: TextAlign.start,
                                   style: Theme.of(context).textTheme.bodyLarge
                                       ?.copyWith(
                                         fontSize:
@@ -1170,7 +1167,6 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   Widget _buildEditScreen(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final document = _saved;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sayfa metnini düzenle'),
@@ -1199,9 +1195,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                   key: const ValueKey('document-text'),
                   controller: _textController,
                   enabled: !_saving,
-                  textAlign: document.category == DocumentCategory.book
-                      ? TextAlign.justify
-                      : TextAlign.start,
+                  textAlign: TextAlign.start,
                   keyboardType: TextInputType.multiline,
                   textCapitalization: TextCapitalization.sentences,
                   minLines: 8,

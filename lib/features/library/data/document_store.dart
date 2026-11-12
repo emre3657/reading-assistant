@@ -9,6 +9,13 @@ class DuplicateCategoryException implements Exception {
   const DuplicateCategoryException();
 }
 
+enum CategoryDeletionProblem { lastCategory, missingCategory, invalidTarget }
+
+class CategoryDeletionException implements Exception {
+  const CategoryDeletionException(this.problem);
+  final CategoryDeletionProblem problem;
+}
+
 class DocumentStore {
   /// An injected opener must return an already configured current database.
   DocumentStore({this.databaseOpener});
@@ -159,7 +166,6 @@ class DocumentStore {
         onConfigure: configureDocumentDatabase,
         onCreate: createDocumentSchema,
         onUpgrade: upgradeDocumentSchema,
-        onOpen: ensureBuiltInCategories,
       );
     } catch (_) {
       _databaseFuture = null;
@@ -174,6 +180,63 @@ class DocumentStore {
       for (final row in rows)
         DocumentCategory(row['id'] as String, row['label'] as String),
     ];
+  }
+
+  Future<int> categoryDocumentCount(DocumentCategory category) async {
+    final database = await _database;
+    final rows = await database.rawQuery(
+      'SELECT COUNT(*) AS count FROM documents WHERE category = ?',
+      [category.name],
+    );
+    return rows.single['count'] as int;
+  }
+
+  Future<void> deleteCategory(
+    DocumentCategory category, {
+    DocumentCategory? target,
+  }) async {
+    final database = await _database;
+    await database.transaction((txn) async {
+      final categories = await txn.query('categories', columns: ['id']);
+      final ids = categories.map((row) => row['id'] as String).toSet();
+      if (!ids.contains(category.name)) {
+        throw const CategoryDeletionException(
+          CategoryDeletionProblem.missingCategory,
+        );
+      }
+      if (ids.length <= 1) {
+        throw const CategoryDeletionException(
+          CategoryDeletionProblem.lastCategory,
+        );
+      }
+      final count =
+          (await txn.rawQuery(
+                'SELECT COUNT(*) AS count FROM documents WHERE category = ?',
+                [category.name],
+              )).single['count']
+              as int;
+      if ((target == null && count > 0) ||
+          (target != null &&
+              (target == category || !ids.contains(target.name)))) {
+        throw const CategoryDeletionException(
+          CategoryDeletionProblem.invalidTarget,
+        );
+      }
+      if (target != null) {
+        await txn.update(
+          'documents',
+          {'category': target.name},
+          where: 'category = ?',
+          whereArgs: [category.name],
+        );
+      }
+      final deleted = await txn.delete(
+        'categories',
+        where: 'id = ?',
+        whereArgs: [category.name],
+      );
+      if (deleted != 1) throw StateError('Category deletion failed.');
+    });
   }
 
   Future<DocumentCategory> createCategory(String name) async {

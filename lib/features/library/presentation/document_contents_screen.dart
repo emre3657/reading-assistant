@@ -337,7 +337,8 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     );
   }
 
-  Widget _pageMenu(DocumentPage page, int number) {
+  Widget _pageMenu(BuildContext context, DocumentPage page, int number) {
+    final errorColor = Theme.of(context).colorScheme.error;
     if (_deletingPageId == page.id) {
       return const SizedBox(
         width: 48,
@@ -370,7 +371,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                 color: Theme.of(context).colorScheme.error,
               ),
               const SizedBox(width: 12),
-              const Text('Sil'),
+              Text('Sil', style: TextStyle(color: errorColor)),
             ],
           ),
         ),
@@ -534,7 +535,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _pageMenu(page, number),
+                              _pageMenu(context, page, number),
                               if (canReorder) _dragHandle(index, number),
                             ],
                           ),
