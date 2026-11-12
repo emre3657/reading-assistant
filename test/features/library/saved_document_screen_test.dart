@@ -317,6 +317,50 @@ void main() {
   });
 
   group('saving', () {
+    testWidgets('clearing only changes the draft and keeps validation', (
+      tester,
+    ) async {
+      final store = FakeDocumentStore([_doc()]);
+      await _show(tester, store, FakeSpeechService());
+      await _enterEdit(tester);
+      await tester.tap(find.text('Temizle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Vazgeç'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(_textField).controller!.text,
+        _initialText,
+      );
+      await tester.tap(_textField);
+      await tester.pumpAndSettle();
+      expect(tester.testTextInput.isVisible, isTrue);
+      await tester.tap(find.text('Temizle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Temizle'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(_textField).controller!.text,
+        isEmpty,
+      );
+      expect(find.text('Temizle'), findsNothing);
+      expect(store.documents.single.text, _initialText);
+      expect(store.updates, isEmpty);
+      expect(tester.testTextInput.isVisible, isFalse);
+      await _tapSave(tester);
+      expect(find.text('Metin boş olamaz.'), findsOneWidget);
+      expect(store.updates, isEmpty);
+      await tester.tap(find.text('Düzenlemekten vazgeç'));
+      await tester.pumpAndSettle();
+      expect(find.text(_discardTitle), findsOneWidget);
+      await tester.tap(find.text('Düzenlemeye devam et'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(_textField).controller!.text,
+        isEmpty,
+      );
+      expect(store.documents.single.text, _initialText);
+    });
+
     testWidgets('updates page text without changing content details', (
       tester,
     ) async {
@@ -658,6 +702,34 @@ void main() {
   });
 
   group('layout', () {
+    testWidgets('clear action fits narrow screen with large text', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        FakeDocumentStore([_doc()]),
+        FakeSpeechService(),
+        size: const Size(320, 800),
+        textScale: 2,
+      );
+      await _enterEdit(tester);
+      await tester.ensureVisible(find.text('Temizle'));
+      await tester.pumpAndSettle();
+      expect(find.text('Temizle').hitTestable(), findsOneWidget);
+      await tester.tap(find.text('Temizle'));
+      await tester.pumpAndSettle();
+      expect(find.text('Metin temizlensin mi?'), findsOneWidget);
+      final confirm = find.widgetWithText(FilledButton, 'Temizle');
+      expect(confirm.hitTestable(), findsOneWidget);
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(_textField).controller!.text,
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('narrow screen and large text do not overflow', (tester) async {
       final store = FakeDocumentStore([_doc()]);
       await _show(

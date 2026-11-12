@@ -13,6 +13,7 @@ Android ve iOS hedeflenir. Geliştirme ve manuel kontroller Android Pixel 5 emü
 - Görseli sola veya sağa 90° döndürme.
 - Latin karakter modeliyle cihaz üzerinde metin çıkarma.
 - Görsel kullanmadan metin yazma veya yapıştırma.
+- Metni onayla temizleme; yazma alanını temizleyerek kapatma.
 - Metni elle düzeltme ve düzenlenmiş metni değiştiren işlemlerden önce onay isteme.
 - Başarılı OCR sonrasında metin biçimlendirme bölümüne otomatik kaydırma.
 
@@ -43,6 +44,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Kategori oluşturma, yeniden adlandırma ve kayıtları başka kategoriye taşıyarak silme.
 - Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
+- Sayfa düzenleme taslağını onayla temizleme; kayıt ayrıca kaydedilene kadar değişmez.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Onay alarak tek sayfayı veya içeriğin tamamını silme.

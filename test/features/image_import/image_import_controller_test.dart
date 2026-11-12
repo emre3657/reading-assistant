@@ -110,6 +110,38 @@ void main() {
     expect(c.hasEditedText, isFalse);
   });
 
+  test(
+    'clearing OCR rejects stale confirmations and preserves the image',
+    () async {
+      final c = await withImage();
+      addTearDown(c.dispose);
+      c.rotate(1);
+      await c.extractText(expectedRevision: c.revision);
+      final revision = c.revision;
+      c.textController.text = 'yeni taslak';
+      expect(
+        c.clearText(expectedRevision: revision, expectedText: 'ham metin'),
+        isFalse,
+      );
+      expect(c.textController.text, 'yeni taslak');
+      expect(
+        c.clearText(expectedRevision: revision, expectedText: 'yeni taslak'),
+        isTrue,
+      );
+      expect(c.selection!.file.path, '/a.jpg');
+      expect(c.quarterTurns, 1);
+      expect(c.textController.text, isEmpty);
+      expect(c.hasOcrResult, isFalse);
+      expect(c.joinLines, isFalse);
+      c.setJoinLines(true, expectedRevision: c.revision);
+      expect(c.textController.text, isEmpty);
+      expect(
+        c.clearText(expectedRevision: revision, expectedText: ''),
+        isFalse,
+      );
+    },
+  );
+
   test('blocks a second pick and OCR while busy', () async {
     final gate = Completer<XFile?>();
     onPick = () => gate.future;

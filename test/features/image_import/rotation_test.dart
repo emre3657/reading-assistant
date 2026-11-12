@@ -82,6 +82,37 @@ Future<void> _showDialog(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('clearing OCR keeps image and rotation and allows extraction', (
+    tester,
+  ) async {
+    final harness = _Harness();
+    await harness.start(tester);
+    await _tap(tester, _rightLabel);
+    await _extract(tester);
+    expect(_fieldText(tester), 'Çıkarılan metin');
+    await _tap(tester, 'Temizle');
+    await _showDialog(tester);
+    await _tap(tester, 'Vazgeç');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_fieldText(tester), 'Çıkarılan metin');
+    expect(_previewTurns(tester), 1);
+    await _tap(tester, 'Temizle');
+    await _showDialog(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Temizle'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_fieldText(tester), isEmpty);
+    expect(_previewTurns(tester), 1);
+    expect(find.text('Satırları birleştir'), findsNothing);
+    expect(find.text('Kapat'), findsNothing);
+    expect(find.text(_removeLabel), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isFalse);
+    await _extract(tester);
+    expect(_fieldText(tester), 'Çıkarılan metin');
+    expect(_previewTurns(tester), 1);
+    expect(harness.recognizer.paths, hasLength(2));
+  });
+
   group('rotation state', () {
     testWidgets('shows rotate controls only when an image is selected', (
       tester,

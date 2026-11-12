@@ -170,4 +170,34 @@ void main() {
     );
     expect(store.calls, 0);
   });
+
+  testWidgets(
+    'new page clear keeps the editor open and close restores choice',
+    (tester) async {
+      final store = _Store();
+      await _open(tester, store, _Ocr());
+      await tester.tap(find.text('Metin yaz veya yapıştır'));
+      await tester.pumpAndSettle();
+      final field = find.byKey(const ValueKey('new-page-text'));
+      await tester.enterText(field, 'Taslak sayfa.');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Temizle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Vazgeç'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).controller!.text, 'Taslak sayfa.');
+      await tester.tap(find.text('Temizle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Temizle'));
+      await tester.pumpAndSettle();
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+      expect(store.calls, 0);
+      await tester.tap(find.text('Kapat'));
+      await tester.pumpAndSettle();
+      expect(field, findsNothing);
+      expect(find.text('Metin yaz veya yapıştır'), findsOneWidget);
+      expect(store.calls, 0);
+    },
+  );
 }

@@ -152,11 +152,9 @@ Widget _settingsGroup(
 }) {
   final theme = Theme.of(context);
 
-  return DecoratedBox(
-    decoration: BoxDecoration(
-      color: theme.colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-    ),
+  return Material(
+    color: theme.colorScheme.surfaceContainerLow,
+    borderRadius: BorderRadius.circular(16),
     child: Padding(
       padding: const EdgeInsets.all(12),
       child: Column(

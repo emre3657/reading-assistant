@@ -65,6 +65,115 @@ void main() {
     expect(find.byKey(const ValueKey('listening-panel')), findsNothing);
   });
 
+  testWidgets('manual clear and close ask before discarding text', (
+    tester,
+  ) async {
+    await _show(tester, _Picker(), FakeSpeechService());
+    await _create(tester, 'Korunan taslak.');
+    await tester.tap(find.text('Temizle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_field).controller!.text,
+      'Korunan taslak.',
+    );
+    expect(_field, findsOneWidget);
+
+    await tester.tap(find.text('Kapat'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_field).controller!.text,
+      'Korunan taslak.',
+    );
+    await tester.tap(_field);
+    await tester.pumpAndSettle();
+    expect(tester.testTextInput.isVisible, isTrue);
+    await tester.tap(find.text('Temizle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Temizle'));
+    await tester.pumpAndSettle();
+    expect(_field, findsOneWidget);
+    expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
+    expect(find.text('Temizle'), findsNothing);
+    expect(tester.testTextInput.isVisible, isFalse);
+    await tester.tap(find.text('Kapat'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(_field, findsNothing);
+    expect(find.text('Metin yaz veya yapıştır'), findsOneWidget);
+
+    await _create(tester, 'Tekrar yazıldı.');
+    await tester.tap(find.text('Kapat'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Temizle ve kapat'));
+    await tester.pumpAndSettle();
+    expect(_field, findsNothing);
+    expect(find.text('Metin yaz veya yapıştır'), findsOneWidget);
+  });
+
+  testWidgets('manual text actions stay disabled during listening', (
+    tester,
+  ) async {
+    await _show(tester, _Picker(), FakeSpeechService());
+    await _create(tester, 'Bir cümle.');
+    await tester.tap(find.text('Sesli oku'));
+    await tester.pumpAndSettle();
+    for (final label in ['Temizle', 'Kapat']) {
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, label))
+            .onPressed,
+        isNull,
+      );
+    }
+    expect(tester.widget<TextField>(_field).controller!.text, 'Bir cümle.');
+  });
+
+  testWidgets('manual actions fit a narrow screen with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 560);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ImageImportScreen(
+          pickerService: _Picker(),
+          speechService: FakeSpeechService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Metin yaz veya yapıştır'));
+    await tester.tap(find.text('Metin yaz veya yapıştır'));
+    await tester.pumpAndSettle();
+    await tester.enterText(_field, 'Taslak.');
+    await tester.pumpAndSettle();
+    for (final label in ['Temizle', 'Kapat']) {
+      final action = find.text(label);
+      await tester.ensureVisible(action);
+      await tester.pumpAndSettle();
+      expect(action.hitTestable(), findsOneWidget);
+    }
+    await tester.ensureVisible(find.text('Temizle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Temizle').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('Temizle'));
+    await tester.pumpAndSettle();
+    expect(find.text('Metin temizlensin mi?'), findsOneWidget);
+    final confirm = find.widgetWithText(FilledButton, 'Temizle');
+    expect(confirm.hitTestable(), findsOneWidget);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('new page settings omit automatic page reading', (tester) async {
     tester.view.physicalSize = const Size(320, 560);
     tester.view.devicePixelRatio = 1;

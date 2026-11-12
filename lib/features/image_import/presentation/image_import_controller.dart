@@ -99,6 +99,7 @@ class ImageImportController extends ChangeNotifier {
   bool get isRecognizing => _isRecognizing;
   bool get isBusy => _isPicking || _isRecognizing;
   bool get hasRecognizedText => _generatedText != null;
+  bool get hasOcrResult => _ocrResult != null;
   bool get joinLines => _joinLines;
   String? get errorMessage => _errorMessage;
   String? get infoMessage => _infoMessage;
@@ -279,6 +280,25 @@ class ImageImportController extends ChangeNotifier {
     _errorMessage = null;
     _infoMessage = null;
     _notify();
+  }
+
+  bool clearText({
+    required int expectedRevision,
+    required String expectedText,
+  }) {
+    if (_disposed ||
+        isBusy ||
+        expectedRevision != _revision ||
+        textController.text != expectedText) {
+      return false;
+    }
+    _generatedText = hasRecognizedText ? '' : null;
+    _ocrResult = null;
+    _joinLines = false;
+    textController.clear();
+    _revision++;
+    _notify();
+    return true;
   }
 
   /// Shows the text derived from the raw OCR result, joined or not. Edits are

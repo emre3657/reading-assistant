@@ -788,6 +788,39 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     });
   }
 
+  Future<void> _clearDraft() async {
+    if (!_editing || _saving || _exitInProgress) return;
+    final text = _textController.text;
+    if (text.isEmpty) return;
+    final session = _editSession;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('Metin temizlensin mi?'),
+        content: const Text('Düzenlediğin sayfa metni temizlenecek.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Temizle'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    if (!_editing || _saving || session != _editSession) return;
+    if (_textController.text != text) {
+      _showMessage('Metin değişti. Tekrar deneyebilirsin.');
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    _textController.clear();
+  }
+
   Future<_ExitChoice?> _confirmChanges({
     String content = 'Çıkmadan önce değişiklikleri kaydetmek ister misin?',
     String discardLabel = 'Kaydetmeden çık',
@@ -1199,24 +1232,43 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextFormField(
-                  key: const ValueKey('document-text'),
-                  controller: _textController,
-                  enabled: !_saving,
-                  textAlign: _preferences!.textAlignment.textAlign,
-                  style: readingInputTextStyle(context, _preferences!.textSize),
-                  keyboardType: TextInputType.multiline,
-                  textCapitalization: TextCapitalization.sentences,
-                  minLines: 8,
-                  maxLines: null,
-                  decoration: const InputDecoration(
-                    labelText: 'Metin',
-                    alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
+                Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      'Metin',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    if (_textController.text.isNotEmpty)
+                      TextButton(
+                        onPressed: _saving ? null : _clearDraft,
+                        child: const Text('Temizle'),
+                      ),
+                  ],
+                ),
+                Semantics(
+                  label: 'Metin',
+                  child: TextFormField(
+                    key: const ValueKey('document-text'),
+                    controller: _textController,
+                    enabled: !_saving,
+                    textAlign: _preferences!.textAlignment.textAlign,
+                    style: readingInputTextStyle(
+                      context,
+                      _preferences!.textSize,
+                    ),
+                    keyboardType: TextInputType.multiline,
+                    textCapitalization: TextCapitalization.sentences,
+                    minLines: 8,
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Metin boş olamaz.'
+                        : null,
                   ),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Metin boş olamaz.'
-                      : null,
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),

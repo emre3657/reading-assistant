@@ -488,14 +488,44 @@ void main() {
     }
 
     await tapVisible(find.byTooltip('Görünüm ve sesli okuma'));
+    for (final title in ['Görünüm', 'Sesli okuma']) {
+      expect(find.text(title), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.text(title),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Material &&
+                widget.color ==
+                    Theme.of(tester.element(find.text(title)))
+                        .colorScheme
+                        .surfaceContainerLow,
+          ),
+        ),
+        findsOneWidget,
+      );
+    }
     await tapVisible(find.byKey(const ValueKey('reading-text-size')));
     await tapVisible(find.text('Çok büyük').last);
     await tapVisible(find.byKey(const ValueKey('reading-text-alignment')));
     await tapVisible(find.text('İki yana').last);
     await tapVisible(find.byKey(const ValueKey('reading-speed')));
     await tapVisible(find.text('1.25×').last);
-    await tapVisible(find.byKey(const ValueKey('follow-sentence')));
-    await tapVisible(find.byKey(const ValueKey('auto-next-page')));
+    for (final setting in [
+      ('follow-sentence', 'Okunan cümleyi takip et'),
+      ('auto-next-page', 'Sonraki sayfayı otomatik oku'),
+    ]) {
+      final tile = find.byKey(ValueKey(setting.$1));
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(tile).height, greaterThanOrEqualTo(48));
+      final label = tester.renderObject<RenderBox>(find.text(setting.$2));
+      expect(
+        label.size.height + 0.1,
+        greaterThanOrEqualTo(label.getMaxIntrinsicHeight(label.size.width)),
+      );
+      await tapVisible(tile);
+    }
     await tapVisible(find.text('Kapat'));
     expect(preferences.textSize, ReadingTextSize.extraLarge);
     expect(preferences.textAlignment, ReadingTextAlignment.justify);

@@ -360,6 +360,39 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     await _controller.extractText(expectedRevision: revision);
   }
 
+  Future<void> _clearText({bool close = false}) async {
+    if (_controller.isBusy || _listening.isActive || _pageLocked) return;
+    final text = _controller.textController.text;
+    final revision = _controller.revision;
+    if (text.isNotEmpty) {
+      final confirmed = await _confirm(
+        title: 'Metin temizlensin mi?',
+        content: close
+            ? 'Metin temizlenecek ve yazma alanı kapatılacak.'
+            : 'Metin temizlenecek.',
+        confirmLabel: close ? 'Temizle ve kapat' : 'Temizle',
+      );
+      if (!mounted || !confirmed) return;
+    }
+    if (_controller.isBusy || _listening.isActive || _pageLocked) return;
+    _scrollToken++;
+    if (!_controller.clearText(
+      expectedRevision: revision,
+      expectedText: text,
+    )) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Metin değişti. Tekrar deneyebilirsin.'),
+          ),
+        );
+      }
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (close && mounted) setState(() => _manualEntry = false);
+  }
+
   Future<bool> _confirm({
     required String title,
     required String content,
@@ -368,6 +401,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
         title: Text(title),
         content: Text(content),
         actions: [
@@ -868,7 +902,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                   ],
                   if (controller.hasRecognizedText || _manualEntry) ...[
                     const SizedBox(height: 24),
-                    if (controller.hasRecognizedText)
+                    if (controller.hasOcrResult)
                       SwitchListTile(
                         key: _joinSectionKey,
                         contentPadding: EdgeInsets.zero,
@@ -883,13 +917,14 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                             : _setJoinLines,
                       ),
                     const SizedBox(height: 8),
-                    Row(
-                      key: controller.hasRecognizedText
-                          ? null
-                          : _joinSectionKey,
-                      children: [
-                        Flexible(
-                          child: Text(
+                    ListenableBuilder(
+                      listenable: controller.textController,
+                      builder: (context, _) => Wrap(
+                        key: controller.hasOcrResult ? null : _joinSectionKey,
+                        spacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
                             _addingPage
                                 ? 'Sayfa metni'
                                 : controller.hasRecognizedText
@@ -897,9 +932,29 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                                 : 'Metin',
                             style: Theme.of(context).textTheme.titleSmall,
                           ),
-                        ),
-                        if (listeningActive) const _EditLockIcon(),
-                      ],
+                          if (listeningActive) const _EditLockIcon(),
+                          if (controller.textController.text.isNotEmpty)
+                            TextButton(
+                              onPressed:
+                                  controller.isBusy ||
+                                      listeningActive ||
+                                      _pageLocked
+                                  ? null
+                                  : _clearText,
+                              child: const Text('Temizle'),
+                            ),
+                          if (_manualEntry && !controller.hasRecognizedText)
+                            TextButton(
+                              onPressed:
+                                  controller.isBusy ||
+                                      listeningActive ||
+                                      _pageLocked
+                                  ? null
+                                  : () => _clearText(close: true),
+                              child: const Text('Kapat'),
+                            ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Semantics(
