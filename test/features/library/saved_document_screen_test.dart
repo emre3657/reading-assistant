@@ -204,7 +204,7 @@ void main() {
       expect(_panel, findsOneWidget);
     });
 
-    testWidgets('keeps category alignment: book justified, others start', (
+    testWidgets('uses start alignment for book and other categories', (
       tester,
     ) async {
       final book = FakeDocumentStore([_doc(category: DocumentCategory.book)]);
@@ -213,7 +213,7 @@ void main() {
         tester
             .widget<TextField>(find.byKey(const ValueKey('saved-reading-text')))
             .textAlign,
-        TextAlign.justify,
+        TextAlign.start,
       );
 
       await tester.pumpWidget(const SizedBox());

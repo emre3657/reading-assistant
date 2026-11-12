@@ -138,7 +138,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                               children: [
                                 Icon(Icons.edit_outlined, size: 20),
                                 SizedBox(width: 12),
-                                Text('Yeniden adlandır'),
+                                Expanded(child: Text('Yeniden adlandır')),
                               ],
                             ),
                           ),
@@ -152,9 +152,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                                   color: errorColor,
                                 ),
                                 const SizedBox(width: 12),
-                                Text(
-                                  'Sil',
-                                  style: TextStyle(color: errorColor),
+                                Expanded(
+                                  child: Text(
+                                    'Sil',
+                                    style: TextStyle(color: errorColor),
+                                  ),
                                 ),
                               ],
                             ),

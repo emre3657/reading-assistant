@@ -10,6 +10,8 @@ import 'categories_screen.dart';
 
 enum _DocumentAction { edit, delete }
 
+enum _DateOrder { newest, oldest }
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key, this.store, this.speechService});
 
@@ -28,9 +30,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _opening = false;
   bool _deleting = false;
   int? _deletingId;
+  final Set<String> _selectedCategories = {};
+  _DateOrder _dateOrder = _DateOrder.newest;
+  bool _loadingCategories = false;
+  int _loadRevision = 0;
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
-  bool get _busy => _opening || _deleting;
+  bool get _busy => _opening || _deleting || _loadingCategories;
 
   @override
   void initState() {
@@ -46,8 +52,113 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   void _reload() {
     setState(() {
-      _documents = _store.list();
+      _documents = _loadDocuments(++_loadRevision);
     });
+  }
+
+  Future<List<SavedDocument>> _loadDocuments(int revision) async {
+    final documents = await _store.list();
+    if (_selectedCategories.isNotEmpty) {
+      try {
+        final categories = await _store.categories();
+        if (mounted && revision == _loadRevision) {
+          setState(() {
+            _selectedCategories.retainAll(
+              categories.map((c) => c.name).toSet(),
+            );
+          });
+        }
+      } catch (_) {
+        if (mounted && revision == _loadRevision) {
+          _showMessage('Kategoriler yenilenemedi. Tekrar deneyebilirsin.');
+        }
+      }
+    }
+    return documents;
+  }
+
+  Future<void> _openCategoryFilter() async {
+    if (_busy) return;
+    setState(() => _loadingCategories = true);
+    final List<DocumentCategory> categories;
+    try {
+      categories = await _store.categories();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _loadingCategories = false);
+        _showMessage('Kategoriler yüklenemedi. Tekrar deneyebilirsin.');
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _loadingCategories = false;
+      _selectedCategories.retainAll(categories.map((c) => c.name).toSet());
+    });
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, updatePanel) => SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.75,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Kategori',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _selectedCategories.isEmpty
+                              ? null
+                              : () {
+                                  setState(_selectedCategories.clear);
+                                  updatePanel(() {});
+                                },
+                          child: const Text('Temizle'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_selectedCategories.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('Tüm kategoriler'),
+                    ),
+                  for (final category in categories)
+                    CheckboxListTile(
+                      key: ValueKey('category-filter-${category.name}'),
+                      title: Text(category.label),
+                      value: _selectedCategories.contains(category.name),
+                      onChanged: (selected) {
+                        setState(() {
+                          if (selected == true) {
+                            _selectedCategories.add(category.name);
+                          } else {
+                            _selectedCategories.remove(category.name);
+                          }
+                        });
+                        updatePanel(() {});
+                      },
+                    ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Kapat'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _showMessage(String message) {
@@ -239,7 +350,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   children: [
                     Icon(Icons.category_outlined, size: 20),
                     SizedBox(width: 12),
-                    Text('Kategorileri yönet'),
+                    Expanded(child: Text('Kategorileri yönet')),
                   ],
                 ),
               ),
@@ -276,6 +387,50 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           icon: const Icon(Icons.clear),
                         ),
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 5),
+              child: Wrap(
+                spacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    key: const ValueKey('category-filter-button'),
+                    onPressed: _busy ? null : _openCategoryFilter,
+                    icon: Semantics(
+                      label: _selectedCategories.isEmpty
+                          ? null
+                          : '${_selectedCategories.length} kategori seçili',
+                      child: ExcludeSemantics(
+                        child: Badge(
+                          isLabelVisible: _selectedCategories.isNotEmpty,
+                          label: Text('${_selectedCategories.length}'),
+                          child: const Icon(Icons.filter_list),
+                        ),
+                      ),
+                    ),
+                    label: const Text('Kategori'),
+                  ),
+                  DropdownButton<_DateOrder>(
+                    key: const ValueKey('date-order'),
+                    value: _dateOrder,
+                    underline: const SizedBox.shrink(),
+                    items: const [
+                      DropdownMenuItem(
+                        value: _DateOrder.newest,
+                        child: Text('En yeni'),
+                      ),
+                      DropdownMenuItem(
+                        value: _DateOrder.oldest,
+                        child: Text('En eski'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _dateOrder = value);
+                    },
+                  ),
+                ],
               ),
             ),
             Expanded(child: _buildDocumentList()),
@@ -323,20 +478,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
           );
         }
         final query = normalizeTurkishCase(_searchController.text.trim());
-        final filtered = query.isEmpty
-            ? documents
-            : documents
-                  .where(
-                    (document) =>
-                        normalizeTurkishCase(document.title).contains(query),
-                  )
-                  .toList();
+        final filtered =
+            documents.where((document) {
+              return (_selectedCategories.isEmpty ||
+                      _selectedCategories.contains(document.category.name)) &&
+                  normalizeTurkishCase(document.title).contains(query);
+            }).toList()..sort((a, b) {
+              final date = a.createdAt.compareTo(b.createdAt);
+              final comparison = date != 0 ? date : a.id.compareTo(b.id);
+              return _dateOrder == _DateOrder.newest ? -comparison : comparison;
+            });
         if (filtered.isEmpty) {
           return const Center(
             child: Padding(
               padding: EdgeInsets.all(24),
               child: Text(
-                'Aramana uygun kayıt bulunamadı.',
+                'Aramana veya filtrelerine uygun kayıt bulunamadı.',
                 textAlign: TextAlign.center,
               ),
             ),

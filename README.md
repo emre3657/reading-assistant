@@ -39,7 +39,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 İçerikler yerleşik veya kullanıcı tarafından oluşturulan kategorilerle SQLite veritabanında saklanır. Her içerik birden fazla sıralı sayfa içerebilir.
 
 - İlk ekrandaki metni yeni içeriğin ilk sayfası olarak kaydetme.
-- “Kayıtlarım” ekranında içerikleri listeleme, başlığa göre arama ve açma.
+- “Kayıtlarım” ekranında başlık arama, çoklu kategori filtresi ve oluşturma tarihine göre sıralama.
 - Kategori oluşturma, yeniden adlandırma ve kayıtları başka kategoriye taşıyarak silme.
 - Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.

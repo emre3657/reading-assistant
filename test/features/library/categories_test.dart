@@ -687,6 +687,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('long category name and menu actions fit with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = _Store();
+    const name = 'Uzun kategori adı örneği ve daha fazla metin';
+    await store.renameCategory(DocumentCategory.book, name);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: LibraryScreen(store: store),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byTooltip('Kayıtlarım menüsü'));
+    await _tap(tester, find.text('Kategorileri yönet'));
+    expect(find.text(name), findsOneWidget);
+    await _tap(tester, find.byTooltip('$name kategori seçenekleri'));
+    for (final label in ['Yeniden adlandır', 'Sil']) {
+      final action = find.text(label);
+      expect(action.hitTestable(), findsOneWidget);
+      final bounds = tester.getRect(action);
+      expect(bounds.left, greaterThanOrEqualTo(0));
+      expect(bounds.right, lessThanOrEqualTo(320));
+    }
+    await _tap(tester, find.text('Yeniden adlandır'));
+    await tester.enterText(
+      find.byKey(const ValueKey('category-name')),
+      'Yeni ad',
+    );
+    await _tap(tester, find.widgetWithText(FilledButton, 'Kaydet'));
+    await _tap(tester, find.byTooltip('Yeni ad kategori seçenekleri'));
+    await _tap(tester, find.text('Sil'));
+    await _tap(tester, find.byKey(const ValueKey('confirm-category-delete')));
+    expect(store.items.where((item) => item.name == 'book'), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('category controls remain usable with large system text', (
     tester,
   ) async {
@@ -724,7 +768,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('renamed built-in book alone retains justification', (
+  testWidgets('renamed built-in and custom book use start alignment', (
     tester,
   ) async {
     final store = _Store();
@@ -735,10 +779,7 @@ void main() {
     final custom = await store.createCategory('Kitap');
     final preferences = ReadingPreferences(store: FakePreferencesStore());
     await preferences.load();
-    for (final entry in [
-      (book, TextAlign.justify),
-      (custom, TextAlign.start),
-    ]) {
+    for (final entry in [(book, TextAlign.start), (custom, TextAlign.start)]) {
       await store.save(title: 'Başlık', category: entry.$1, text: 'Metin.');
       await tester.pumpWidget(
         ReadingPreferencesScope(
@@ -764,14 +805,12 @@ void main() {
     }
   });
 
-  testWidgets('transferred document uses target category alignment', (
-    tester,
-  ) async {
+  testWidgets('transferred document retains start alignment', (tester) async {
     final preferences = ReadingPreferences(store: FakePreferencesStore());
     await preferences.load();
     for (final entry in [
       (DocumentCategory.book, DocumentCategory.note, TextAlign.start),
-      (DocumentCategory.note, DocumentCategory.book, TextAlign.justify),
+      (DocumentCategory.note, DocumentCategory.book, TextAlign.start),
     ]) {
       final store = _Store();
       await store.save(title: 'Başlık', category: entry.$1, text: 'Metin.');

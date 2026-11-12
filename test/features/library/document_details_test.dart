@@ -222,7 +222,10 @@ void main() {
     await tester.tap(find.text('Düzenle'));
     await tester.pumpAndSettle();
     await _saveTitle(tester, 'Güncel');
-    expect(find.text('Aramana uygun kayıt bulunamadı.'), findsOneWidget);
+    expect(
+      find.text('Aramana veya filtrelerine uygun kayıt bulunamadı.'),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('document-7')), findsNothing);
     await tester.tap(find.byTooltip('Aramayı temizle'));
     await tester.pumpAndSettle();
