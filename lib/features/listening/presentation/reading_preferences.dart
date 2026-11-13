@@ -26,13 +26,41 @@ enum ReadingTextAlignment {
   final TextAlign textAlign;
 }
 
-TextStyle? readingInputTextStyle(BuildContext context, ReadingTextSize size) {
-  if (size == ReadingTextSize.normal) return null;
+enum ReadingLineSpacing {
+  normal('Normal', 0),
+  relaxed('Rahat', 0.25),
+  wide('Geniş', 0.5);
+
+  const ReadingLineSpacing(this.label, this.extraHeight);
+  final String label;
+  final double extraHeight;
+}
+
+double? readingLineHeight(TextStyle? base, ReadingLineSpacing spacing) =>
+    spacing == ReadingLineSpacing.normal
+    ? base?.height
+    : (base?.height ?? 1.5) + spacing.extraHeight;
+
+TextStyle? readingInputTextStyle(
+  BuildContext context,
+  ReadingTextSize size,
+  ReadingLineSpacing spacing,
+) {
+  if (size == ReadingTextSize.normal && spacing == ReadingLineSpacing.normal) {
+    return null;
+  }
   final theme = Theme.of(context);
   final defaultStyle = theme.useMaterial3
       ? theme.textTheme.bodyLarge
       : theme.textTheme.titleMedium;
-  return TextStyle(fontSize: (defaultStyle?.fontSize ?? 16) * size.multiplier);
+  return TextStyle(
+    fontSize: size == ReadingTextSize.normal
+        ? null
+        : (defaultStyle?.fontSize ?? 16) * size.multiplier,
+    height: spacing == ReadingLineSpacing.normal
+        ? null
+        : readingLineHeight(defaultStyle, spacing),
+  );
 }
 
 class ReadingPreferences extends ChangeNotifier {
@@ -49,6 +77,7 @@ class ReadingPreferences extends ChangeNotifier {
   bool _followSentence = false;
   ReadingTextSize _textSize = ReadingTextSize.normal;
   ReadingTextAlignment _textAlignment = ReadingTextAlignment.start;
+  ReadingLineSpacing _lineSpacing = ReadingLineSpacing.normal;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -60,6 +89,7 @@ class ReadingPreferences extends ChangeNotifier {
   bool get followSentence => _followSentence;
   ReadingTextSize get textSize => _textSize;
   ReadingTextAlignment get textAlignment => _textAlignment;
+  ReadingLineSpacing get lineSpacing => _lineSpacing;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -87,6 +117,11 @@ class ReadingPreferences extends ChangeNotifier {
               .where((alignment) => alignment.name == row?['text_alignment'])
               .firstOrNull ??
           ReadingTextAlignment.start;
+      _lineSpacing =
+          ReadingLineSpacing.values
+              .where((spacing) => spacing.name == row?['line_spacing'])
+              .firstOrNull ??
+          ReadingLineSpacing.normal;
     } catch (_) {
       _errorMessage =
           'Okuma tercihleri yüklenemedi. Varsayılanlar kullanılıyor.';
@@ -132,12 +167,20 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setLineSpacing(ReadingLineSpacing value) {
+    if (!_ready || _lineSpacing == value) return;
+    _lineSpacing = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
     final follow = _followSentence;
     final textSize = _textSize.name;
     final textAlignment = _textAlignment.name;
+    final lineSpacing = _lineSpacing.name;
     _writeTail = _writeTail.then((_) async {
       try {
         await _store.saveReadingPreferences(
@@ -146,6 +189,7 @@ class ReadingPreferences extends ChangeNotifier {
           followSentence: follow,
           textSize: textSize,
           textAlignment: textAlignment,
+          lineSpacing: lineSpacing,
         );
         _saveFailureReported = false;
       } catch (_) {

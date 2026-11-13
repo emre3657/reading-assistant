@@ -22,6 +22,7 @@ void main() {
     expect(preferences.followSentence, isFalse);
     expect(preferences.textSize, ReadingTextSize.normal);
     expect(preferences.textAlignment, ReadingTextAlignment.start);
+    expect(preferences.lineSpacing, ReadingLineSpacing.normal);
     expect(store.saveCalls, 0);
 
     store.values = {
@@ -30,6 +31,7 @@ void main() {
       'follow_sentence': 42,
       'text_size': 'invalid',
       'text_alignment': 'invalid',
+      'line_spacing': 'invalid',
     };
     final invalid = ReadingPreferences(store: store);
     await invalid.load();
@@ -38,6 +40,7 @@ void main() {
     expect(invalid.followSentence, isFalse);
     expect(invalid.textSize, ReadingTextSize.normal);
     expect(invalid.textAlignment, ReadingTextAlignment.start);
+    expect(invalid.lineSpacing, ReadingLineSpacing.normal);
   });
 
   test(
@@ -52,6 +55,7 @@ void main() {
       preferences.setSpeed(ReadingSpeed.slow);
       preferences.setTextSize(ReadingTextSize.large);
       preferences.setTextAlignment(ReadingTextAlignment.center);
+      preferences.setLineSpacing(ReadingLineSpacing.relaxed);
       expect(store.saveCalls, 0);
       store.loadGate!.complete();
       await loading;
@@ -66,6 +70,8 @@ void main() {
       preferences.setTextAlignment(ReadingTextAlignment.justify);
       preferences.setTextSize(ReadingTextSize.large);
       preferences.setTextSize(ReadingTextSize.extraLarge);
+      preferences.setLineSpacing(ReadingLineSpacing.relaxed);
+      preferences.setLineSpacing(ReadingLineSpacing.wide);
       preferences.setFollowSentence(false);
       preferences.setFollowSentence(true);
       await Future<void>.delayed(Duration.zero);
@@ -78,8 +84,9 @@ void main() {
         'follow_sentence': 1,
         'text_size': 'extraLarge',
         'text_alignment': 'justify',
+        'line_spacing': 'wide',
       });
-      expect(store.saveCalls, 10);
+      expect(store.saveCalls, 12);
     },
   );
 
@@ -98,12 +105,14 @@ void main() {
       preferences.setFollowSentence(true);
       preferences.setTextSize(ReadingTextSize.large);
       preferences.setTextAlignment(ReadingTextAlignment.center);
+      preferences.setLineSpacing(ReadingLineSpacing.wide);
       await preferences.pendingWrites;
       expect(preferences.speed, ReadingSpeed.fast);
       expect(preferences.autoNextPage, isTrue);
       expect(preferences.followSentence, isTrue);
       expect(preferences.textSize, ReadingTextSize.large);
       expect(preferences.textAlignment, ReadingTextAlignment.center);
+      expect(preferences.lineSpacing, ReadingLineSpacing.wide);
       expect(preferences.errorRevision, 2);
       expect(preferences.errorMessage, contains('kaydedilemedi'));
       store.saveError = null;
@@ -111,6 +120,7 @@ void main() {
       await preferences.pendingWrites;
       expect(store.values!['speed'], 'slow');
       expect(store.values!['text_alignment'], 'center');
+      expect(store.values!['line_spacing'], 'wide');
     },
   );
 
@@ -138,6 +148,7 @@ void main() {
       preferences.setFollowSentence(true);
       preferences.setTextSize(ReadingTextSize.extraLarge);
       preferences.setTextAlignment(ReadingTextAlignment.center);
+      preferences.setLineSpacing(ReadingLineSpacing.relaxed);
       await preferences.pendingWrites;
       await database.close();
       final reopened = await databaseFactoryFfi.openDatabase(
@@ -153,106 +164,131 @@ void main() {
       expect(restored.followSentence, isTrue);
       expect(restored.textSize, ReadingTextSize.extraLarge);
       expect(restored.textAlignment, ReadingTextAlignment.center);
+      expect(restored.lineSpacing, ReadingLineSpacing.relaxed);
       await reopened.close();
     } finally {
       await dir.delete(recursive: true);
     }
   });
 
-  test(
-    'v7 migration preserves records and defaults alignment to start',
-    () async {
-      final dir = await Directory.systemTemp.createTemp('alignment-migration-');
-      final path = '${dir.path}${Platform.pathSeparator}test.db';
-      try {
-        final old = await databaseFactoryFfi.openDatabase(
-          path,
-          options: OpenDatabaseOptions(
-            version: 7,
-            singleInstance: false,
-            onConfigure: configureDocumentDatabase,
-            onCreate: (db, _) async {
-              await db.execute(createDocumentsSql);
-              await db.execute(createPagesSql);
-              await db.execute(createReadingPositionsSql);
-              await db.execute(invalidateReadingPositionSql);
-              await db.execute(createReadingPreferencesSql);
-              await db.execute(addFollowSentenceSql);
-              await db.execute(addReadingTextSizeSql);
-              await createCategories(db);
-            },
-          ),
+  for (final version in [7, 8]) {
+    test(
+      'v$version migration preserves records and defaults missing preferences',
+      () async {
+        final dir = await Directory.systemTemp.createTemp(
+          'alignment-migration-',
         );
-        await old.update(
-          'categories',
-          {'label': 'Okuduklarım', 'normalized_label': 'okuduklarım'},
-          where: 'id = ?',
-          whereArgs: ['book'],
-        );
-        await old.insert('documents', {
-          'id': 42,
-          'title': 'Eski',
-          'category': 'book',
-          'created_at': 7,
-        });
-        await old.insert('pages', {
-          'id': 9,
-          'document_id': 42,
-          'position': 4,
-          'text': 'Bir. İki.',
-        });
-        await old.insert('reading_positions', {
-          'document_id': 42,
-          'page_id': 9,
-          'sentence_index': 1,
-          'page_text': 'Bir. İki.',
-        });
-        await old.insert('reading_preferences', {
-          'id': 1,
-          'speed': 'fast',
-          'auto_next_page': 1,
-          'follow_sentence': 1,
-          'text_size': 'large',
-        });
-        await old.close();
-        final upgraded = await databaseFactoryFfi.openDatabase(
-          path,
-          options: OpenDatabaseOptions(
-            version: documentDatabaseVersion,
-            singleInstance: false,
-            onConfigure: configureDocumentDatabase,
-            onUpgrade: upgradeDocumentSchema,
-          ),
-        );
-        expect((await upgraded.query('documents')).single['category'], 'book');
-        expect((await upgraded.query('documents')).single['created_at'], 7);
-        expect((await upgraded.query('pages')).single['text'], 'Bir. İki.');
-        expect(
-          (await upgraded.query('reading_positions')).single['sentence_index'],
-          1,
-        );
-        expect(
-          (await upgraded.query(
+        final path = '${dir.path}${Platform.pathSeparator}test.db';
+        try {
+          final old = await databaseFactoryFfi.openDatabase(
+            path,
+            options: OpenDatabaseOptions(
+              version: version,
+              singleInstance: false,
+              onConfigure: configureDocumentDatabase,
+              onCreate: (db, _) async {
+                await db.execute(createDocumentsSql);
+                await db.execute(createPagesSql);
+                await db.execute(createReadingPositionsSql);
+                await db.execute(invalidateReadingPositionSql);
+                await db.execute(createReadingPreferencesSql);
+                await db.execute(addFollowSentenceSql);
+                await db.execute(addReadingTextSizeSql);
+                await createCategories(db);
+                if (version >= 8) await db.execute(addReadingTextAlignmentSql);
+              },
+            ),
+          );
+          await old.update(
             'categories',
+            {'label': 'Okuduklarım', 'normalized_label': 'okuduklarım'},
             where: 'id = ?',
             whereArgs: ['book'],
-          )).single['label'],
-          'Okuduklarım',
-        );
-        expect((await upgraded.query('reading_preferences')).single, {
-          'id': 1,
-          'speed': 'fast',
-          'auto_next_page': 1,
-          'follow_sentence': 1,
-          'text_size': 'large',
-          'text_alignment': 'start',
-        });
-        await upgraded.close();
-      } finally {
-        await dir.delete(recursive: true);
-      }
-    },
-  );
+          );
+          await old.delete(
+            'categories',
+            where: 'id = ?',
+            whereArgs: ['recipe'],
+          );
+          await old.insert('documents', {
+            'id': 42,
+            'title': 'Eski',
+            'category': 'book',
+            'created_at': 7,
+          });
+          await old.insert('pages', {
+            'id': 9,
+            'document_id': 42,
+            'position': 4,
+            'text': 'Bir. İki.',
+          });
+          await old.insert('reading_positions', {
+            'document_id': 42,
+            'page_id': 9,
+            'sentence_index': 1,
+            'page_text': 'Bir. İki.',
+          });
+          await old.insert('reading_preferences', {
+            'id': 1,
+            'speed': 'fast',
+            'auto_next_page': 1,
+            'follow_sentence': 1,
+            'text_size': 'large',
+            if (version >= 8) 'text_alignment': 'center',
+          });
+          await old.close();
+          final upgraded = await databaseFactoryFfi.openDatabase(
+            path,
+            options: OpenDatabaseOptions(
+              version: documentDatabaseVersion,
+              singleInstance: false,
+              onConfigure: configureDocumentDatabase,
+              onUpgrade: upgradeDocumentSchema,
+            ),
+          );
+          expect(
+            (await upgraded.query('documents')).single['category'],
+            'book',
+          );
+          expect((await upgraded.query('documents')).single['created_at'], 7);
+          expect((await upgraded.query('pages')).single['text'], 'Bir. İki.');
+          expect(
+            (await upgraded.query('reading_positions'))
+                .single['sentence_index'],
+            1,
+          );
+          expect(
+            (await upgraded.query(
+              'categories',
+              where: 'id = ?',
+              whereArgs: ['book'],
+            )).single['label'],
+            'Okuduklarım',
+          );
+          expect(
+            await upgraded.query(
+              'categories',
+              where: 'id = ?',
+              whereArgs: ['recipe'],
+            ),
+            isEmpty,
+          );
+          expect((await upgraded.query('reading_preferences')).single, {
+            'id': 1,
+            'speed': 'fast',
+            'auto_next_page': 1,
+            'follow_sentence': 1,
+            'text_size': 'large',
+            'text_alignment': version >= 8 ? 'center' : 'start',
+            'line_spacing': 'normal',
+          });
+          await upgraded.close();
+        } finally {
+          await dir.delete(recursive: true);
+        }
+      },
+    );
+  }
 
   test('v5 migration preserves content, position and preferences', () async {
     final dir = await Directory.systemTemp.createTemp('text-size-migration-');
@@ -321,6 +357,7 @@ void main() {
         'follow_sentence': 1,
         'text_size': 'normal',
         'text_alignment': 'start',
+        'line_spacing': 'normal',
       });
       await upgraded.close();
     } finally {

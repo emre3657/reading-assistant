@@ -361,6 +361,7 @@ void main() {
     }
 
     Future<void> selectSpeed(String value) async {
+      await tester.ensureVisible(find.byKey(const ValueKey('reading-speed')));
       await tester.tap(find.byKey(const ValueKey('reading-speed')));
       await tester.pumpAndSettle();
       for (final label in ['0.75×', '1×', '1.25×', '1.5×']) {

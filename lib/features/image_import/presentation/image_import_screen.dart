@@ -977,6 +977,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                             style: readingInputTextStyle(
                               context,
                               _preferences!.textSize,
+                              _preferences!.lineSpacing,
                             ),
                             textAlign: _preferences!.textAlignment.textAlign,
                             readOnly:

@@ -75,6 +75,31 @@ Future<void> showReadingSettings(
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                InputDecorator(
+                  decoration: const InputDecoration(labelText: 'Satır aralığı'),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<ReadingLineSpacing>(
+                      key: const ValueKey('reading-line-spacing'),
+                      value: preferences.lineSpacing,
+                      isExpanded: true,
+                      items: [
+                        for (final spacing in ReadingLineSpacing.values)
+                          DropdownMenuItem(
+                            value: spacing,
+                            child: Text(spacing.label),
+                          ),
+                      ],
+                      onChanged: preferences.ready
+                          ? (spacing) {
+                              if (spacing != null) {
+                                preferences.setLineSpacing(spacing);
+                              }
+                            }
+                          : null,
+                    ),
+                  ),
+                ),
               ],
             ),
             if (!appearanceOnly) ...[

@@ -106,6 +106,10 @@ void main() {
     preferences.setTextSize(ReadingTextSize.extraLarge);
     await tester.pumpAndSettle();
     expect(scroll.offset, greaterThan(oldOffset));
+    final sizeOffset = scroll.offset;
+    preferences.setLineSpacing(ReadingLineSpacing.wide);
+    await tester.pumpAndSettle();
+    expect(scroll.offset, greaterThan(sizeOffset));
     preferences.setTextAlignment(ReadingTextAlignment.center);
     await tester.pumpAndSettle();
     final editable = tester
@@ -147,6 +151,7 @@ void main() {
     final before = scroll.offset;
     preferences.setTextSize(ReadingTextSize.extraLarge);
     preferences.setTextAlignment(ReadingTextAlignment.right);
+    preferences.setLineSpacing(ReadingLineSpacing.wide);
     await tester.pumpAndSettle();
     expect(scroll.offset, before);
     expect(find.text('Okunan cümleye dön'), findsOneWidget);

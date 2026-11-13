@@ -40,6 +40,7 @@ class SentenceFollowState extends State<SentenceFollow> {
   (String, int, int)? _sentence;
   ReadingTextSize? _textSize;
   ReadingTextAlignment? _textAlignment;
+  ReadingLineSpacing? _lineSpacing;
 
   @override
   void initState() {
@@ -96,8 +97,10 @@ class SentenceFollowState extends State<SentenceFollow> {
     final enabledNow = enabled && !_wasEnabled;
     final sizeChanged = _textSize != widget.preferences.textSize;
     final alignmentChanged = _textAlignment != widget.preferences.textAlignment;
+    final spacingChanged = _lineSpacing != widget.preferences.lineSpacing;
     _textSize = widget.preferences.textSize;
     _textAlignment = widget.preferences.textAlignment;
+    _lineSpacing = widget.preferences.lineSpacing;
     _sentence = sentence;
     _wasSpeaking = speaking;
     _wasEnabled = enabled;
@@ -109,7 +112,7 @@ class SentenceFollowState extends State<SentenceFollow> {
         (changed ||
             resumed ||
             enabledNow ||
-            ((sizeChanged || alignmentChanged) &&
+            ((sizeChanged || alignmentChanged || spacingChanged) &&
                 widget.followTextSizeChanges))) {
       _schedule(sentence);
     }

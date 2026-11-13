@@ -145,7 +145,7 @@ void main() {
       final speech = FakeSpeechService();
       await _show(
         tester,
-        _Store(),
+        _Store(firstText: 'Aynı.\nAynı. Son cümle.'),
         speech,
         preferences: preferences,
         textScale: 1.5,
@@ -169,6 +169,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(_readFrom.hitTestable(), findsOneWidget);
       expect(tester.getTopLeft(_readFrom), isNot(beforeAlignment));
+      final beforeSpacing = tester.getTopLeft(_readFrom);
+      preferences.setLineSpacing(ReadingLineSpacing.wide);
+      await tester.pumpAndSettle();
+      expect(_readFrom.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(_readFrom), isNot(beforeSpacing));
       await _tap(tester, _readFrom);
       expect(speech.spoken, ['Aynı. ']);
     },

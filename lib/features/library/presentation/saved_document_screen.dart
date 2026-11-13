@@ -1119,6 +1119,10 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                                                     ?.fontSize ??
                                                 16) *
                                             _preferences!.textSize.multiplier,
+                                        height: readingLineHeight(
+                                          Theme.of(context).textTheme.bodyLarge,
+                                          _preferences!.lineSpacing,
+                                        ),
                                       ),
                                 ),
                               ),
@@ -1257,6 +1261,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                     style: readingInputTextStyle(
                       context,
                       _preferences!.textSize,
+                      _preferences!.lineSpacing,
                     ),
                     keyboardType: TextInputType.multiline,
                     textCapitalization: TextCapitalization.sentences,

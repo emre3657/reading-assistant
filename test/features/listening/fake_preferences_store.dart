@@ -24,6 +24,7 @@ class FakePreferencesStore extends DocumentStore {
     required bool followSentence,
     required String textSize,
     required String textAlignment,
+    required String lineSpacing,
   }) async {
     saveCalls++;
     await saveGate?.future;
@@ -34,6 +35,7 @@ class FakePreferencesStore extends DocumentStore {
       'follow_sentence': followSentence ? 1 : 0,
       'text_size': textSize,
       'text_alignment': textAlignment,
+      'line_spacing': lineSpacing,
     };
   }
 }

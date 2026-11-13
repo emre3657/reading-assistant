@@ -146,6 +146,7 @@ class DocumentStore {
     required bool followSentence,
     required String textSize,
     required String textAlignment,
+    required String lineSpacing,
   }) async {
     final database = await _database;
     await database.insert('reading_preferences', {
@@ -155,6 +156,7 @@ class DocumentStore {
       'follow_sentence': followSentence ? 1 : 0,
       'text_size': textSize,
       'text_alignment': textAlignment,
+      'line_spacing': lineSpacing,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 

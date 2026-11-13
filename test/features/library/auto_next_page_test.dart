@@ -141,6 +141,7 @@ Future<void> _closeSettings(WidgetTester tester) async {
 
 Future<void> _setSpeed(WidgetTester tester, String speed) async {
   await _openMore(tester);
+  await tester.ensureVisible(find.byKey(const ValueKey('reading-speed')));
   await tester.tap(find.byKey(const ValueKey('reading-speed')));
   await tester.pumpAndSettle();
   await tester.tap(find.text(speed).last);
