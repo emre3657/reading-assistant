@@ -9,6 +9,7 @@ import '../data/saved_document.dart';
 import 'add_page_screen.dart';
 import 'saved_document_screen.dart';
 import 'document_details_dialog.dart';
+import 'selection_app_bar.dart';
 
 /// Shows pages for every category; it does not own a speech engine.
 class DocumentContentsScreen extends StatefulWidget {
@@ -44,6 +45,8 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   int _positionLoadId = 0;
   ReadingPosition? _readingPosition;
   ReadingPosition? _bookmark;
+  bool _selecting = false;
+  final Set<int> _selectedPageIds = {};
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
   bool get _busy => _loading || _opening || _deleting || _reordering;
@@ -304,8 +307,79 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     }
   }
 
+  void _exitSelection() {
+    setState(() {
+      _selecting = false;
+      _selectedPageIds.clear();
+    });
+  }
+
+  void _toggleSelection(int id) {
+    setState(() {
+      if (!_selectedPageIds.add(id)) _selectedPageIds.remove(id);
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_busy || _error != null || _selectedPageIds.isEmpty) return;
+    final ids = Set<int>.of(_selectedPageIds);
+    setState(() => _deleting = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          scrollable: true,
+          title: Text(
+            ids.length == 1
+                ? 'Sayfa silinsin mi?'
+                : '${ids.length} sayfa silinsin mi?',
+          ),
+          content: Text(
+            ids.length == 1
+                ? 'Seçili sayfa silinecek. Bu işlem geri alınamaz.'
+                : 'Seçili sayfalar silinecek. Bu işlem geri alınamaz.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Vazgeç'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sil'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+      final count = await _store.deletePages(
+        documentId: _document.id,
+        pageIds: ids,
+      );
+      if (!mounted) return;
+      _exitSelection();
+      widget.onUpdated?.call();
+      await _load();
+      if (mounted) {
+        _showMessage(count == 1 ? 'Sayfa silindi.' : '$count sayfa silindi.');
+      }
+    } catch (_) {
+      if (mounted) {
+        _showMessage(
+          'Sayfalar silinemedi. Seçim korundu, tekrar deneyebilirsin.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   Future<void> _reorder(int oldIndex, int newIndex) async {
-    if (_busy || _error != null) return;
+    if (_busy || _selecting || _error != null) return;
     // onReorderItem already reports newIndex after the item is removed.
     if (oldIndex == newIndex) return;
 
@@ -410,37 +484,50 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _deletingPageId == null && !_reordering,
+      canPop: !_selecting && _deletingPageId == null && !_reordering,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _selecting && !_busy) _exitSelection();
+      },
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(_document.title),
-          actions: [
-            if (MediaQuery.sizeOf(context).width < 400 &&
-                MediaQuery.textScalerOf(context).scale(14) > 20)
-              IconButton(
-                key: const ValueKey('add-page'),
-                tooltip: 'Sayfa ekle',
-                onPressed: _busy || _error != null ? null : _addPage,
-                icon: const Icon(Icons.add),
+        appBar: _selecting
+            ? selectionAppBar(
+                count: _selectedPageIds.length,
+                busy: _busy,
+                onClose: _exitSelection,
+                onSelectAll: () => setState(() {
+                  _selectedPageIds.addAll(_pages.map((page) => page.id));
+                }),
+                onDelete: _deleteSelected,
               )
-            else
-              TextButton.icon(
-                key: const ValueKey('add-page'),
-                onPressed: _busy || _error != null ? null : _addPage,
-                icon: const Icon(Icons.add),
-                label: const Text('Sayfa ekle'),
+            : AppBar(
+                title: Text(_document.title),
+                actions: [
+                  if (MediaQuery.sizeOf(context).width < 400 &&
+                      MediaQuery.textScalerOf(context).scale(14) > 20)
+                    IconButton(
+                      key: const ValueKey('add-page'),
+                      tooltip: 'Sayfa ekle',
+                      onPressed: _busy || _error != null ? null : _addPage,
+                      icon: const Icon(Icons.add),
+                    )
+                  else
+                    TextButton.icon(
+                      key: const ValueKey('add-page'),
+                      onPressed: _busy || _error != null ? null : _addPage,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Sayfa ekle'),
+                    ),
+                  PopupMenuButton<String>(
+                    key: const ValueKey('content-options'),
+                    tooltip: 'İçerik seçenekleri',
+                    enabled: !_busy && _error == null,
+                    onSelected: (_) => _editDetails(),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                    ],
+                  ),
+                ],
               ),
-            PopupMenuButton<String>(
-              key: const ValueKey('content-options'),
-              tooltip: 'İçerik seçenekleri',
-              enabled: !_busy && _error == null,
-              onSelected: (_) => _editDetails(),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('Düzenle')),
-              ],
-            ),
-          ],
-        ),
         body: SafeArea(child: _buildBody(context)),
       ),
     );
@@ -463,7 +550,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
         ),
       );
     }
-    final canReorder = _pages.length >= 2;
+    final canReorder = _pages.length >= 2 && !_selecting;
     return ReorderableListView.builder(
       buildDefaultDragHandles: false,
       itemCount: _pages.length,
@@ -501,8 +588,8 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                           'Son okuduğun yer · Sayfa '
                           '${_pages.indexWhere((page) => page.id == position.pageId) + 1}',
                         ),
-                        enabled: !_busy,
-                        onTap: _busy
+                        enabled: !_busy && !_selecting,
+                        onTap: _busy || _selecting
                             ? null
                             : () {
                                 final index = _pages.indexWhere(
@@ -531,8 +618,8 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                           'İşaretlediğin yer · Sayfa '
                           '${_pages.indexWhere((page) => page.id == bookmark.pageId) + 1}',
                         ),
-                        enabled: !_busy,
-                        onTap: _busy
+                        enabled: !_busy && !_selecting,
+                        onTap: _busy || _selecting
                             ? null
                             : () {
                                 final index = _pages.indexWhere(
@@ -635,21 +722,45 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.article_outlined),
+              leading: _selecting
+                  ? Semantics(
+                      label: 'Sayfa $number seçimi',
+                      child: Checkbox(
+                        value: _selectedPageIds.contains(page.id),
+                        onChanged: _busy
+                            ? null
+                            : (_) => _toggleSelection(page.id),
+                      ),
+                    )
+                  : const Icon(Icons.article_outlined),
               title: Text('Sayfa $number'),
               subtitle: Text(
                 page.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _pageMenu(context, page, number),
-                  if (canReorder) _dragHandle(index, number),
-                ],
-              ),
-              onTap: _busy ? null : () => _openPage(page, number),
+              trailing: _selecting
+                  ? null
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _pageMenu(context, page, number),
+                        if (canReorder) _dragHandle(index, number),
+                      ],
+                    ),
+              onTap: _busy
+                  ? null
+                  : () => _selecting
+                        ? _toggleSelection(page.id)
+                        : _openPage(page, number),
+              onLongPress: _busy || _selecting
+                  ? null
+                  : () {
+                      setState(() {
+                        _selecting = true;
+                        _selectedPageIds.add(page.id);
+                      });
+                    },
             ),
             const Divider(height: 1),
           ],

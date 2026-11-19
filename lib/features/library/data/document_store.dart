@@ -576,6 +576,24 @@ class DocumentStore {
         0;
   }
 
+  Future<int> deleteDocuments(Set<int> ids) => _queuePosition(() async {
+    if (ids.isEmpty) throw ArgumentError('No documents selected.');
+    final database = await _database;
+    return database.transaction((txn) async {
+      var count = 0;
+      for (final id in ids) {
+        final deleted = await txn.delete(
+          'documents',
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+        if (deleted != 1) throw StateError('Document not found.');
+        count += deleted;
+      }
+      return count;
+    });
+  });
+
   /// Lists content metadata with the first page as a preview adapter.
   Future<List<SavedDocument>> list() async {
     final database = await _database;
@@ -700,6 +718,27 @@ class DocumentStore {
         ) >
         0;
   }
+
+  Future<int> deletePages({
+    required int documentId,
+    required Set<int> pageIds,
+  }) => _queuePosition(() async {
+    if (pageIds.isEmpty) throw ArgumentError('No pages selected.');
+    final database = await _database;
+    return database.transaction((txn) async {
+      var count = 0;
+      for (final id in pageIds) {
+        final deleted = await txn.delete(
+          'pages',
+          where: 'id = ? AND document_id = ?',
+          whereArgs: [id, documentId],
+        );
+        if (deleted != 1) throw StateError('Page not found.');
+        count += deleted;
+      }
+      return count;
+    });
+  });
 
   /// Saves a new page order for one content. [orderedPageIds] must contain
   /// every page of [documentId] exactly once. Returns false (and writes

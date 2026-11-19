@@ -42,6 +42,104 @@ void main() {
     tearDown(() async => database.close());
 
     test(
+      'batch page deletion keeps order and cascades only selected locations',
+      () async {
+        final id = await store.savePages(
+          title: 'Kitap',
+          category: DocumentCategory.book,
+          texts: ['Bir.', 'İki.', 'Üç.', 'Dört.'],
+        );
+        final pages = await store.pages(id);
+        await store.saveReadingPosition(
+          documentId: id,
+          pageId: pages[1].id,
+          sentenceIndex: 0,
+          pageText: pages[1].text,
+        );
+        await store.saveBookmark(
+          documentId: id,
+          pageId: pages[2].id,
+          sentenceIndex: 0,
+          pageText: pages[2].text,
+        );
+        expect(
+          await store.deletePages(
+            documentId: id,
+            pageIds: {pages[0].id, pages[1].id},
+          ),
+          2,
+        );
+        expect(await store.readingPosition(id), isNull);
+        expect((await store.bookmark(id))?.pageId, pages[2].id);
+        final remaining = await store.pages(id);
+        expect(remaining.map((page) => page.id), [pages[2].id, pages[3].id]);
+        expect(remaining.map((page) => page.position), [2, 3]);
+        expect(
+          await store.deletePages(
+            documentId: id,
+            pageIds: {pages[2].id, pages[3].id},
+          ),
+          2,
+        );
+        expect(await store.bookmark(id), isNull);
+        expect(await store.pages(id), isEmpty);
+        expect(await store.getDocument(id), isNotNull);
+      },
+    );
+
+    test(
+      'batch deletes are atomic and document cascades preserve other data',
+      () async {
+        final first = await store.savePages(
+          title: 'Bir',
+          category: DocumentCategory.note,
+          texts: ['Bir.', 'İki.'],
+        );
+        final second = await store.save(
+          title: 'İki',
+          category: DocumentCategory.note,
+          text: 'Üç.',
+        );
+        final third = await store.save(
+          title: 'Üç',
+          category: DocumentCategory.note,
+          text: 'Dört.',
+        );
+        final pages = await store.pages(first);
+        await store.saveReadingPosition(
+          documentId: first,
+          pageId: pages.first.id,
+          sentenceIndex: 0,
+          pageText: pages.first.text,
+        );
+        await store.saveBookmark(
+          documentId: first,
+          pageId: pages.first.id,
+          sentenceIndex: 0,
+          pageText: pages.first.text,
+        );
+        await expectLater(
+          store.deletePages(documentId: first, pageIds: {pages.first.id, -1}),
+          throwsStateError,
+        );
+        expect(await store.pages(first), hasLength(2));
+        expect(await store.readingPosition(first), isNotNull);
+        expect(await store.bookmark(first), isNotNull);
+        await expectLater(store.deleteDocuments({first, -1}), throwsStateError);
+        expect(await store.getDocument(first), isNotNull);
+        expect(await store.pages(first), hasLength(2));
+        expect(await store.readingPosition(first), isNotNull);
+        expect(await store.bookmark(first), isNotNull);
+        expect(await store.deleteDocuments({first, second}), 2);
+        expect(await store.pages(first), isEmpty);
+        expect(await store.readingPosition(first), isNull);
+        expect(await store.bookmark(first), isNull);
+        expect(await store.getDocument(second), isNull);
+        expect(await store.getDocument(third), isNotNull);
+      },
+    );
+
+    test(
       'batch creation and append are ordered and roll back on failure',
       () async {
         final id = await store.savePages(

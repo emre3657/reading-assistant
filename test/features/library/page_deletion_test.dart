@@ -28,11 +28,30 @@ class _Store extends DocumentStore with FakeReadingPositions {
   Object? error;
   bool result = true;
   Completer<void>? gate;
+  final batchCalls = <Set<int>>[];
 
   @override
   Future<SavedDocument?> getDocument(int id) async => document;
   @override
   Future<List<DocumentPage>> pages(int documentId) async => [...stored];
+  @override
+  Future<int> deletePages({
+    required int documentId,
+    required Set<int> pageIds,
+  }) async {
+    batchCalls.add(Set.of(pageIds));
+    await gate?.future;
+    if (error != null) throw error!;
+    stored = stored.where((page) => !pageIds.contains(page.id)).toList();
+    if (pageIds.contains(positions[documentId]?.pageId)) {
+      positions.remove(documentId);
+    }
+    if (pageIds.contains(bookmarks[documentId]?.pageId)) {
+      bookmarks.remove(documentId);
+    }
+    return pageIds.length;
+  }
+
   @override
   Future<bool> deletePage({
     required int documentId,
@@ -73,7 +92,128 @@ Future<void> _confirm(WidgetTester tester, int id) async {
   await tester.pumpAndSettle();
 }
 
+Finder _iconButton(String tooltip) => find.byWidgetPredicate(
+  (widget) => widget is IconButton && widget.tooltip == tooltip,
+);
+
 void main() {
+  testWidgets(
+    'page confirmation is usable with large text on a narrow screen',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final store = _Store();
+      await _show(tester, store);
+      await tester.ensureVisible(find.byKey(const ValueKey('page-70')));
+      await tester.longPress(find.byKey(const ValueKey('page-70')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Tümünü seç'));
+      await tester.tap(find.byTooltip('Seçilenleri sil'));
+      await tester.pumpAndSettle();
+      expect(find.text('3 sayfa silinsin mi?'), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Vazgeç'));
+      await tester.pumpAndSettle();
+      expect(store.batchCalls, isEmpty);
+    },
+  );
+
+  testWidgets('page selection disables dragging, supports cancel and back', (
+    tester,
+  ) async {
+    final store = _Store();
+    await _show(tester, store);
+    await tester.longPress(find.byKey(const ValueKey('page-71')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 seçili'), findsOneWidget);
+    expect(find.byType(ReorderableDragStartListener), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('page-70')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 seçili'), findsOneWidget);
+    await tester.tap(find.byTooltip('Seçilenleri sil'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 sayfa silinsin mi?'), findsOneWidget);
+    expect(
+      find.text('Seçili sayfalar silinecek. Bu işlem geri alınamaz.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+    expect(store.batchCalls, isEmpty);
+    expect(find.text('2 seçili'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Kitabım'), findsOneWidget);
+    expect(find.byType(ReorderableDragStartListener), findsWidgets);
+  });
+
+  testWidgets('page batch failure preserves selection and retry deletes all', (
+    tester,
+  ) async {
+    final store = _Store()..error = StateError('disk');
+    await _show(tester, store);
+    await tester.longPress(find.byKey(const ValueKey('page-70')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Tümünü seç'));
+    await tester.tap(find.byTooltip('Seçilenleri sil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Sil'));
+    await tester.pumpAndSettle();
+    expect(find.text('3 seçili'), findsOneWidget);
+    expect(store.stored, hasLength(3));
+    expect(
+      find.text('Sayfalar silinemedi. Seçim korundu, tekrar deneyebilirsin.'),
+      findsOneWidget,
+    );
+    store.error = null;
+    store.gate = Completer<void>();
+    await tester.tap(find.byTooltip('Seçilenleri sil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Sil'));
+    await tester.pump();
+    expect(
+      tester.widget<IconButton>(_iconButton('Seçilenleri sil')).onPressed,
+      isNull,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('3 seçili'), findsOneWidget);
+    store.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(store.batchCalls, [
+      {70, 71, 72},
+      {70, 71, 72},
+    ]);
+    expect(find.text('3 sayfa silindi.'), findsOneWidget);
+    expect(find.textContaining('Henüz sayfa yok.'), findsOneWidget);
+  });
+
+  testWidgets('single selected page uses singular confirmation and message', (
+    tester,
+  ) async {
+    final store = _Store();
+    await _show(tester, store);
+    await tester.longPress(find.byKey(const ValueKey('page-71')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Seçilenleri sil'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sayfa silinsin mi?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Sil'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sayfa silindi.'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('page-72')),
+        matching: find.text('Sayfa 2'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('cancel does not delete or notify', (tester) async {
     final store = _Store();
     var updates = 0;
