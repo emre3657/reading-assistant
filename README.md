@@ -17,7 +17,7 @@ Android ve iOS hedeflenir. Geliştirme ve manuel kontroller Android Pixel 5 emü
 - Metni elle düzeltme ve düzenlenmiş metni değiştiren işlemlerden önce onay isteme.
 - Başarılı OCR sonrasında metin biçimlendirme bölümüne otomatik kaydırma.
 
-“Satırları birleştir” seçeneği basılı satır sonlarını birleştirir; paragraf, başlık ve satır sonunda tireyle bölünmüş kelimeleri tahmin eder. Varsayılan olarak kapalıdır. Kapatıldığında oturumdaki ham OCR sonucu geri gelir; elle düzenleme varsa önce onay istenir.
+“Satırları birleştir” seçeneği basılı satır sonlarını birleştirir; paragraf, başlık ve satır sonunda tireyle bölünmüş kelimeleri tahmin eder. Yeni görsel taslaklarında varsayılan olarak açıktır ve OCR öncesinde veya sırasında değiştirilebilir. Kapatıldığında oturumdaki ham OCR sonucu geri gelir; elle düzenleme varsa önce onay istenir.
 
 ### Sesli okuma
 

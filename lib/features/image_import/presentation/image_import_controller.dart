@@ -93,7 +93,7 @@ class ImageImportController extends ChangeNotifier {
   /// Unmodified OCR result of the current image; the line-joined text is
   /// always derived from it.
   OcrResult? _ocrResult;
-  bool _joinLines = false;
+  bool _joinLines = true;
   String? _errorMessage;
   String? _infoMessage;
   bool _lastHasEditedText = false;
@@ -161,7 +161,7 @@ class ImageImportController extends ChangeNotifier {
     _quarterTurns = 0;
     _generatedText = null;
     _ocrResult = null;
-    _joinLines = false;
+    _joinLines = true;
     textController.clear();
     _revision++;
   }
@@ -320,7 +320,6 @@ class ImageImportController extends ChangeNotifier {
     }
     _generatedText = hasRecognizedText ? '' : null;
     _ocrResult = null;
-    _joinLines = false;
     textController.clear();
     _revision++;
     _notify();
@@ -332,13 +331,15 @@ class ImageImportController extends ChangeNotifier {
   /// follows the displayed generated text, which keeps edit detection correct.
   void setJoinLines(bool value, {required int expectedRevision}) {
     final ocr = _ocrResult;
-    if (_disposed || isBusy || ocr == null || expectedRevision != _revision) {
+    if (_disposed || _isPicking || expectedRevision != _revision) {
       return;
     }
-    final display = value ? joinOcrResult(ocr) : ocr.text;
     _joinLines = value;
-    _generatedText = display;
-    textController.value = TextEditingValue(text: display);
+    if (ocr != null && !_isRecognizing) {
+      final display = value ? joinOcrResult(ocr) : ocr.text;
+      _generatedText = display;
+      textController.value = TextEditingValue(text: display);
+    }
     _revision++;
     _notify();
   }
@@ -411,10 +412,10 @@ class ImageImportController extends ChangeNotifier {
             'Görselde metin bulunamadı. Daha net veya daha yakın bir '
             'fotoğrafla "Metni çıkar" düğmesine tekrar basabilirsin.';
       } else {
-        _generatedText = ocr.text;
+        final display = _joinLines ? joinOcrResult(ocr) : ocr.text;
+        _generatedText = display;
         _ocrResult = ocr;
-        _joinLines = false;
-        textController.value = TextEditingValue(text: ocr.text);
+        textController.value = TextEditingValue(text: display);
         _revision++;
         _recognitionId++;
       }

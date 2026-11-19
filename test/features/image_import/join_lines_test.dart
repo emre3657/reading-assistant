@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -57,17 +59,16 @@ Future<void> _showDialog(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('offers the option only after OCR, off by default', (
-    tester,
-  ) async {
+  testWidgets('offers the option before OCR, on by default', (tester) async {
     await _start(tester);
-    expect(_switch, findsNothing);
+    expect(_switch, findsOneWidget);
+    expect(_isOn(tester), isTrue);
 
     await _extract(tester);
 
     expect(_switch, findsOneWidget);
-    expect(_isOn(tester), isFalse);
-    expect(_fieldText(tester), _raw);
+    expect(_isOn(tester), isTrue);
+    expect(_fieldText(tester), _joined);
     expect(
       find.text(
         'Satırları birleştirir; paragraf ve başlık ayrımlarını tahmin eder.',
@@ -83,13 +84,9 @@ void main() {
     await _extract(tester);
 
     await _toggle(tester);
-    expect(_isOn(tester), isTrue);
-    expect(_fieldText(tester), _joined);
-    expect(find.byType(AlertDialog), findsNothing);
-
-    await _toggle(tester);
     expect(_isOn(tester), isFalse);
     expect(_fieldText(tester), _raw);
+    expect(find.byType(AlertDialog), findsNothing);
 
     await _toggle(tester);
     expect(_fieldText(tester), _joined);
@@ -112,7 +109,7 @@ void main() {
       await _showDialog(tester);
 
       expect(_fieldText(tester), 'Benim düzeltmem');
-      expect(_isOn(tester), isFalse);
+      expect(_isOn(tester), isTrue);
     });
 
     testWidgets('confirming rebuilds the text from the raw result', (
@@ -129,8 +126,8 @@ void main() {
       await tester.tap(find.text('Metni sil ve uygula'));
       await _showDialog(tester);
 
-      expect(_fieldText(tester), _joined);
-      expect(_isOn(tester), isTrue);
+      expect(_fieldText(tester), _raw);
+      expect(_isOn(tester), isFalse);
     });
 
     testWidgets('editing after joining is detected and protected', (
@@ -138,11 +135,11 @@ void main() {
     ) async {
       await _start(tester);
       await _extract(tester);
-      await _toggle(tester);
       await tester.enterText(_textField, '$_joined düzeltme');
       await tester.pump();
 
       // Switching back asks, because the joined text was edited.
+      await tester.ensureVisible(_switch);
       await tester.tap(find.text(_joinLabel));
       await _showDialog(tester);
       expect(find.text('Düzenlediğin metin silinsin mi?'), findsOneWidget);
@@ -168,8 +165,6 @@ void main() {
   ) async {
     await _start(tester);
     await _extract(tester);
-    await _toggle(tester);
-
     await tester.ensureVisible(find.text(_removeLabel));
     await tester.pumpAndSettle();
     await tester.tap(find.text(_removeLabel));
@@ -180,7 +175,7 @@ void main() {
     expect(_switch, findsNothing);
   });
 
-  testWidgets('a new image or a new OCR result resets the option', (
+  testWidgets('new OCR keeps the option; a new image uses the default', (
     tester,
   ) async {
     await _start(tester);
@@ -192,23 +187,90 @@ void main() {
     expect(_isOn(tester), isFalse);
     expect(_fieldText(tester), _raw);
 
-    await _toggle(tester);
     await tester.ensureVisible(find.text(_changeLabel));
     await tester.tap(find.text(_changeLabel));
     await tester.pump();
     await tester.pump();
-    expect(_switch, findsNothing);
+    expect(_isOn(tester), isTrue);
 
     await _extract(tester);
-    expect(_isOn(tester), isFalse);
-    expect(_fieldText(tester), _raw);
+    expect(_isOn(tester), isTrue);
+    expect(_fieldText(tester), _joined);
   });
 
-  testWidgets('no option when OCR finds only whitespace', (tester) async {
+  testWidgets('option remains available when OCR finds only whitespace', (
+    tester,
+  ) async {
     await _start(tester, raw: '  \n ');
     await _extract(tester);
-    expect(_switch, findsNothing);
+    expect(_isOn(tester), isTrue);
   });
+
+  testWidgets('switch changed during OCR determines the resulting text', (
+    tester,
+  ) async {
+    final gate = Completer<String>();
+    await tester.pumpWidget(
+      ReadingAssistantApp(
+        pickerService: FakeImagePickerService(
+          onPick: () async => XFile('/tmp/a.jpg'),
+        ),
+        textRecognitionService: FakeTextRecognitionService((_) => gate.future),
+        previewImageBuilder: (_) => ControlledImageProvider(),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text(_selectLabel));
+    await tester.pump();
+    await _extract(tester);
+    expect(_isOn(tester), isTrue);
+    await _toggle(tester);
+    expect(_isOn(tester), isFalse);
+    gate.complete(_raw);
+    await tester.pump();
+    await tester.pump();
+    expect(_fieldText(tester), _raw);
+    expect(_isOn(tester), isFalse);
+  });
+
+  testWidgets(
+    'switch can change during confirmed re-extraction without erasing the draft early',
+    (tester) async {
+      final gate = Completer<String>();
+      var calls = 0;
+      await tester.pumpWidget(
+        ReadingAssistantApp(
+          pickerService: FakeImagePickerService(
+            onPick: () async => XFile('/tmp/a.jpg'),
+          ),
+          textRecognitionService: FakeTextRecognitionService((_) async {
+            if (calls++ == 0) return _raw;
+            return gate.future;
+          }),
+          previewImageBuilder: (_) => ControlledImageProvider(),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text(_selectLabel));
+      await tester.pump();
+      await _extract(tester);
+      await tester.enterText(_textField, 'Korunan düzeltme');
+      await tester.pump();
+      await tester.ensureVisible(find.text(_extractLabel));
+      await tester.tap(find.text(_extractLabel));
+      await _showDialog(tester);
+      await tester.tap(find.text('Üzerine yaz'));
+      await tester.pump();
+      await _toggle(tester);
+      expect(_isOn(tester), isFalse);
+      expect(_fieldText(tester), 'Korunan düzeltme');
+      gate.complete(_raw);
+      await tester.pump();
+      await tester.pump();
+      expect(_fieldText(tester), _raw);
+      expect(_isOn(tester), isFalse);
+    },
+  );
 
   group('with line layout', () {
     // Synthetic text; coordinates describe a 40..860 px column.
@@ -258,14 +320,11 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('shows the raw text first; joining uses the layout and '
+    testWidgets('joins using the layout by default and '
         'toggling back restores the raw text', (tester) async {
       await startWithLayout(tester);
       await _extract(tester);
-      expect(_isOn(tester), isFalse);
-      expect(_fieldText(tester), laidOutRaw);
-
-      await _toggle(tester);
+      expect(_isOn(tester), isTrue);
       expect(
         _fieldText(tester),
         startsWith('birinci paragraf sürer ve biter. '),
@@ -279,7 +338,6 @@ void main() {
     testWidgets('edited layout-joined text is still protected', (tester) async {
       await startWithLayout(tester);
       await _extract(tester);
-      await _toggle(tester);
       expect(_fieldText(tester), isNot(laidOutRaw));
 
       // Only the automatic formatting does not count as an edit.
@@ -296,10 +354,10 @@ void main() {
     ) async {
       await startWithLayout(tester);
       await _extract(tester);
-      await _toggle(tester);
       await tester.enterText(_textField, 'Benim düzeltmem');
       await tester.pump();
 
+      await tester.ensureVisible(_switch);
       await tester.tap(find.text(_joinLabel));
       await _showDialog(tester);
       await tester.tap(find.text('Vazgeç'));
@@ -315,13 +373,13 @@ void main() {
       expect(_isOn(tester), isFalse);
     });
 
-    testWidgets('a new OCR run resets the option and the layout', (
+    testWidgets('a new OCR run keeps the option and the layout', (
       tester,
     ) async {
       await startWithLayout(tester);
       await _extract(tester);
       await _toggle(tester);
-      expect(_fieldText(tester), isNot(laidOutRaw));
+      expect(_fieldText(tester), laidOutRaw);
 
       await _extract(tester);
       expect(_isOn(tester), isFalse);

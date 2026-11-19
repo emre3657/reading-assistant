@@ -103,7 +103,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(_fieldText(tester), isEmpty);
     expect(_previewTurns(tester), 1);
-    expect(find.text('Satırları birleştir'), findsNothing);
+    expect(find.text('Satırları birleştir'), findsOneWidget);
     expect(find.text('Kapat'), findsNothing);
     expect(find.text(_removeLabel), findsOneWidget);
     expect(tester.testTextInput.isVisible, isFalse);

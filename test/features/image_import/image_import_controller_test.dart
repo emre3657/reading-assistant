@@ -46,6 +46,7 @@ void main() {
     addTearDown(c.dispose);
     c.rotate(1);
     await c.extractText(expectedRevision: c.revision);
+    c.setJoinLines(false, expectedRevision: c.revision);
     expect(c.textController.text, 'ham metin');
     expect(c.hasRecognizedText, isTrue);
 
@@ -53,7 +54,7 @@ void main() {
     expect(c.selection, isNull);
     expect(c.quarterTurns, 0);
     expect(c.hasRecognizedText, isFalse);
-    expect(c.joinLines, isFalse);
+    expect(c.joinLines, isTrue);
     expect(c.textController.text, isEmpty);
     expect(c.isBusy, isFalse);
   });
@@ -117,6 +118,7 @@ void main() {
       addTearDown(c.dispose);
       c.rotate(1);
       await c.extractText(expectedRevision: c.revision);
+      c.setJoinLines(false, expectedRevision: c.revision);
       final revision = c.revision;
       c.textController.text = 'yeni taslak';
       expect(
@@ -198,8 +200,8 @@ void main() {
 
     c.removeImage(expectedRevision: stale);
     expect(c.selection, isNotNull);
-    c.setJoinLines(true, expectedRevision: stale);
-    expect(c.joinLines, isFalse);
+    c.setJoinLines(false, expectedRevision: stale);
+    expect(c.joinLines, isTrue);
     final calls = ocr.paths.length;
     await c.extractText(expectedRevision: stale);
     expect(ocr.paths.length, calls);

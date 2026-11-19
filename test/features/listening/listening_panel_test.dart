@@ -436,10 +436,16 @@ void main() {
 
     testWidgets('does not scroll on error or empty result', (tester) async {
       await openLong(tester, [Exception('ocr'), '   ']);
+      await tester.ensureVisible(find.text('Metni çıkar'));
+      await tester.pumpAndSettle();
+      final beforeError = position(tester).pixels;
       await _extract(tester);
-      expect(position(tester).pixels, 0);
+      expect(position(tester).pixels, beforeError);
+      await tester.ensureVisible(find.text('Metni çıkar'));
+      await tester.pumpAndSettle();
+      final beforeEmpty = position(tester).pixels;
       await _extract(tester);
-      expect(position(tester).pixels, 0);
+      expect(position(tester).pixels, beforeEmpty);
     });
 
     testWidgets('does not scroll on a switch change or rebuild', (
@@ -455,7 +461,7 @@ void main() {
       tester
           .widget<SwitchListTile>(find.byType(SwitchListTile))
           .onChanged
-          ?.call(true);
+          ?.call(false);
       await tester.pumpAndSettle();
       expect(position(tester).pixels, before);
     });

@@ -78,6 +78,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   SpeechService? _ownedSpeechService;
 
   final _joinSectionKey = GlobalKey();
+  final _batchErrorKey = GlobalKey();
   final _followKey = GlobalKey<SentenceFollowState>();
   final _followTextKey = GlobalKey();
   final _contentScrollController = ScrollController();
@@ -415,15 +416,15 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   }
 
   Future<void> _setJoinLines(bool value) async {
-    if (_controller.isBusy ||
-        _listening.isActive ||
-        !_controller.hasRecognizedText) {
+    if (_controller.isPicking || _listening.isActive || !_controller.hasImage) {
       return;
     }
 
     final revision = _controller.revision;
 
-    if (_controller.hasEditedText) {
+    if (!_controller.isRecognizing &&
+        _controller.hasOcrResult &&
+        _controller.hasEditedText) {
       final confirmed = await _confirm(
         title: 'Düzenlediğin metin silinsin mi?',
         content:
@@ -563,7 +564,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || token != _scrollToken) return;
 
-      final sectionContext = _joinSectionKey.currentContext;
+      final sectionContext = _batchEmptyTextError
+          ? _batchErrorKey.currentContext
+          : _joinSectionKey.currentContext;
       if (sectionContext == null) return;
 
       final animate = !MediaQuery.disableAnimationsOf(context);
@@ -1044,27 +1047,29 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                       label: const Text('Metin yaz veya yapıştır'),
                     ),
                   ],
-                  if (controller.hasRecognizedText || _manualEntry) ...[
+                  if (hasImage) ...[
                     const SizedBox(height: 24),
-                    if (controller.hasOcrResult)
-                      SwitchListTile(
-                        key: _joinSectionKey,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Satırları birleştir'),
-                        subtitle: const Text(
-                          'Satırları birleştirir; paragraf ve başlık ayrımlarını '
-                          'tahmin eder.',
-                        ),
-                        value: controller.joinLines,
-                        onChanged: controller.isBusy || listeningActive
-                            ? null
-                            : _setJoinLines,
+                    SwitchListTile(
+                      key: _joinSectionKey,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Satırları birleştir'),
+                      subtitle: const Text(
+                        'Satırları birleştirir; paragraf ve başlık ayrımlarını '
+                        'tahmin eder.',
                       ),
+                      value: controller.joinLines,
+                      onChanged: controller.isPicking || listeningActive
+                          ? null
+                          : _setJoinLines,
+                    ),
+                  ],
+                  if (controller.hasRecognizedText || _manualEntry) ...[
+                    if (!hasImage) const SizedBox(height: 24),
                     const SizedBox(height: 8),
                     ListenableBuilder(
                       listenable: controller.textController,
                       builder: (context, _) => Wrap(
-                        key: controller.hasOcrResult ? null : _joinSectionKey,
+                        key: hasImage ? null : _joinSectionKey,
                         spacing: 8,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
@@ -1105,6 +1110,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                     if (_batchEmptyTextError) ...[
                       const SizedBox(height: 4),
                       Semantics(
+                        key: _batchErrorKey,
                         liveRegion: true,
                         child: Text(
                           'Bu sayfanın metni boş. Metni çıkarın veya yazın.',

@@ -14,6 +14,7 @@ const _removeLabel = 'Görseli kaldır';
 const _noTextMessage = 'Görselde metin bulunamadı',
     _errorPrefix = 'Metin çıkarılamadı';
 const _ocrText = 'Çocuğun ĞÜŞİÖ ığüşö\nİkinci satır\n\nÜçüncü paragraf';
+const _joinedOcrText = 'Çocuğun ĞÜŞİÖ ığüşö İkinci satır\n\nÜçüncü paragraf';
 
 final _textField = find.byType(TextField);
 
@@ -88,7 +89,7 @@ void main() {
     await _extract(tester);
 
     expect(harness.recognizer.paths, ['/tmp/a.png']);
-    expect(_fieldText(tester), _ocrText);
+    expect(_fieldText(tester), _joinedOcrText);
     expect(find.textContaining('henüz kaydedilmedi'), findsNothing);
     expect(find.textContaining('Gerekirse düzeltebilirsin'), findsNothing);
 
@@ -118,7 +119,7 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(harness.recognizer.paths, hasLength(1));
-    expect(_fieldText(tester), _ocrText);
+    expect(_fieldText(tester), _joinedOcrText);
   });
 
   testWidgets('explains an empty result and allows retrying', (tester) async {
@@ -134,7 +135,7 @@ void main() {
 
     await _extract(tester);
     expect(find.textContaining(_noTextMessage), findsNothing);
-    expect(_fieldText(tester), _ocrText);
+    expect(_fieldText(tester), _joinedOcrText);
   });
 
   testWidgets('shows an error, stays usable and allows retrying', (
@@ -156,7 +157,7 @@ void main() {
 
     await _extract(tester);
     expect(find.textContaining(_errorPrefix), findsNothing);
-    expect(_fieldText(tester), _ocrText);
+    expect(_fieldText(tester), _joinedOcrText);
   });
 
   testWidgets('keeps image and edited text when picking is cancelled', (
@@ -407,7 +408,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(harness.recognizer.paths, hasLength(2));
-      expect(_fieldText(tester), _ocrText);
+      expect(_fieldText(tester), _joinedOcrText);
     });
 
     testWidgets('keeps the edited text when the new result is empty', (

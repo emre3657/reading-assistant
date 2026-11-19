@@ -276,6 +276,80 @@ void main() {
     expect(find.byType(AddPageScreen), findsNothing);
   });
 
+  testWidgets(
+    'batch pages keep independent join settings through OCR and navigation',
+    (tester) async {
+      final ocr = FakeTextRecognitionService((path) async => '$path bir\niki');
+      await _show(
+        tester,
+        MultiPageScreen(
+          files: [XFile('a'), XFile('b')],
+          pickerService: FakeImagePickerService(),
+          textRecognitionService: ocr,
+          rotationService: FakeImageRotationService(),
+          previewImageBuilder: (_) => _image,
+          speechService: FakeSpeechService(),
+        ),
+      );
+      await _open(tester, 0);
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        isTrue,
+      );
+      await _tap(tester, find.text('Satırları birleştir'));
+      await _back(tester);
+      await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
+      await _open(tester, 0);
+      expect(tester.widget<TextField>(_field).controller!.text, 'a bir\niki');
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        isFalse,
+      );
+      await _tap(tester, find.text('Metni çıkar'));
+      await _tap(tester, find.text('Üzerine yaz'));
+      expect(tester.widget<TextField>(_field).controller!.text, 'a bir\niki');
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        isFalse,
+      );
+      await _back(tester);
+      await _open(tester, 1);
+      expect(tester.widget<TextField>(_field).controller!.text, 'b bir iki');
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets('adding a single page uses joined OCR by default', (
+    tester,
+  ) async {
+    await _show(
+      tester,
+      AddPageScreen(
+        documentId: 7,
+        documentTitle: 'Kitap',
+        store: _BatchStore(),
+        pickerService: FakeImagePickerService(onPick: () async => XFile('a')),
+        textRecognitionService: FakeTextRecognitionService(
+          (_) async => 'bir\niki',
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _tap(tester, find.text('Galeriden görsel seç'));
+    expect(
+      tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+      isTrue,
+    );
+    await _tap(tester, find.text('Metni çıkar'));
+    final field = find.byKey(const ValueKey('new-page-text'));
+    expect(tester.widget<TextField>(field).controller!.text, 'bir iki');
+  });
+
   testWidgets('existing page draft is not discarded without confirmation', (
     tester,
   ) async {
@@ -378,21 +452,22 @@ void main() {
       await _open(tester, 1);
       expect(
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
-        false,
+        true,
       );
       await _tap(tester, find.text('Metni çıkar'));
       expect(find.text('Metnin üzerine yazılsın mı?'), findsOneWidget);
       await _tap(tester, find.text('Vazgeç'));
       expect(ocr.paths, ['b', 'c', 'b']);
-      await _tap(tester, find.text('Satırları birleştir'));
       expect(tester.widget<TextField>(_field).controller!.text, 'b ilk satır');
+      await _tap(tester, find.text('Satırları birleştir'));
+      expect(tester.widget<TextField>(_field).controller!.text, 'b ilk\nsatır');
       await tester.enterText(_field, 'b düzeltme');
       await _tap(tester, find.text('Satırları birleştir'));
       expect(find.text('Düzenlediğin metin silinsin mi?'), findsOneWidget);
       await _tap(tester, find.text('Vazgeç'));
       expect(
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
-        true,
+        false,
       );
       expect(tester.widget<TextField>(_field).controller!.text, 'b düzeltme');
       await _tap(tester, find.text('Sağa döndür'));
@@ -401,7 +476,7 @@ void main() {
       await _open(tester, 2);
       expect(
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
-        false,
+        true,
       );
       await _back(tester);
       await _tap(tester, _action(2, 'Kaldır'));
@@ -411,7 +486,7 @@ void main() {
       expect(find.textContaining('90° döndürüldü'), findsOneWidget);
       expect(
         tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
-        true,
+        false,
       );
       await _back(tester);
       await _open(tester, 0);
