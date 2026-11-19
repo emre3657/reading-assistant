@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 
 import 'listening_controller.dart';
 import 'reading_preferences.dart';
+import '../services/sentence_splitter.dart';
 
 class SentenceFollow extends StatefulWidget {
   const SentenceFollow({
@@ -37,6 +38,7 @@ class SentenceFollowState extends State<SentenceFollow> {
   bool _wasEnabled = false;
   bool _animating = false;
   int _token = 0;
+  int _revealToken = 0;
   (String, int, int)? _sentence;
   ReadingTextSize? _textSize;
   ReadingTextAlignment? _textAlignment;
@@ -63,9 +65,29 @@ class SentenceFollowState extends State<SentenceFollow> {
 
   void newSession() {
     _cancel();
+    _revealToken++;
     _suspended = false;
     _sentence = null;
     _wasSpeaking = false;
+  }
+
+  void cancelReveal() {
+    _revealToken++;
+  }
+
+  void revealSentence(SentenceSpan span) {
+    _cancel();
+    final text = widget.textController.text;
+    final token = ++_revealToken;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          token != _revealToken ||
+          widget.textController.text != text) {
+        return;
+      }
+      _scrollTo((text, span.start, span.end));
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   void _cancel() {

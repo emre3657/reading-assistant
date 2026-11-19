@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
+import 'package:reading_assistant/features/library/data/reading_position.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/document_contents_screen.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
@@ -98,6 +99,27 @@ Future<void> _dragHandle(WidgetTester tester, int number, double dy) async {
 }
 
 void main() {
+  testWidgets('location labels follow reordered page identity', (tester) async {
+    final store = _Store(3);
+    store.positions[7] = const ReadingPosition(
+      pageId: 71,
+      sentenceIndex: 0,
+      pageText: 'Metin 2.',
+    );
+    store.bookmarks[7] = const ReadingPosition(
+      pageId: 70,
+      sentenceIndex: 0,
+      pageText: 'Metin 1.',
+    );
+    await _show(tester, store);
+    expect(find.text('İşaretlediğin yer · Sayfa 1'), findsOneWidget);
+    expect(find.text('Son okuduğun yer · Sayfa 2'), findsOneWidget);
+    await _dragHandle(tester, 1, 220);
+    await tester.pumpAndSettle();
+    expect(find.text('İşaretlediğin yer · Sayfa 3'), findsOneWidget);
+    expect(find.text('Son okuduğun yer · Sayfa 1'), findsOneWidget);
+  });
+
   testWidgets('hint and handles appear only with at least two pages', (
     tester,
   ) async {

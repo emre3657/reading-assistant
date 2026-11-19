@@ -47,6 +47,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Sayfa düzenleme taslağını onayla temizleme; kayıt ayrıca kaydedilene kadar değişmez.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
+- Her içeriğe bir manuel ayraç konabilir; okumaya devam etmek ayracı taşımaz. “Ayraca git” okumayı başlatmadan işaretli cümleyi açar. İşaretli sayfanın metni değişirse ayraç sayfanın başına döner.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Onay alarak tek sayfayı veya içeriğin tamamını silme.
 - Sayfa okuma ekranında önceki/sonraki düğmeleri veya sayfa göstergesine dokunup numara girerek kayıtlı sırada gezinme; geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Düzenleme sırasında gezinme gizlenir; düzenlemeden vazgeçerken kaydedilmemiş değişiklikler için onay istenir.

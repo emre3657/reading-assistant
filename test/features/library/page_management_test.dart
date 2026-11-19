@@ -13,6 +13,7 @@ import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/add_page_screen.dart';
 import 'package:reading_assistant/features/library/presentation/document_contents_screen.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
+import 'package:reading_assistant/features/listening/services/sentence_splitter.dart';
 
 import '../listening/fake_speech_service.dart';
 
@@ -133,6 +134,28 @@ class _PageStore extends DocumentStore with FakeReadingPositions {
   }
 }
 
+class _SlowBookmarkStore extends _PageStore {
+  final gate = Completer<void>();
+  int calls = 0;
+
+  @override
+  Future<void> saveBookmark({
+    required int documentId,
+    required int pageId,
+    required int sentenceIndex,
+    required String pageText,
+  }) async {
+    calls++;
+    await gate.future;
+    await super.saveBookmark(
+      documentId: documentId,
+      pageId: pageId,
+      sentenceIndex: sentenceIndex,
+      pageText: pageText,
+    );
+  }
+}
+
 Future<void> _show(
   WidgetTester tester,
   _PageStore store, {
@@ -168,6 +191,278 @@ final _newText = find.byKey(const ValueKey('new-page-text'));
 final _savePage = find.byKey(const ValueKey('save-page'));
 
 void main() {
+  testWidgets(
+    'pending bookmark save blocks repeated actions and page changes',
+    (tester) async {
+      final store = _SlowBookmarkStore();
+      await _show(tester, store);
+      await tester.tap(find.byKey(const ValueKey('page-70')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Ayraç seçenekleri'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ayraç koy'));
+      await tester.pumpAndSettle();
+      expect(store.calls, 1);
+      expect(
+        tester
+            .widget<PopupMenuButton<String>>(
+              find.ancestor(
+                of: find.byTooltip('Ayraç seçenekleri'),
+                matching: find.byType(PopupMenuButton<String>),
+              ),
+            )
+            .enabled,
+        isFalse,
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(SavedDocumentScreen), findsOneWidget);
+      store.gate.complete();
+      await tester.pumpAndSettle();
+      expect(store.calls, 1);
+      expect(store.bookmarks[7]?.pageId, 70);
+    },
+  );
+
+  testWidgets(
+    'bookmark captures the paused sentence and stays put while reading advances',
+    (tester) async {
+      final store = _PageStore();
+      store.storedPages = const [
+        DocumentPage(id: 70, documentId: 7, position: 0, text: 'Bir. İki. Üç.'),
+      ];
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech: speech);
+      await tester.tap(find.byKey(const ValueKey('page-70')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sesli oku'));
+      await tester.pumpAndSettle();
+      speech.finishCurrent();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Duraklat'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Ayraç seçenekleri'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ayraç koy'));
+      await tester.pumpAndSettle();
+      expect(store.bookmarks[7]?.sentenceIndex, 1);
+      await tester.tap(find.text('Devam et'));
+      await tester.pumpAndSettle();
+      speech.finishCurrent();
+      await tester.pumpAndSettle();
+      expect(store.positions[7]?.sentenceIndex, 2);
+      expect(store.bookmarks[7]?.sentenceIndex, 1);
+      final writes = store.positionWrites;
+      await tester.tap(find.byTooltip('Ayraç seçenekleri'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ayraca git'));
+      await tester.pumpAndSettle();
+      expect(speech.isSpeaking, isFalse);
+      expect(store.positionWrites, writes);
+      expect(store.positions[7]?.sentenceIndex, 2);
+      await tester.tap(find.text('Sesli oku'));
+      await tester.pumpAndSettle();
+      expect(speech.spoken.last, 'İki. ');
+    },
+  );
+
+  testWidgets('bookmark reveals its sentence without starting speech', (
+    tester,
+  ) async {
+    final text = List.generate(80, (index) => 'Cümle $index.').join('\n\n');
+    final store = _PageStore();
+    store.storedPages = [
+      DocumentPage(id: 70, documentId: 7, position: 0, text: text),
+    ];
+    store.bookmarks[7] = ReadingPosition(
+      pageId: 70,
+      sentenceIndex: 60,
+      pageText: text,
+    );
+    final speech = FakeSpeechService();
+    await _show(tester, store, speech: speech);
+    await tester.tap(find.text('Ayraca git'));
+    await tester.pumpAndSettle();
+    final scroll = tester.widget<SingleChildScrollView>(
+      find
+          .descendant(
+            of: find.byType(SavedDocumentScreen),
+            matching: find.byType(SingleChildScrollView),
+          )
+          .first,
+    );
+    expect(scroll.controller!.offset, greaterThan(0));
+    final editable = tester
+        .state<EditableTextState>(
+          find.descendant(
+            of: find.byKey(const ValueKey('saved-reading-text')),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .renderEditable;
+    final span = splitSentences(text)[60];
+    final box = editable
+        .getBoxesForSelection(
+          TextSelection(baseOffset: span.start, extentOffset: span.end),
+        )
+        .first
+        .toRect();
+    final point = editable.localToGlobal(box.center);
+    expect(
+      tester.getRect(find.byType(SingleChildScrollView).first).contains(point),
+      isTrue,
+    );
+    expect(speech.spoken, isEmpty);
+    await tester.tap(find.text('Sesli oku'));
+    await tester.pumpAndSettle();
+    expect(speech.spoken.single, startsWith('Cümle 60.'));
+  });
+
+  testWidgets('both location actions remain reachable at large text size', (
+    tester,
+  ) async {
+    final store = _PageStore();
+    store.positions[7] = const ReadingPosition(
+      pageId: 70,
+      sentenceIndex: 0,
+      pageText: 'İlk sayfa.',
+    );
+    store.bookmarks[7] = const ReadingPosition(
+      pageId: 71,
+      sentenceIndex: 0,
+      pageText: 'İkinci sayfa.',
+    );
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _show(tester, store);
+    tester.view.physicalSize = const Size(320, 560);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('Ayraca git'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ayraca git').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('Ayraca git'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SavedDocumentScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Ayraç seçenekleri'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ayracı kaldır').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'bookmark move, cancellation, failure, jump and removal keep progress separate',
+    (tester) async {
+      final store = _PageStore();
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech: speech);
+      await tester.tap(find.byKey(const ValueKey('page-70')));
+      await tester.pumpAndSettle();
+
+      Future<void> action(String name) async {
+        await tester.tap(find.byTooltip('Ayraç seçenekleri'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(name));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+      }
+
+      await action('Ayraç koy');
+      expect(store.bookmarks[7]?.pageId, 70);
+      expect(
+        find.text('Ayraç buraya konuldu. Okumaya devam etsen de burada kalır.'),
+        findsOneWidget,
+      );
+
+      await action('Ayracı buraya taşı');
+      expect(find.text('Ayraç taşınsın mı?'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('next-page')));
+      await tester.pumpAndSettle();
+
+      await action('Ayracı buraya taşı');
+      expect(find.text('Ayraç taşınsın mı?'), findsOneWidget);
+      await tester.tap(find.text('Vazgeç'));
+      await tester.pumpAndSettle();
+      expect(store.bookmarks[7]?.pageId, 70);
+
+      store.bookmarkSaveError = StateError('db');
+      await action('Ayracı buraya taşı');
+      await tester.tap(find.text('Taşı'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(store.bookmarks[7]?.pageId, 70);
+      expect(
+        find.text('Ayraç kaydedilemedi. Tekrar deneyebilirsin.'),
+        findsOneWidget,
+      );
+
+      store.bookmarkSaveError = null;
+      await action('Ayracı buraya taşı');
+      await tester.tap(find.text('Taşı'));
+      await tester.pumpAndSettle();
+      expect(store.bookmarks[7]?.pageId, 71);
+      await tester.tap(find.byKey(const ValueKey('previous-page')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sesli oku'));
+      await tester.pumpAndSettle();
+      expect(store.positions[7]?.pageId, 70);
+      expect(store.bookmarks[7]?.pageId, 71);
+      final writes = store.positionWrites;
+      await action('Ayraca git');
+      expect(speech.isSpeaking, isFalse);
+      expect(store.positionWrites, writes);
+      expect(store.positions[7]?.pageId, 70);
+      expect(find.text('Sayfa 2'), findsWidgets);
+      await action('Ayracı kaldır');
+      expect(store.bookmarks, isEmpty);
+      expect(store.positions[7]?.pageId, 70);
+    },
+  );
+
+  testWidgets(
+    'bookmark labels use current page order and distinguish sentence positions',
+    (tester) async {
+      final store = _PageStore();
+      store.storedPages = const [
+        DocumentPage(id: 71, documentId: 7, position: 0, text: 'Bir. İki.'),
+        DocumentPage(id: 70, documentId: 7, position: 1, text: 'Diğer.'),
+      ];
+      store.positions[7] = const ReadingPosition(
+        pageId: 71,
+        sentenceIndex: 0,
+        pageText: 'Bir. İki.',
+      );
+      store.bookmarks[7] = const ReadingPosition(
+        pageId: 71,
+        sentenceIndex: 1,
+        pageText: 'Bir. İki.',
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech: speech);
+      expect(find.text('Son okuduğun yer · Sayfa 1'), findsOneWidget);
+      expect(find.text('İşaretlediğin yer · Sayfa 1'), findsOneWidget);
+      expect(find.text('Ayraç ve son okuma konumun aynı yerde.'), findsNothing);
+      await tester.tap(find.text('Ayraca git'));
+      await tester.pumpAndSettle();
+      expect(speech.spoken, isEmpty);
+      expect(store.positions[7]?.sentenceIndex, 0);
+      await tester.tap(find.text('Sesli oku'));
+      await tester.pumpAndSettle();
+      expect(speech.spoken.single, 'İki.');
+      expect(store.bookmarks[7]?.sentenceIndex, 1);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Ayraç ve son okuma konumun aynı yerde.'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('resume opens the saved page without speaking until requested', (
     tester,
   ) async {

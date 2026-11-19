@@ -14,6 +14,7 @@ import '../../listening/services/sentence_splitter.dart';
 import '../../listening/services/speech_service.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
+import '../data/reading_position.dart';
 import '../data/saved_document.dart';
 import 'page_navigation_bar.dart';
 import 'go_to_page_dialog.dart';
@@ -27,6 +28,7 @@ class SavedDocumentScreen extends StatefulWidget {
     this.pageId,
     this.pageNumber,
     this.initialSentence,
+    this.revealInitialSentence = false,
     this.store,
     this.speechService,
     this.onUpdated,
@@ -38,6 +40,7 @@ class SavedDocumentScreen extends StatefulWidget {
   final int? pageId;
   final int? pageNumber;
   final int? initialSentence;
+  final bool revealInitialSentence;
 
   /// Defaults to [DocumentStore.instance].
   final DocumentStore? store;
@@ -130,6 +133,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   Timer? _tapTimer;
   bool _tapMoved = false;
   bool _positionErrorShown = false;
+  ReadingPosition? _bookmark;
+  bool _bookmarkReady = false;
+  bool _bookmarkBusy = false;
 
   bool _autoPending = false;
   ListeningStatus _lastStatus = ListeningStatus.idle;
@@ -159,7 +165,10 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _pageId = widget.pageId;
     _pageNumber = widget.pageNumber;
     _resumeSentence = widget.initialSentence;
-    if (_pageId != null) unawaited(_loadPages());
+    if (_pageId != null) {
+      unawaited(_loadPages());
+      unawaited(_loadBookmark());
+    }
 
     final speechService =
         widget.speechService ?? (_ownedSpeechService = SpeechService());
@@ -172,6 +181,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _scrollController.addListener(_scheduleAnchorUpdate);
 
     WidgetsBinding.instance.addObserver(this);
+    if (widget.revealInitialSentence && _resumeSentence != null) {
+      final initialSentence = _resumeSentence!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _revealPosition(initialSentence);
+      });
+    }
   }
 
   @override
@@ -256,15 +271,197 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     }
   }
 
+  Future<void> _loadBookmark() async {
+    if (_bookmarkBusy) return;
+    setState(() => _bookmarkBusy = true);
+    try {
+      final bookmark = await _store.bookmark(_saved.id);
+      if (mounted) {
+        setState(() {
+          _bookmark = bookmark;
+          _bookmarkReady = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        _showMessage('Ayraç yüklenemedi. Tekrar deneyebilirsin.');
+      }
+    } finally {
+      if (mounted) setState(() => _bookmarkBusy = false);
+    }
+  }
+
+  void _revealPosition(int index) {
+    final sentences = splitSentences(_saved.text);
+    if (index >= 0 && index < sentences.length) {
+      _followKey.currentState?.revealSentence(sentences[index]);
+    }
+  }
+
+  Future<void> _putBookmark() async {
+    if (_bookmarkBusy ||
+        _transitioning ||
+        _editing ||
+        _saving ||
+        _exitInProgress ||
+        _pageId == null) {
+      return;
+    }
+    setState(() => _bookmarkBusy = true);
+    try {
+      final current = await _store.bookmark(_saved.id);
+      if (!mounted) return;
+      final pageId = _pageId!;
+      final text = _saved.text;
+      final active = _listening.sentenceForText(text);
+      final automatic = active == null && _resumeSentence == null
+          ? await _store.readingPosition(_saved.id)
+          : null;
+      if (!mounted) return;
+      final index = active != null
+          ? _listening.currentSentence - 1
+          : _resumeSentence ??
+                (automatic?.pageId == pageId && automatic?.pageText == text
+                    ? automatic!.sentenceIndex
+                    : 0);
+      final sentences = splitSentences(text);
+      final safeIndex = index >= 0 && index < sentences.length ? index : 0;
+      final same =
+          current?.pageId == pageId &&
+          current?.pageText == text &&
+          current?.sentenceIndex == safeIndex;
+      if (same) {
+        setState(() => _bookmark = current);
+        _showMessage('Ayraç zaten bu konumda.');
+        return;
+      }
+      if (current != null) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Ayraç taşınsın mı?'),
+            content: const Text('Mevcut ayraç bu konuma taşınacak.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Vazgeç'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Taşı'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || confirmed != true) return;
+      }
+      await _store.saveBookmark(
+        documentId: _saved.id,
+        pageId: pageId,
+        sentenceIndex: safeIndex,
+        pageText: text,
+      );
+      if (!mounted) return;
+      setState(
+        () => _bookmark = ReadingPosition(
+          pageId: pageId,
+          sentenceIndex: safeIndex,
+          pageText: text,
+        ),
+      );
+      _showMessage(
+        current == null
+            ? 'Ayraç buraya konuldu. Okumaya devam etsen de burada kalır.'
+            : 'Ayraç taşındı.',
+      );
+    } catch (_) {
+      if (mounted) _showMessage('Ayraç kaydedilemedi. Tekrar deneyebilirsin.');
+    } finally {
+      if (mounted) setState(() => _bookmarkBusy = false);
+    }
+  }
+
+  Future<void> _removeBookmark() async {
+    if (_bookmarkBusy || _transitioning) return;
+    setState(() => _bookmarkBusy = true);
+    try {
+      await _store.removeBookmark(_saved.id);
+      if (!mounted) return;
+      setState(() => _bookmark = null);
+      _showMessage('Ayraç kaldırıldı.');
+    } catch (_) {
+      if (mounted) _showMessage('Ayraç kaldırılamadı. Tekrar deneyebilirsin.');
+    } finally {
+      if (mounted) setState(() => _bookmarkBusy = false);
+    }
+  }
+
+  Future<void> _goToBookmark() async {
+    if (_bookmarkBusy ||
+        _transitioning ||
+        _editing ||
+        _saving ||
+        _exitInProgress ||
+        _listening.status == ListeningStatus.stopping) {
+      return;
+    }
+    setState(() {
+      _bookmarkBusy = true;
+      _transitioning = true;
+    });
+    try {
+      if (_listening.isActive) {
+        await _listening.stop();
+        if (!mounted) return;
+        if (_listening.status == ListeningStatus.failed) {
+          _showMessage(_listening.message ?? 'Okuma durdurulamadı.');
+          return;
+        }
+      }
+      final bookmark = await _store.bookmark(_saved.id);
+      final pages = await _store.pages(_saved.id);
+      if (!mounted) return;
+      final index = pages.indexWhere(
+        (page) =>
+            page.id == bookmark?.pageId && page.text == bookmark?.pageText,
+      );
+      if (bookmark == null || index < 0) {
+        setState(() => _bookmark = null);
+        _showMessage('Ayraç bulunamadı.');
+        return;
+      }
+      _applyPage(
+        pages,
+        index,
+        alsoSet: () {
+          _bookmark = bookmark;
+          _resumeSentence = bookmark.sentenceIndex;
+        },
+      );
+      _revealPosition(bookmark.sentenceIndex);
+    } catch (_) {
+      if (mounted) _showMessage('Ayraç açılamadı. Tekrar deneyebilirsin.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _bookmarkBusy = false;
+          _transitioning = false;
+        });
+      }
+    }
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Moves by a relative offset or a 1-based number in stored order.
   Future<void> _navigate({int? delta, int? pageNumber}) async {
     assert((delta == null) != (pageNumber == null));
-    if (_transitioning ||
+    if (_bookmarkBusy ||
+        _transitioning ||
         _saving ||
         _exitInProgress ||
         _listening.status == ListeningStatus.stopping) {
@@ -334,6 +531,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }) {
     final target = pages[index];
     _readFromToken++;
+    _followKey.currentState?.cancelReveal();
     _clearSentenceSelection();
     _readController.text = target.text;
     setState(() {
@@ -497,6 +695,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     final index = _pageIndex;
     final total = _pages!.length;
     final blocked =
+        _bookmarkBusy ||
         _transitioning ||
         _saving ||
         _exitInProgress ||
@@ -511,7 +710,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   Future<void> _showGoToPage() async {
-    if (_pageDialogOpen ||
+    if (_bookmarkBusy ||
+        _pageDialogOpen ||
         _transitioning ||
         _saving ||
         _exitInProgress ||
@@ -547,7 +747,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   void _startListening() {
-    if (_editing ||
+    if (_bookmarkBusy ||
+        _editing ||
         _saving ||
         _transitioning ||
         _listening.isActive ||
@@ -728,6 +929,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   Future<void> _readFromSelection() async {
     final index = _selectedSentence;
     if (index == null ||
+        _bookmarkBusy ||
         _editing ||
         _saving ||
         _exitInProgress ||
@@ -765,7 +967,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   void _startEditing() {
-    if (_editing || _saving || _transitioning || _listening.isActive) return;
+    if (_bookmarkBusy ||
+        _editing ||
+        _saving ||
+        _transitioning ||
+        _listening.isActive) {
+      return;
+    }
 
     FocusManager.instance.primaryFocus?.unfocus();
 
@@ -858,7 +1066,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   Future<void> _requestExit() async {
-    if (_saving ||
+    if (_bookmarkBusy ||
+        _saving ||
         _transitioning ||
         _exitInProgress ||
         _allowPop ||
@@ -999,6 +1208,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       );
       _readController.text = text;
       _resumeSentence = null;
+      if (_bookmark != null && _bookmark!.pageId == _pageId) {
+        _bookmark = ReadingPosition(
+          pageId: _pageId!,
+          sentenceIndex: 0,
+          pageText: text,
+        );
+      }
       _saving = false;
       _editing = false;
       _error = null;
@@ -1043,8 +1259,46 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           IconButton(
             tooltip: listeningActive ? _lockedHint : 'Düzenle',
             icon: const Icon(Icons.edit_outlined),
-            onPressed: listeningActive || _transitioning ? null : _startEditing,
+            onPressed: listeningActive || _transitioning || _bookmarkBusy
+                ? null
+                : _startEditing,
           ),
+          if (_pageId != null)
+            PopupMenuButton<String>(
+              tooltip: 'Ayraç seçenekleri',
+              enabled:
+                  !_bookmarkBusy &&
+                  !_transitioning &&
+                  _listening.status != ListeningStatus.stopping,
+              onSelected: (value) {
+                if (value == 'put') unawaited(_putBookmark());
+                if (value == 'go') unawaited(_goToBookmark());
+                if (value == 'remove') unawaited(_removeBookmark());
+                if (value == 'reload') unawaited(_loadBookmark());
+              },
+              itemBuilder: (_) => [
+                if (!_bookmarkReady)
+                  const PopupMenuItem(
+                    value: 'reload',
+                    child: Text('Ayracı yeniden yükle'),
+                  )
+                else ...[
+                  PopupMenuItem(
+                    value: 'put',
+                    child: Text(
+                      _bookmark == null ? 'Ayraç koy' : 'Ayracı buraya taşı',
+                    ),
+                  ),
+                  if (_bookmark != null) ...[
+                    const PopupMenuItem(value: 'go', child: Text('Ayraca git')),
+                    const PopupMenuItem(
+                      value: 'remove',
+                      child: Text('Ayracı kaldır'),
+                    ),
+                  ],
+                ],
+              ],
+            ),
         ],
       ),
       body: SafeArea(
@@ -1147,7 +1401,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                         child: TextButton.icon(
                           key: const ValueKey('read-from-sentence'),
                           onPressed:
-                              (!_transitioning || _autoPending) &&
+                              !_bookmarkBusy &&
+                                  (!_transitioning || _autoPending) &&
                                   !_saving &&
                                   !_exitInProgress &&
                                   (_preferences?.ready ?? false) &&
@@ -1180,6 +1435,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             key: const ValueKey('listening-panel'),
             listening: _listening,
             canStart:
+                !_bookmarkBusy &&
                 !listeningActive &&
                 !_transitioning &&
                 (_preferences?.ready ?? false),

@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'saved_document.dart';
 import 'turkish_text.dart';
 
-const documentDatabaseVersion = 9;
+const documentDatabaseVersion = 10;
 
 String normalizeCategoryName(String name) => normalizeTurkishCase(name.trim());
 
@@ -118,6 +118,27 @@ BEGIN
 END
 ''';
 
+const createBookmarksSql = '''
+CREATE TABLE bookmarks (
+  document_id INTEGER PRIMARY KEY,
+  page_id INTEGER NOT NULL,
+  sentence_index INTEGER NOT NULL CHECK (sentence_index >= 0),
+  page_text TEXT NOT NULL,
+  FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+  FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
+)
+''';
+
+const resetBookmarkOnEditSql = '''
+CREATE TRIGGER reset_bookmark_on_edit
+AFTER UPDATE OF text ON pages
+WHEN OLD.text != NEW.text
+BEGIN
+  UPDATE bookmarks SET sentence_index = 0, page_text = NEW.text
+  WHERE page_id = OLD.id;
+END
+''';
+
 const createReadingPreferencesSql = '''
 CREATE TABLE reading_preferences (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -156,6 +177,8 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await createCategories(database);
   await database.execute(addReadingTextAlignmentSql);
   await database.execute(addReadingLineSpacingSql);
+  await database.execute(createBookmarksSql);
+  await database.execute(resetBookmarkOnEditSql);
 }
 
 const addFollowSentenceSql =
@@ -205,5 +228,9 @@ Future<void> upgradeDocumentSchema(
   }
   if (oldVersion < 9 && newVersion >= 9) {
     await database.execute(addReadingLineSpacingSql);
+  }
+  if (oldVersion < 10 && newVersion >= 10) {
+    await database.execute(createBookmarksSql);
+    await database.execute(resetBookmarkOnEditSql);
   }
 }

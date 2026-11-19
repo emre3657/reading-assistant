@@ -47,6 +47,183 @@ void main() {
         pageText: text,
       );
 
+  test(
+    'bookmark is independent, follows page identity and resets on edit',
+    () async {
+      await save(firstId, 1, 'Bir. İki.');
+      await store.saveBookmark(
+        documentId: documentId,
+        pageId: secondId,
+        sentenceIndex: 1,
+        pageText: 'Üç. Dört.',
+      );
+      final reopened = DocumentStore(databaseOpener: () async => database);
+      await store.reorderPages(
+        documentId: documentId,
+        orderedPageIds: [secondId, firstId],
+      );
+      expect((await reopened.bookmark(documentId))?.pageId, secondId);
+      expect((await reopened.readingPosition(documentId))?.pageId, firstId);
+      await store.updatePageText(
+        documentId: documentId,
+        pageId: secondId,
+        text: 'Yeni. Başka.',
+      );
+      final changed = await reopened.bookmark(documentId);
+      expect(changed?.pageId, secondId);
+      expect(changed?.sentenceIndex, 0);
+      expect(changed?.pageText, 'Yeni. Başka.');
+      expect((await reopened.readingPosition(documentId))?.pageId, firstId);
+      await store.deletePage(documentId: documentId, pageId: secondId);
+      expect(await reopened.bookmark(documentId), isNull);
+      await store.saveBookmark(
+        documentId: documentId,
+        pageId: firstId,
+        sentenceIndex: 0,
+        pageText: 'Bir. İki.',
+      );
+      await store.delete(documentId);
+      expect(await database.query('bookmarks'), isEmpty);
+    },
+  );
+
+  test(
+    'failed bookmark replacement keeps old bookmark and reading position',
+    () async {
+      await save(firstId, 1, 'Bir. İki.');
+      await store.saveBookmark(
+        documentId: documentId,
+        pageId: firstId,
+        sentenceIndex: 0,
+        pageText: 'Bir. İki.',
+      );
+      await database.execute('''
+      CREATE TRIGGER reject_bookmark BEFORE INSERT ON bookmarks
+      BEGIN SELECT RAISE(ABORT, 'rejected'); END
+    ''');
+      await expectLater(
+        store.saveBookmark(
+          documentId: documentId,
+          pageId: secondId,
+          sentenceIndex: 1,
+          pageText: 'Üç. Dört.',
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
+      expect((await store.bookmark(documentId))?.pageId, firstId);
+      expect((await store.readingPosition(documentId))?.sentenceIndex, 1);
+      await store.removeBookmark(documentId);
+      expect(await store.bookmark(documentId), isNull);
+      expect((await store.readingPosition(documentId))?.sentenceIndex, 1);
+    },
+  );
+
+  test(
+    'v9 migration preserves reading data and persists bookmarks on reopen',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('bookmark-migration-');
+      final path = '${dir.path}${Platform.pathSeparator}test.db';
+      try {
+        final old = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 9,
+            singleInstance: false,
+            onConfigure: configureDocumentDatabase,
+            onCreate: (db, version) async {
+              await createDocumentSchema(db, version);
+              await db.execute('DROP TRIGGER reset_bookmark_on_edit');
+              await db.execute('DROP TABLE bookmarks');
+            },
+          ),
+        );
+        final oldStore = DocumentStore(databaseOpener: () async => old);
+        final id = await oldStore.save(
+          title: 'Eski',
+          category: DocumentCategory.note,
+          text: 'Bir. İki.',
+        );
+        final page = (await oldStore.pages(id)).single;
+        await oldStore.saveReadingPosition(
+          documentId: id,
+          pageId: page.id,
+          sentenceIndex: 1,
+          pageText: page.text,
+        );
+        await oldStore.saveReadingPreferences(
+          speed: 'fast',
+          autoNextPage: true,
+          followSentence: true,
+          textSize: 'large',
+          textAlignment: 'center',
+          lineSpacing: 'wide',
+        );
+        final preferences = await oldStore.loadReadingPreferences();
+        await old.close();
+        await expectLater(
+          databaseFactoryFfi.openDatabase(
+            path,
+            options: OpenDatabaseOptions(
+              version: documentDatabaseVersion,
+              singleInstance: false,
+              onConfigure: configureDocumentDatabase,
+              onUpgrade: (db, from, to) async {
+                await upgradeDocumentSchema(db, from, to);
+                throw StateError('migration failure');
+              },
+            ),
+          ),
+          throwsStateError,
+        );
+        final original = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(version: 9, singleInstance: false),
+        );
+        expect(await original.getVersion(), 9);
+        expect(await original.query('reading_preferences'), [preferences]);
+        expect(await original.query('reading_positions'), hasLength(1));
+        expect(
+          await original.rawQuery(
+            "SELECT name FROM sqlite_master WHERE name = 'bookmarks'",
+          ),
+          isEmpty,
+        );
+        await original.close();
+        OpenDatabaseOptions options() => OpenDatabaseOptions(
+          version: documentDatabaseVersion,
+          singleInstance: false,
+          onConfigure: configureDocumentDatabase,
+          onUpgrade: upgradeDocumentSchema,
+        );
+        final upgraded = await databaseFactoryFfi.openDatabase(
+          path,
+          options: options(),
+        );
+        final writer = DocumentStore(databaseOpener: () async => upgraded);
+        expect((await writer.readingPosition(id))?.sentenceIndex, 1);
+        expect(await writer.loadReadingPreferences(), preferences);
+        expect(await writer.bookmark(id), isNull);
+        await writer.saveBookmark(
+          documentId: id,
+          pageId: page.id,
+          sentenceIndex: 1,
+          pageText: page.text,
+        );
+        await upgraded.close();
+        final reopened = await databaseFactoryFfi.openDatabase(
+          path,
+          options: options(),
+        );
+        final reader = DocumentStore(databaseOpener: () async => reopened);
+        expect((await reader.bookmark(id))?.sentenceIndex, 1);
+        expect((await reader.readingPosition(id))?.sentenceIndex, 1);
+        await reopened.close();
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    },
+  );
+
   test('persists by page id across a new store and reorder', () async {
     final before = await database.query('documents');
     final pagesBefore = await store.pages(documentId);

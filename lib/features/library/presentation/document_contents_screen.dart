@@ -43,6 +43,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   int _loadId = 0;
   int _positionLoadId = 0;
   ReadingPosition? _readingPosition;
+  ReadingPosition? _bookmark;
 
   DocumentStore get _store => widget.store ?? DocumentStore.instance;
   bool get _busy => _loading || _opening || _deleting || _reordering;
@@ -109,12 +110,32 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
       setState(() => _readingPosition = null);
       _showMessage('Okuma konumu yüklenemedi. Sayfaları açabilirsin.');
     }
+    try {
+      final bookmark = await _store.bookmark(_document.id);
+      if (!mounted || loadId != _positionLoadId) return;
+      setState(() {
+        _bookmark =
+            bookmark != null &&
+                _pages.any(
+                  (page) =>
+                      page.id == bookmark.pageId &&
+                      page.text == bookmark.pageText,
+                )
+            ? bookmark
+            : null;
+      });
+    } catch (_) {
+      if (!mounted || loadId != _positionLoadId) return;
+      setState(() => _bookmark = null);
+      _showMessage('Ayraç yüklenemedi. Sayfaları açabilirsin.');
+    }
   }
 
   Future<void> _openPage(
     DocumentPage page,
     int number, {
     int? initialSentence,
+    bool revealInitialSentence = false,
   }) async {
     if (_busy || _error != null) return;
     setState(() => _opening = true);
@@ -133,6 +154,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
             pageId: page.id,
             pageNumber: number,
             initialSentence: initialSentence,
+            revealInitialSentence: revealInitialSentence,
             store: _store,
             speechService: widget.speechService,
             onUpdated: () {
@@ -253,6 +275,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
               .where((item) => item.id != page.id)
               .toList(growable: false);
           if (_readingPosition?.pageId == page.id) _readingPosition = null;
+          if (_bookmark?.pageId == page.id) _bookmark = null;
           _document = SavedDocument(
             id: _document.id,
             title: _document.title,
@@ -441,118 +464,197 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
       );
     }
     final canReorder = _pages.length >= 2;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('${_document.category.label} · ${_pages.length} sayfa'),
-        ),
-        if (_readingPosition != null &&
-            _pages.any((page) => page.id == _readingPosition!.pageId))
+    return ReorderableListView.builder(
+      buildDefaultDragHandles: false,
+      itemCount: _pages.length,
+      onReorderItem: _reorder,
+      header: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _busy
-                    ? null
-                    : () {
-                        final index = _pages.indexWhere(
-                          (page) => page.id == _readingPosition!.pageId,
-                        );
-                        _openPage(
-                          _pages[index],
-                          index + 1,
-                          initialSentence: _readingPosition!.sentenceIndex,
-                        );
-                      },
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Kaldığın yerden devam et'),
+            padding: const EdgeInsets.all(16),
+            child: Text('${_document.category.label} · ${_pages.length} sayfa'),
+          ),
+          if (_readingPosition != null || _bookmark != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Card(
+                margin: EdgeInsets.zero,
+                elevation: 0,
+                color: Theme.of(context).colorScheme.surfaceContainer,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_readingPosition case final position?)
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        leading: const Icon(Icons.play_arrow),
+                        title: const Text('Kaldığın yerden devam et'),
+                        subtitle: Text(
+                          'Son okuduğun yer · Sayfa '
+                          '${_pages.indexWhere((page) => page.id == position.pageId) + 1}',
+                        ),
+                        enabled: !_busy,
+                        onTap: _busy
+                            ? null
+                            : () {
+                                final index = _pages.indexWhere(
+                                  (page) => page.id == position.pageId,
+                                );
+                                if (index >= 0) {
+                                  _openPage(
+                                    _pages[index],
+                                    index + 1,
+                                    initialSentence: position.sentenceIndex,
+                                  );
+                                }
+                              },
+                      ),
+                    if (_readingPosition != null && _bookmark != null)
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                    if (_bookmark case final bookmark?)
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        leading: const Icon(Icons.bookmark_outline),
+                        title: const Text('Ayraca git'),
+                        subtitle: Text(
+                          'İşaretlediğin yer · Sayfa '
+                          '${_pages.indexWhere((page) => page.id == bookmark.pageId) + 1}',
+                        ),
+                        enabled: !_busy,
+                        onTap: _busy
+                            ? null
+                            : () {
+                                final index = _pages.indexWhere(
+                                  (page) => page.id == bookmark.pageId,
+                                );
+                                if (index >= 0) {
+                                  _openPage(
+                                    _pages[index],
+                                    index + 1,
+                                    initialSentence: bookmark.sentenceIndex,
+                                    revealInitialSentence: true,
+                                  );
+                                }
+                              },
+                      ),
+                    if (_readingPosition != null &&
+                        _bookmark != null &&
+                        _readingPosition!.pageId == _bookmark!.pageId &&
+                        _readingPosition!.sentenceIndex ==
+                            _bookmark!.sentenceIndex &&
+                        _readingPosition!.pageText == _bookmark!.pageText)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        child: Text(
+                          'Ayraç ve son okuma konumun aynı yerde.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
-        if (canReorder)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text.rich(
-              key: const ValueKey('page-reorder-hint'),
-              TextSpan(
-                children: [
-                  const TextSpan(text: 'Sıralamak için sağdaki tutamacı ('),
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.middle,
-                    child: ExcludeSemantics(
-                      child: Icon(
-                        Icons.drag_handle,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+            child: Semantics(
+              header: true,
+              child: Text(
+                'Sayfalar',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ),
+          if (canReorder)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text.rich(
+                key: const ValueKey('page-reorder-hint'),
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'Sıralamak için sağdaki tutamacı ('),
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: ExcludeSemantics(
+                        child: Icon(
+                          Icons.drag_handle,
+                          size: 18,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  ),
-                  const TextSpan(text: ') sürükle.'),
+                    const TextSpan(text: ') sürükle.'),
+                  ],
+                ),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          if (_reordering)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  LinearProgressIndicator(semanticsLabel: 'Sıra kaydediliyor'),
+                  SizedBox(height: 4),
+                  Text('Sıra kaydediliyor…'),
                 ],
               ),
-              style: Theme.of(context).textTheme.bodySmall,
             ),
-          ),
-        if (_reordering)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                LinearProgressIndicator(semanticsLabel: 'Sıra kaydediliyor'),
-                SizedBox(height: 4),
-                Text('Sıra kaydediliyor…'),
-              ],
-            ),
-          ),
-        Expanded(
-          child: _pages.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'Henüz sayfa yok. “Sayfa ekle” ile başlayabilirsin.',
-                    ),
-                  ),
-                )
-              : ReorderableListView.builder(
-                  buildDefaultDragHandles: false,
-                  itemCount: _pages.length,
-                  onReorderItem: _reorder,
-                  itemBuilder: (context, index) {
-                    final page = _pages[index];
-                    final number = index + 1;
-                    return Column(
-                      key: ValueKey('page-${page.id}'),
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.article_outlined),
-                          title: Text('Sayfa $number'),
-                          subtitle: Text(
-                            page.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _pageMenu(context, page, number),
-                              if (canReorder) _dragHandle(index, number),
-                            ],
-                          ),
-                          onTap: _busy ? null : () => _openPage(page, number),
-                        ),
-                        const Divider(height: 1),
-                      ],
-                    );
-                  },
+          if (_pages.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Henüz sayfa yok. “Sayfa ekle” ile başlayabilirsin.',
                 ),
-        ),
-      ],
+              ),
+            ),
+        ],
+      ),
+      itemBuilder: (context, index) {
+        final page = _pages[index];
+        final number = index + 1;
+        return Column(
+          key: ValueKey('page-${page.id}'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.article_outlined),
+              title: Text('Sayfa $number'),
+              subtitle: Text(
+                page.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _pageMenu(context, page, number),
+                  if (canReorder) _dragHandle(index, number),
+                ],
+              ),
+              onTap: _busy ? null : () => _openPage(page, number),
+            ),
+            const Divider(height: 1),
+          ],
+        );
+      },
     );
   }
 }

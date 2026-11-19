@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../../listening/services/sentence_splitter.dart';
 import 'document_page.dart';
 import 'document_schema.dart';
 import 'reading_position.dart';
@@ -129,6 +130,69 @@ class DocumentStore {
         )
     ''',
       [documentId, pageId, documentId],
+    );
+  });
+
+  Future<ReadingPosition?> bookmark(int documentId) => _queuePosition(() async {
+    final database = await _database;
+    final rows = await database.rawQuery(
+      '''
+          SELECT b.page_id, b.sentence_index, b.page_text
+          FROM bookmarks b
+          JOIN pages p ON p.id = b.page_id AND p.document_id = b.document_id
+            AND p.text = b.page_text
+          WHERE b.document_id = ?
+        ''',
+      [documentId],
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    return ReadingPosition(
+      pageId: row['page_id'] as int,
+      sentenceIndex: row['sentence_index'] as int,
+      pageText: row['page_text'] as String,
+    );
+  });
+
+  Future<void> saveBookmark({
+    required int documentId,
+    required int pageId,
+    required int sentenceIndex,
+    required String pageText,
+  }) => _queuePosition(() async {
+    final sentences = splitSentences(pageText);
+    if (sentenceIndex < 0 ||
+        (sentences.isEmpty
+            ? sentenceIndex != 0
+            : sentenceIndex >= sentences.length)) {
+      throw ArgumentError.value(sentenceIndex);
+    }
+    final database = await _database;
+    await database.transaction((txn) async {
+      final page = await txn.query(
+        'pages',
+        columns: ['id'],
+        where: 'document_id = ? AND id = ? AND text = ?',
+        whereArgs: [documentId, pageId, pageText],
+      );
+      if (page.isEmpty) {
+        throw StateError('Bookmark page is missing or changed.');
+      }
+      await txn.insert('bookmarks', {
+        'document_id': documentId,
+        'page_id': pageId,
+        'sentence_index': sentenceIndex,
+        'page_text': pageText,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  });
+
+  Future<void> removeBookmark(int documentId) => _queuePosition(() async {
+    final database = await _database;
+    await database.delete(
+      'bookmarks',
+      where: 'document_id = ?',
+      whereArgs: [documentId],
     );
   });
 

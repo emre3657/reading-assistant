@@ -6,6 +6,36 @@ mixin FakeReadingPositions on DocumentStore {
   Object? positionSaveError;
   Object? positionLoadError;
   int positionWrites = 0;
+  final Map<int, ReadingPosition> bookmarks = {};
+  Object? bookmarkSaveError;
+  Object? bookmarkLoadError;
+
+  @override
+  Future<ReadingPosition?> bookmark(int documentId) async {
+    if (bookmarkLoadError != null) throw bookmarkLoadError!;
+    return bookmarks[documentId];
+  }
+
+  @override
+  Future<void> saveBookmark({
+    required int documentId,
+    required int pageId,
+    required int sentenceIndex,
+    required String pageText,
+  }) async {
+    if (bookmarkSaveError != null) throw bookmarkSaveError!;
+    bookmarks[documentId] = ReadingPosition(
+      pageId: pageId,
+      sentenceIndex: sentenceIndex,
+      pageText: pageText,
+    );
+  }
+
+  @override
+  Future<void> removeBookmark(int documentId) async {
+    if (bookmarkSaveError != null) throw bookmarkSaveError!;
+    bookmarks.remove(documentId);
+  }
 
   @override
   Future<ReadingPosition?> readingPosition(int documentId) async {
