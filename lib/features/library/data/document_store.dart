@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../listening/services/sentence_splitter.dart';
+import 'backup_data.dart';
 import 'document_page.dart';
 import 'document_schema.dart';
 import 'reading_position.dart';
@@ -197,6 +198,34 @@ class DocumentStore {
   });
 
   Future<Database> get _database => _databaseFuture ??= _open();
+
+  Future<BackupData> backupSnapshot() => _queuePosition(() async {
+    final database = await _database;
+    final tables = await database.transaction((txn) async {
+      final tables = <String, List<Map<String, Object?>>>{};
+      for (final name in backupColumns.keys) {
+        tables[name] = [
+          for (final row in await txn.query(name)) Map<String, Object?>.of(row),
+        ];
+      }
+      return tables;
+    });
+    return validateBackupTables(tables);
+  });
+
+  Future<void> restoreBackup(BackupData backup) => _queuePosition(() async {
+    final database = await _database;
+    await database.transaction((txn) async {
+      await txn.delete('documents');
+      await txn.delete('categories');
+      await txn.delete('reading_preferences');
+      for (final table in backupColumns.keys) {
+        for (final row in backup.tables[table]!) {
+          await txn.insert(table, row);
+        }
+      }
+    });
+  });
 
   Future<Map<String, Object?>?> loadReadingPreferences() async {
     final database = await _database;

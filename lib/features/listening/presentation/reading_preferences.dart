@@ -99,29 +99,7 @@ class ReadingPreferences extends ChangeNotifier {
   Future<void> _load() async {
     try {
       final row = await _store.loadReadingPreferences();
-      final savedSpeed = row?['speed'];
-      _speed =
-          ReadingSpeed.values
-              .where((speed) => speed.name == savedSpeed)
-              .firstOrNull ??
-          ReadingSpeed.normal;
-      _autoNextPage = row?['auto_next_page'] == 1;
-      _followSentence = row?['follow_sentence'] == 1;
-      _textSize =
-          ReadingTextSize.values
-              .where((size) => size.name == row?['text_size'])
-              .firstOrNull ??
-          ReadingTextSize.normal;
-      _textAlignment =
-          ReadingTextAlignment.values
-              .where((alignment) => alignment.name == row?['text_alignment'])
-              .firstOrNull ??
-          ReadingTextAlignment.start;
-      _lineSpacing =
-          ReadingLineSpacing.values
-              .where((spacing) => spacing.name == row?['line_spacing'])
-              .firstOrNull ??
-          ReadingLineSpacing.normal;
+      _applyRow(row);
     } catch (_) {
       _errorMessage =
           'Okuma tercihleri yüklenemedi. Varsayılanlar kullanılıyor.';
@@ -130,6 +108,39 @@ class ReadingPreferences extends ChangeNotifier {
       _ready = true;
       notifyListeners();
     }
+  }
+
+  void _applyRow(Map<String, Object?>? row) {
+    _speed =
+        ReadingSpeed.values.where((v) => v.name == row?['speed']).firstOrNull ??
+        ReadingSpeed.normal;
+    _autoNextPage = row?['auto_next_page'] == 1;
+    _followSentence = row?['follow_sentence'] == 1;
+    _textSize =
+        ReadingTextSize.values
+            .where((v) => v.name == row?['text_size'])
+            .firstOrNull ??
+        ReadingTextSize.normal;
+    _textAlignment =
+        ReadingTextAlignment.values
+            .where((v) => v.name == row?['text_alignment'])
+            .firstOrNull ??
+        ReadingTextAlignment.start;
+    _lineSpacing =
+        ReadingLineSpacing.values
+            .where((v) => v.name == row?['line_spacing'])
+            .firstOrNull ??
+        ReadingLineSpacing.normal;
+  }
+
+  /// Call only after pending writes have completed and the restore commits.
+  void applyRestored(Map<String, Object?>? row) {
+    _applyRow(row);
+    _ready = true;
+    _loading = Future.value();
+    _saveFailureReported = false;
+    _errorMessage = null;
+    notifyListeners();
   }
 
   void setSpeed(ReadingSpeed speed) {

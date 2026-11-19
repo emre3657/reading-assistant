@@ -11,6 +11,7 @@ import '../../listening/presentation/sentence_follow.dart';
 import '../../listening/services/speech_service.dart';
 
 import '../../library/presentation/library_screen.dart';
+import '../../library/presentation/backup_screen.dart';
 import '../../library/presentation/save_document_dialog.dart';
 import '../../library/data/document_store.dart';
 
@@ -42,6 +43,7 @@ class ImageImportScreen extends StatefulWidget {
     this.batchController,
     this.batchPageNumber,
     this.batchEmptyTextError = false,
+    this.backupFileService = const BackupFileService(),
   });
 
   final ImagePickerService pickerService;
@@ -63,6 +65,7 @@ class ImageImportScreen extends StatefulWidget {
   final ImageImportController? batchController;
   final int? batchPageNumber;
   final bool batchEmptyTextError;
+  final BackupFileService backupFileService;
 
   @override
   State<ImageImportScreen> createState() => _ImageImportScreenState();
@@ -91,6 +94,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   Timer? _editLockNoticeTimer;
 
   bool _saveDialogOpen = false;
+  bool _openingBackup = false;
   bool _pickingBatch = false;
   bool _manualEntry = false;
   bool _pageSaving = false;
@@ -100,7 +104,8 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   bool _batchEmptyTextError = false;
 
   bool get _addingPage => widget.onSavePage != null;
-  bool get _pageLocked => _pageSaving || _pageExitInProgress || _pickingBatch;
+  bool get _pageLocked =>
+      _pageSaving || _pageExitInProgress || _pickingBatch || _openingBackup;
 
   @override
   void initState() {
@@ -736,6 +741,48 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     );
   }
 
+  Future<void> _openBackup() async {
+    if (_openingBackup ||
+        _controller.isBusy ||
+        _saveDialogOpen ||
+        _pageLocked ||
+        _listening.status == ListeningStatus.stopping) {
+      return;
+    }
+    setState(() => _openingBackup = true);
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      if (_listening.isActive) {
+        await _listening.stop();
+        if (!mounted) return;
+        if (_listening.status == ListeningStatus.failed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_listening.message ?? 'Okuma durdurulamadı.'),
+            ),
+          );
+          return;
+        }
+      }
+      final restored = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => BackupScreen(
+            store: widget.store ?? DocumentStore.instance,
+            preferences: _preferences!,
+            files: widget.backupFileService,
+          ),
+        ),
+      );
+      if (mounted && restored == true) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Yedek geri yüklendi.')));
+      }
+    } finally {
+      if (mounted) setState(() => _openingBackup = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -844,6 +891,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               onPressed:
                   controller.isBusy ||
                       listeningActive ||
+                      _openingBackup ||
                       controller.textController.text.trim().isEmpty
                   ? null
                   : _saveDocument,
@@ -854,9 +902,24 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             IconButton(
               tooltip: 'Kayıtlarım',
               icon: const Icon(Icons.library_books_outlined),
-              onPressed: controller.isBusy || listeningActive
+              onPressed: controller.isBusy || listeningActive || _openingBackup
                   ? null
                   : _openLibrary,
+            ),
+          if (!widget.returnText &&
+              !_addingPage &&
+              widget.batchController == null)
+            PopupMenuButton<String>(
+              tooltip: 'Diğer seçenekler',
+              enabled:
+                  !_openingBackup && !controller.isBusy && !_saveDialogOpen,
+              onSelected: (_) => _openBackup(),
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'backup',
+                  child: Text('Yedekle ve geri yükle'),
+                ),
+              ],
             ),
         ],
       ),

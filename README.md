@@ -53,6 +53,9 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Sayfa okuma ekranında önceki/sonraki düğmeleri veya sayfa göstergesine dokunup numara girerek kayıtlı sırada gezinme; geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Düzenleme sırasında gezinme gizlenir; düzenlemeden vazgeçerken kaydedilmemiş değişiklikler için onay istenir.
 - Çok sayfalı içeriklerde “Görünüm ve sesli okuma” ayarlarındaki varsayılan kapalı “Sonraki sayfayı otomatik oku” anahtarı, sayfa doğal olarak bittiğinde sonraki sayfayı okur. Son veya boş sayfada okuma biter. Bekleyen geçiş Durdur, anahtarı kapatma veya arka plana geçme ile iptal edilir.
 - Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.
+- Ana ekrandaki “Yedekle ve geri yükle” menüsüyle belgeleri, kategorileri, sayfa sırasını, okuma konumlarını, ayraçları ve genel tercihleri yerel dosyaya yedekleme.
+
+Yedek UTF-8 JSON biçimindedir: kökte `format: reading-assistant`, `version: 1` ve `data` bulunur. `data` içinde `categories`, `documents`, `pages`, `reading_positions`, `bookmarks` ve `reading_preferences` kayıt dizileri SQLite alan adlarıyla yer alır; kategori kimlikleri metin, belge ve sayfa kimlikleri, sayfa sırası ve oluşturma zamanı (UTC milisaniye) sayısaldır. Bu sürüm yalnızca 1 numaralı biçimi geri yükler. Geri yükleme mevcut kayıtları ve ayarları yedeğin içeriğiyle değiştirir. Kaydedilmemiş taslaklar ve geçici OCR görselleri yedeğe alınmaz; kayıtlı içeriklerde kalıcı görsel dosyası bulunmaz. Yedek şifrelenmez; dosyayı güvenli bir yerde saklayın.
 
 Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Silme sonrasında kalan sayfalar ekranda kesintisiz numaralanır.
 
@@ -90,7 +93,7 @@ Android release APK:
 flutter build apk --release
 ```
 
-Temel bağımlılıklar: `image_picker`, `google_mlkit_text_recognition`, `image`, `flutter_tts` ve `sqflite`. Sürümler için [pubspec.yaml](pubspec.yaml) ve [pubspec.lock](pubspec.lock) dosyalarına bakın.
+Temel bağımlılıklar: `image_picker`, `google_mlkit_text_recognition`, `image`, `flutter_tts`, `sqflite`, `file_picker` ve `path_provider`. Sürümler için [pubspec.yaml](pubspec.yaml) ve [pubspec.lock](pubspec.lock) dosyalarına bakın.
 
 Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölmeyi ve gerçek SQLite üzerinde veritabanı işlemlerini kapsar. Sahte OCR/TTS servisleriyle geçen testler, gerçek motor veya cihaz davranışının doğrulandığı anlamına gelmez.
 
@@ -101,7 +104,7 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - Satır birleştirme ve cümle bölme sezgiseldir; şiir ve şarkı sözlerinde satır birleştirme kapalı bırakılabilir.
 - Otomatik sayfa geçişi yalnızca çok sayfalı kayıtlı içerik okuma ekranındadır.
 - Arka planda/ekran kilitliyken dinleme desteklenmez.
-- Metin sürüm geçmişi, uygulama içi yedekleme ve bulut senkronizasyonu yoktur.
+- Metin sürüm geçmişi ve bulut senkronizasyonu yoktur.
 - Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
 - Android, sayfa eklerken kamera açıkken uygulamayı sonlandırırsa fotoğraf yanlış içeriğe uygulanmaz; ilgili sayfada yeniden çekmek gerekir.
 - Android, mevcut içeriğe çoklu görsel seçilirken uygulamayı sonlandırırsa görseller yanlış içeriğe eklenmez; seçim ilgili içerikten tekrarlanmalıdır.
