@@ -324,6 +324,66 @@ class DocumentStore {
     });
   }
 
+  Future<int> savePages({
+    required String title,
+    required DocumentCategory category,
+    required List<String> texts,
+  }) async {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty ||
+        texts.isEmpty ||
+        texts.any((t) => t.trim().isEmpty)) {
+      throw ArgumentError('Title and page texts must not be empty.');
+    }
+    final database = await _database;
+    return database.transaction((txn) async {
+      final id = await txn.insert('documents', {
+        'title': cleanTitle,
+        'category': category.name,
+        'created_at': DateTime.now().toUtc().millisecondsSinceEpoch,
+      });
+      for (var i = 0; i < texts.length; i++) {
+        await txn.insert('pages', {
+          'document_id': id,
+          'position': i,
+          'text': texts[i],
+        });
+      }
+      return id;
+    });
+  }
+
+  Future<void> appendPages({
+    required int documentId,
+    required List<String> texts,
+  }) async {
+    if (texts.isEmpty || texts.any((t) => t.trim().isEmpty)) {
+      throw ArgumentError('Page texts must not be empty.');
+    }
+    final database = await _database;
+    await database.transaction((txn) async {
+      final owner = await txn.query(
+        'documents',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [documentId],
+      );
+      if (owner.isEmpty) throw StateError('Document not found.');
+      final rows = await txn.rawQuery(
+        'SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM pages WHERE document_id = ?',
+        [documentId],
+      );
+      final position = rows.single['next_position'] as int;
+      for (var i = 0; i < texts.length; i++) {
+        await txn.insert('pages', {
+          'document_id': documentId,
+          'position': position + i,
+          'text': texts[i],
+        });
+      }
+    });
+  }
+
   /// Legacy combined update retained for compatibility. New editors use
   /// updateDetails and updatePageText separately.
   Future<bool> update({

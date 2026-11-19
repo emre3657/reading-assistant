@@ -114,6 +114,12 @@ class HighlightingTextEditingController extends TextEditingController {
     listening.wordProgress.addListener(_onWordChanged);
   }
 
+  void detachListening() {
+    _listening?.removeListener(_onListeningChanged);
+    _listening?.wordProgress.removeListener(_onWordChanged);
+    _listening = null;
+  }
+
   void _onWordChanged() => notifyListeners();
 
   void _onListeningChanged() {

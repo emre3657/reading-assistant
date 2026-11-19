@@ -176,9 +176,9 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   Future<void> _addPage() async {
     if (_busy || _error != null) return;
     setState(() => _opening = true);
-    bool? saved;
+    int? savedCount;
     try {
-      saved = await Navigator.of(context).push<bool>(
+      savedCount = await Navigator.of(context).push<int>(
         MaterialPageRoute(
           builder: (context) => AddPageScreen(
             documentId: _document.id,
@@ -192,10 +192,15 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     } finally {
       if (mounted) setState(() => _opening = false);
     }
-    if (!mounted || saved != true) return;
+    if (!mounted || savedCount == null) return;
     widget.onUpdated?.call();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Sayfa eklendi.')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          savedCount == 1 ? 'Sayfa eklendi.' : '$savedCount sayfa eklendi.',
+        ),
+      ),
+    );
     await _load();
   }
 

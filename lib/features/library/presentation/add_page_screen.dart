@@ -39,6 +39,11 @@ class AddPageScreen extends StatelessWidget {
       previewImageBuilder: previewImageBuilder,
       speechService: speechService,
       pageDocumentTitle: documentTitle,
+      store: store,
+      onSavePages: (texts) => (store ?? DocumentStore.instance).appendPages(
+        documentId: documentId,
+        texts: texts,
+      ),
       onSavePage: (text) async {
         await (store ?? DocumentStore.instance).appendPage(
           documentId: documentId,

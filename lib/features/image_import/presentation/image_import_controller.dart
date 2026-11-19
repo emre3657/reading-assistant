@@ -52,8 +52,18 @@ class ImageImportController extends ChangeNotifier {
     required this.textRecognitionService,
     required this.rotationService,
     required this.previewImageBuilder,
+    XFile? initialFile,
   }) {
     textController.addListener(_onTextChanged);
+    if (initialFile != null) {
+      _replaceSelection(
+        ImageSelection(
+          ++_lastSelectionId,
+          initialFile,
+          previewImageBuilder(initialFile),
+        ),
+      );
+    }
   }
 
   final ImagePickerService pickerService;
@@ -88,6 +98,7 @@ class ImageImportController extends ChangeNotifier {
   String? _infoMessage;
   bool _lastHasEditedText = false;
   bool _lastHasText = false;
+  List<XFile>? _recoveredBatch;
 
   ImageSelection? get selection => _selection;
   bool get hasImage => _selection != null;
@@ -103,6 +114,11 @@ class ImageImportController extends ChangeNotifier {
   bool get joinLines => _joinLines;
   String? get errorMessage => _errorMessage;
   String? get infoMessage => _infoMessage;
+  List<XFile>? takeRecoveredBatch() {
+    final files = _recoveredBatch;
+    _recoveredBatch = null;
+    return files;
+  }
 
   /// Changes whenever the image, rotation or OCR text state changes in a way
   /// that makes an earlier confirmation stale. Typing does not change it.
@@ -160,6 +176,16 @@ class ImageImportController extends ChangeNotifier {
     String? error;
     try {
       recovered = await pickerService.retrieveLostImage();
+    } on LostMultipleImagesException catch (lost) {
+      if (revision == _revision && !hasEditedText && _selection == null) {
+        _recoveredBatch = lost.files;
+      } else {
+        error = 'Önceki görseller mevcut taslağı korumak için açılmadı. Lütfen yeniden seçin.';
+      }
+    } on LostMultiplePageException {
+      error =
+          'Önceki görseller sayfa ekleme ekranına aitti. '
+          'İlgili içeriği açıp görselleri yeniden seçin.';
     } on LostCameraPageException {
       error =
           'Önceki fotoğraf sayfa ekleme ekranına aitti. '
@@ -362,7 +388,12 @@ class ImageImportController extends ChangeNotifier {
           : 'Metin çıkarılamadı. Tekrar denemek için "Metni çıkar" düğmesine bas.';
     } finally {
       if (rotatedPath != null) {
-        await rotationService.deleteCopy(rotatedPath);
+        try {
+          await rotationService.deleteCopy(rotatedPath);
+        } catch (_) {
+          error = 'Geçici görsel temizlenemedi. Tekrar deneyebilirsin.';
+          ocr = null;
+        }
       }
     }
     if (_disposed) return;

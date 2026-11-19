@@ -71,7 +71,7 @@ Future<void> _open(WidgetTester tester, _Store store, _Ocr ocr) async {
       home: Builder(
         builder: (context) => Scaffold(
           body: TextButton(
-            onPressed: () => Navigator.of(context).push<bool>(
+            onPressed: () => Navigator.of(context).push<int>(
               MaterialPageRoute(
                 builder: (_) => AddPageScreen(
                   documentId: 7,

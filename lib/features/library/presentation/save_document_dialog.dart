@@ -5,9 +5,15 @@ import '../data/saved_document.dart';
 import 'category_editor.dart';
 
 class SaveDocumentDialog extends StatefulWidget {
-  const SaveDocumentDialog({super.key, required this.text, this.store});
+  const SaveDocumentDialog({
+    super.key,
+    required this.text,
+    this.store,
+    this.pages,
+  });
 
   final String text;
+  final List<String>? pages;
   final DocumentStore? store;
 
   @override
@@ -41,11 +47,19 @@ class _SaveDocumentDialogState extends State<SaveDocumentDialog> {
     });
 
     try {
-      await _store.save(
-        title: _titleController.text,
-        category: _category,
-        text: widget.text,
-      );
+      if (widget.pages case final pages?) {
+        await _store.savePages(
+          title: _titleController.text,
+          category: _category,
+          texts: pages,
+        );
+      } else {
+        await _store.save(
+          title: _titleController.text,
+          category: _category,
+          text: widget.text,
+        );
+      }
     } catch (_) {
       if (!mounted) return;
 
@@ -125,7 +139,13 @@ class _SaveDocumentDialogState extends State<SaveDocumentDialog> {
           ),
           FilledButton(
             onPressed: _saving || !_categoriesReady ? null : _save,
-            child: Text(_saving ? 'Kaydediliyor…' : 'Kaydet'),
+            child: Text(
+              _saving
+                  ? 'Kaydediliyor…'
+                  : widget.pages == null
+                  ? 'Kaydet'
+                  : '${widget.pages!.length} sayfayı ekle',
+            ),
           ),
         ],
       ),

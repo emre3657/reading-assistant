@@ -43,6 +43,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - “Kayıtlarım” ekranında başlık arama, çoklu kategori filtresi ve oluşturma tarihine göre sıralama.
 - Kategori oluşturma, yeniden adlandırma ve kayıtları başka kategoriye taşıyarak silme.
 - Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
+- İlk ekrandan veya sayfa ekleme ekranından birden fazla galeri görseli seçip taslakları sıralama, sayfa bazında düzenleme ve sırayla OCR sonrası birlikte kaydetme.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Sayfa düzenleme taslağını onayla temizleme; kayıt ayrıca kaydedilene kadar değişmez.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
@@ -102,5 +103,6 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - Metin sürüm geçmişi, uygulama içi yedekleme ve bulut senkronizasyonu yoktur.
 - Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
 - Android, sayfa eklerken kamera açıkken uygulamayı sonlandırırsa fotoğraf yanlış içeriğe uygulanmaz; ilgili sayfada yeniden çekmek gerekir.
+- Android, mevcut içeriğe çoklu görsel seçilirken uygulamayı sonlandırırsa görseller yanlış içeriğe eklenmez; seçim ilgili içerikten tekrarlanmalıdır.
 
 Kod ve çalışma kuralları için [Copilot talimatlarına](.github/copilot-instructions.md) bakın.

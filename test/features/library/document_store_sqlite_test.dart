@@ -42,6 +42,52 @@ void main() {
     tearDown(() async => database.close());
 
     test(
+      'batch creation and append are ordered and roll back on failure',
+      () async {
+        final id = await store.savePages(
+          title: 'Toplu',
+          category: DocumentCategory.note,
+          texts: ['Bir', 'İki'],
+        );
+        await store.appendPages(documentId: id, texts: ['Üç', 'Dört']);
+        expect((await store.pages(id)).map((p) => p.text), [
+          'Bir',
+          'İki',
+          'Üç',
+          'Dört',
+        ]);
+        await database.execute("""
+        CREATE TRIGGER reject_batch BEFORE INSERT ON pages
+        WHEN NEW.text = 'Hata' BEGIN SELECT RAISE(ABORT, 'test'); END
+      """);
+        await expectLater(
+          store.appendPages(documentId: id, texts: ['Geçici', 'Hata']),
+          throwsA(isA<DatabaseException>()),
+        );
+        expect((await store.pages(id)).map((p) => p.text), [
+          'Bir',
+          'İki',
+          'Üç',
+          'Dört',
+        ]);
+        await expectLater(
+          store.savePages(
+            title: 'Hatalı',
+            category: DocumentCategory.note,
+            texts: ['Geçici', 'Hata'],
+          ),
+          throwsA(isA<DatabaseException>()),
+        );
+        expect((await store.list()).map((d) => d.title), ['Toplu']);
+        await expectLater(
+          store.appendPages(documentId: id, texts: ['Tamam', '  ']),
+          throwsArgumentError,
+        );
+        expect((await store.pages(id)).length, 4);
+      },
+    );
+
+    test(
       'details edit preserves every page, position and creation date',
       () async {
         final id = await store.save(

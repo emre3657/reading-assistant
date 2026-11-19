@@ -18,11 +18,19 @@ import '../listening/fake_speech_service.dart';
 
 // Page-management tests must never wait for native Android picker recovery.
 class _NoPicker extends ImagePickerService {
+  const _NoPicker({this.multiple = const []});
+
+  final List<XFile> multiple;
   @override
   bool get canRecoverLostImage => false;
 
   @override
   Future<XFile?> pickFromGallery() async => null;
+
+  @override
+  Future<List<XFile>> pickMultipleFromGallery({
+    required bool recoverToHome,
+  }) async => multiple;
 }
 
 class _PageStore extends DocumentStore with FakeReadingPositions {
@@ -77,6 +85,26 @@ class _PageStore extends DocumentStore with FakeReadingPositions {
   }
 
   @override
+  Future<void> appendPages({
+    required int documentId,
+    required List<String> texts,
+  }) async {
+    appendedDocumentId = documentId;
+    await appendGate?.future;
+    if (appendError != null) throw appendError!;
+    storedPages = [
+      ...storedPages,
+      for (var i = 0; i < texts.length; i++)
+        DocumentPage(
+          id: 100 + i,
+          documentId: documentId,
+          position: storedPages.length + i,
+          text: texts[i],
+        ),
+    ];
+  }
+
+  @override
   Future<bool> updatePageText({
     required int documentId,
     required int pageId,
@@ -110,6 +138,7 @@ Future<void> _show(
   _PageStore store, {
   FakeSpeechService? speech,
   VoidCallback? onUpdated,
+  ImagePickerService picker = const _NoPicker(),
 }) async {
   tester.view.physicalSize = const Size(800, 1600);
   tester.view.devicePixelRatio = 1;
@@ -118,7 +147,7 @@ Future<void> _show(
     MaterialApp(
       home: DocumentContentsScreen(
         document: store.document,
-        pickerService: _NoPicker(),
+        pickerService: picker,
         store: store,
         speechService: speech ?? FakeSpeechService(),
         onUpdated: onUpdated,
@@ -347,8 +376,61 @@ void main() {
     expect(store.appendCalls, 1);
     expect(updates, 1);
     expect(find.text('Sayfa 3'), findsOneWidget);
+    expect(find.text('Sayfa eklendi.'), findsOneWidget);
     expect(find.byType(AddPageScreen), findsNothing);
   });
+
+  for (final count in [1, 3]) {
+    testWidgets('batch append reports completed $count page count', (
+      tester,
+    ) async {
+      final store = _PageStore();
+      await _show(
+        tester,
+        store,
+        picker: _NoPicker(
+          multiple: [for (var i = 0; i < count + 1; i++) XFile('image$i')],
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('add-page')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('pick-multiple')));
+      await tester.pumpAndSettle();
+      final lastDraft = find.byKey(ValueKey('draft-$count'));
+      final remove = find.descendant(
+        of: lastDraft,
+        matching: find.text('Kaldır'),
+      );
+      await tester.ensureVisible(remove);
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < count; i++) {
+        final draft = find.byKey(ValueKey('draft-$i'));
+        final preview = find
+            .descendant(of: draft, matching: find.byType(InkWell))
+            .first;
+        await tester.ensureVisible(preview);
+        await tester.tap(preview);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('import-text')),
+          'Metin $i',
+        );
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+      }
+      final save = find.byKey(const ValueKey('save-batch'));
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(count == 1 ? 'Sayfa eklendi.' : '$count sayfa eklendi.'),
+        findsOneWidget,
+      );
+      expect(store.storedPages.length, count + 2);
+      expect(store.appendedDocumentId, 7);
+    });
+  }
 
   testWidgets('empty page is rejected', (tester) async {
     final store = _PageStore();

@@ -8,6 +8,7 @@ import 'package:reading_assistant/features/image_import/services/image_picker_se
 
 class _Picker extends ImagePicker {
   Completer<XFile?>? gate;
+  Completer<List<XFile>>? multiGate;
   final opened = Completer<void>();
   LostDataResponse response = LostDataResponse.empty();
   ImageSource? source;
@@ -28,6 +29,19 @@ class _Picker extends ImagePicker {
 
   @override
   Future<LostDataResponse> retrieveLostData() async => response;
+
+  @override
+  Future<List<XFile>> pickMultiImage({
+    double? maxWidth,
+    double? maxHeight,
+    int? imageQuality,
+    int? limit,
+    bool requestFullMetadata = true,
+  }) async {
+    expect(requestFullMetadata, isFalse);
+    opened.complete();
+    return multiGate!.future;
+  }
 }
 
 void main() {
@@ -88,4 +102,34 @@ void main() {
       expect(await marker().exists(), isFalse);
     }
   });
+
+  test(
+    'multi-selection keeps all home results and rejects a page target',
+    () async {
+      picker.multiGate = Completer<List<XFile>>();
+      final pending = service.pickMultipleFromGallery(recoverToHome: true);
+      await picker.opened.future;
+      expect(await marker().readAsString(), 'multi_home');
+      picker.multiGate!.complete([]);
+      expect(await pending, isEmpty);
+      expect(await marker().exists(), isFalse);
+      picker.response = LostDataResponse(files: [XFile('a'), XFile('b')]);
+      await marker().writeAsString('multi_home');
+      await expectLater(
+        service.retrieveLostImage(),
+        throwsA(
+          isA<LostMultipleImagesException>().having(
+            (e) => e.files.map((f) => f.path).toList(),
+            'paths',
+            ['a', 'b'],
+          ),
+        ),
+      );
+      await marker().writeAsString('multi_page');
+      await expectLater(
+        service.retrieveLostImage(),
+        throwsA(isA<LostMultiplePageException>()),
+      );
+    },
+  );
 }

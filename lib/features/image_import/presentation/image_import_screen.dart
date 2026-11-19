@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
@@ -18,6 +19,7 @@ import '../services/image_rotation_service.dart';
 import '../services/text_recognition_service.dart';
 
 import 'image_import_controller.dart';
+import 'multi_page_screen.dart';
 import 'widgets/image_preview.dart';
 
 export 'image_import_controller.dart'
@@ -36,6 +38,10 @@ class ImageImportScreen extends StatefulWidget {
     this.onSavePage,
     this.pageDocumentTitle,
     this.store,
+    this.onSavePages,
+    this.batchController,
+    this.batchPageNumber,
+    this.batchEmptyTextError = false,
   });
 
   final ImagePickerService pickerService;
@@ -53,6 +59,10 @@ class ImageImportScreen extends StatefulWidget {
   final Future<void> Function(String text)? onSavePage;
   final String? pageDocumentTitle;
   final DocumentStore? store;
+  final Future<void> Function(List<String> texts)? onSavePages;
+  final ImageImportController? batchController;
+  final int? batchPageNumber;
+  final bool batchEmptyTextError;
 
   @override
   State<ImageImportScreen> createState() => _ImageImportScreenState();
@@ -80,26 +90,36 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   Timer? _editLockNoticeTimer;
 
   bool _saveDialogOpen = false;
+  bool _pickingBatch = false;
   bool _manualEntry = false;
   bool _pageSaving = false;
   bool _pageExitInProgress = false;
   bool _allowPagePop = false;
   String? _pageError;
+  bool _batchEmptyTextError = false;
 
   bool get _addingPage => widget.onSavePage != null;
-  bool get _pageLocked => _pageSaving || _pageExitInProgress;
+  bool get _pageLocked => _pageSaving || _pageExitInProgress || _pickingBatch;
 
   @override
   void initState() {
     super.initState();
 
-    _controller = ImageImportController(
-      pickerService: widget.pickerService,
-      textRecognitionService: widget.textRecognitionService,
-      rotationService: widget.rotationService,
-      previewImageBuilder: widget.previewImageBuilder,
-    );
-    if (!_addingPage && !widget.returnText) {
+    _controller =
+        widget.batchController ??
+        ImageImportController(
+          pickerService: widget.pickerService,
+          textRecognitionService: widget.textRecognitionService,
+          rotationService: widget.rotationService,
+          previewImageBuilder: widget.previewImageBuilder,
+        );
+    if (widget.batchController != null) {
+      _manualEntry = true;
+      _batchEmptyTextError = widget.batchEmptyTextError;
+      _controller.textController.addListener(_clearBatchTextError);
+      if (_batchEmptyTextError) _scheduleScrollToText();
+    }
+    if (!_addingPage && !widget.returnText && widget.batchController == null) {
       unawaited(_controller.recoverLostImage());
     }
 
@@ -168,7 +188,14 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     _scrollToken++;
 
     _controller.removeListener(_onImportChanged);
-    _controller.dispose();
+    if (widget.batchController != null) {
+      _controller.textController.removeListener(_clearBatchTextError);
+    }
+    if (widget.batchController == null) {
+      _controller.dispose();
+    } else {
+      _controller.textController.detachListening();
+    }
     _preferences?.removeListener(_onPreferencesChanged);
     _contentScrollController.dispose();
 
@@ -294,6 +321,79 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     }
   }
 
+  Future<void> _selectMultipleImages() async {
+    if (_pickingBatch ||
+        _controller.isBusy ||
+        _listening.isActive ||
+        _pageLocked) {
+      return;
+    }
+    setState(() => _pickingBatch = true);
+    List<XFile> files;
+    try {
+      files = await widget.pickerService.pickMultipleFromGallery(
+        recoverToHome: !_addingPage,
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() => _pickingBatch = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Görseller seçilemedi. Tekrar deneyebilirsin.'),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (files.isEmpty) {
+      setState(() => _pickingBatch = false);
+      return;
+    }
+    try {
+      if (_addingPage &&
+          (_controller.hasImage ||
+              _controller.textController.text.isNotEmpty)) {
+        final confirmed = await _confirm(
+          title: 'Mevcut sayfa taslağı kapatılsın mı?',
+          content:
+              'Toplu kayıt tamamlanırsa mevcut sayfa taslağın kapatılacak. '
+              'Toplu işlemden kaydetmeden çıkarsan taslağın korunur.',
+          confirmLabel: 'Toplu işleme devam et',
+        );
+        if (!mounted || !confirmed) return;
+      }
+      await _openBatch(files);
+    } finally {
+      if (mounted) setState(() => _pickingBatch = false);
+    }
+  }
+
+  Future<void> _openBatch(List<XFile> files) async {
+    final savedCount = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => MultiPageScreen(
+          files: files,
+          pickerService: widget.pickerService,
+          textRecognitionService: widget.textRecognitionService,
+          rotationService: widget.rotationService,
+          previewImageBuilder: widget.previewImageBuilder,
+          speechService: widget.speechService,
+          store: widget.store,
+          onSavePages: widget.onSavePages,
+          documentTitle: widget.pageDocumentTitle,
+        ),
+      ),
+    );
+    if (!mounted || savedCount == null) return;
+    if (_addingPage) {
+      await _closePage(savedCount);
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Sayfalar kaydedildi.')));
+    }
+  }
+
   Future<void> _removeImage() async {
     if (_controller.isBusy || _listening.isActive) return;
 
@@ -346,7 +446,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     final revision = _controller.revision;
 
-    if (_controller.hasEditedText) {
+    if (_controller.hasEditedText ||
+        (widget.batchController != null &&
+            _controller.textController.text.isNotEmpty)) {
       final confirmed = await _confirm(
         title: 'Metnin üzerine yazılsın mı?',
         content:
@@ -434,11 +536,24 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   }
 
   void _onImportChanged() {
+    final recovered = _controller.takeRecoveredBatch();
+    if (recovered != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_openBatch(recovered));
+      });
+    }
     final id = _controller.recognitionId;
     if (id == _lastRecognitionId) return;
 
     _lastRecognitionId = id;
     _scheduleScrollToText();
+  }
+
+  void _clearBatchTextError() {
+    if (_batchEmptyTextError &&
+        _controller.textController.text.trim().isNotEmpty) {
+      setState(() => _batchEmptyTextError = false);
+    }
   }
 
   /// Scrolls to formatting options without requesting input focus.
@@ -505,12 +620,12 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     }
   }
 
-  Future<void> _closePage(bool saved) async {
+  Future<void> _closePage(int? savedCount) async {
     if (!mounted) return;
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _allowPagePop = true);
     await WidgetsBinding.instance.endOfFrame;
-    if (mounted) Navigator.of(context).pop(saved);
+    if (mounted) Navigator.of(context).pop(savedCount);
   }
 
   Future<void> _persistPage() async {
@@ -540,7 +655,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       });
       return;
     }
-    if (mounted) await _closePage(true);
+    if (mounted) await _closePage(1);
   }
 
   Future<void> _requestPageExit() async {
@@ -594,14 +709,19 @@ class _ImageImportScreenState extends State<ImageImportScreen>
           return;
         }
       }
-      await _closePage(false);
+      await _closePage(null);
     } finally {
       if (mounted) setState(() => _pageExitInProgress = false);
     }
   }
 
   Future<void> _openLibrary() async {
-    if (_controller.isBusy || _listening.isActive || _saveDialogOpen) return;
+    if (_controller.isBusy ||
+        _listening.isActive ||
+        _saveDialogOpen ||
+        _pageLocked) {
+      return;
+    }
 
     FocusManager.instance.primaryFocus?.unfocus();
 
@@ -672,7 +792,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       appBar: AppBar(
         backgroundColor: colorScheme.inversePrimary,
         title: Text(
-          _addingPage
+          widget.batchController != null
+              ? '${widget.batchPageNumber}. sayfa'
+              : _addingPage
               ? 'Sayfa ekle'
               : widget.returnText
               ? 'Metin Çıkar'
@@ -691,7 +813,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             icon: const Icon(Icons.settings_outlined),
             onPressed: _pageLocked ? null : _openReadingSettings,
           ),
-          if (_addingPage)
+          if (widget.batchController != null)
+            const SizedBox.shrink()
+          else if (_addingPage)
             TextButton(
               key: const ValueKey('save-page'),
               onPressed: _pageLocked || controller.isBusy || listeningActive
@@ -721,7 +845,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                   ? null
                   : _saveDocument,
             ),
-          if (!widget.returnText && !_addingPage)
+          if (!widget.returnText &&
+              !_addingPage &&
+              widget.batchController == null)
             IconButton(
               tooltip: 'Kayıtlarım',
               icon: const Icon(Icons.library_books_outlined),
@@ -732,7 +858,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         ],
       ),
       body: AbsorbPointer(
-        absorbing: _pageLocked,
+        absorbing: _pageLocked || _pickingBatch,
         child: SafeArea(
           child: SentenceFollow(
             key: _followKey,
@@ -852,20 +978,22 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                         icon: const Icon(Icons.text_snippet),
                         label: const Text('Metni çıkar'),
                       ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: listeningActive
-                            ? null
-                            : () => _selectImage(),
-                        icon: const Icon(Icons.photo_library),
-                        label: const Text('Görseli değiştir'),
-                      ),
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: listeningActive ? null : _removeImage,
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('Görseli kaldır'),
-                      ),
+                      if (widget.batchController == null) ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: listeningActive
+                              ? null
+                              : () => _selectImage(),
+                          icon: const Icon(Icons.photo_library),
+                          label: const Text('Görseli değiştir'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: listeningActive ? null : _removeImage,
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Görseli kaldır'),
+                        ),
+                      ],
                     ] else
                       FilledButton.icon(
                         onPressed: listeningActive
@@ -874,14 +1002,30 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                         icon: const Icon(Icons.photo_library),
                         label: const Text('Galeriden görsel seç'),
                       ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: listeningActive
-                          ? null
-                          : () => _selectImage(camera: true),
-                      icon: const Icon(Icons.camera_alt_outlined),
-                      label: const Text('Fotoğraf çek'),
-                    ),
+                    if (widget.batchController == null) ...[
+                      if (!widget.returnText &&
+                          (!_addingPage || widget.onSavePages != null)) ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          key: const ValueKey('pick-multiple'),
+                          onPressed: listeningActive || _pickingBatch
+                              ? null
+                              : _selectMultipleImages,
+                          icon: const Icon(Icons.collections_outlined),
+                          label: const Text(
+                            'Galeriden birden fazla görsel seç',
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: listeningActive
+                            ? null
+                            : () => _selectImage(camera: true),
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: const Text('Fotoğraf çek'),
+                      ),
+                    ],
                   ],
                   if (!widget.returnText &&
                       !hasImage &&
@@ -943,7 +1087,9 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                                   : _clearText,
                               child: const Text('Temizle'),
                             ),
-                          if (_manualEntry && !controller.hasRecognizedText)
+                          if (_manualEntry &&
+                              !controller.hasRecognizedText &&
+                              widget.batchController == null)
                             TextButton(
                               onPressed:
                                   controller.isBusy ||
@@ -956,6 +1102,16 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                         ],
                       ),
                     ),
+                    if (_batchEmptyTextError) ...[
+                      const SizedBox(height: 4),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          'Bu sayfanın metni boş. Metni çıkarın veya yazın.',
+                          style: TextStyle(color: colorScheme.error),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Semantics(
                       label: listeningActive

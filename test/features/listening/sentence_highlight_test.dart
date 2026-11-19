@@ -314,7 +314,7 @@ void main() {
           Builder(
             builder: (context) => Scaffold(
               body: TextButton(
-                onPressed: () => Navigator.of(context).push<void>(
+                onPressed: () => Navigator.of(context).push<int>(
                   MaterialPageRoute(
                     builder: (_) => AddPageScreen(
                       documentId: 7,

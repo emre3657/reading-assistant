@@ -8,6 +8,15 @@ class LostCameraPageException implements Exception {
   const LostCameraPageException();
 }
 
+class LostMultipleImagesException implements Exception {
+  const LostMultipleImagesException(this.files);
+  final List<XFile> files;
+}
+
+class LostMultiplePageException implements Exception {
+  const LostMultiplePageException();
+}
+
 /// Wraps the system gallery picker so screens and tests do not touch the
 /// platform plugin directly.
 class ImagePickerService {
@@ -44,6 +53,24 @@ class ImagePickerService {
     );
   });
 
+  Future<List<XFile>> pickMultipleFromGallery({required bool recoverToHome}) =>
+      _run(() async {
+        File? marker;
+        if (canRecoverLostImage) {
+          marker = await _cameraMarker();
+          await marker.parent.create(recursive: true);
+          await marker.writeAsString(
+            recoverToHome ? 'multi_home' : 'multi_page',
+            flush: true,
+          );
+        }
+        try {
+          return await _picker().pickMultiImage(requestFullMetadata: false);
+        } finally {
+          if (marker != null && await marker.exists()) await marker.delete();
+        }
+      });
+
   Future<XFile?> takePhoto({required bool recoverToHome}) => _run(() async {
     File? marker;
     if (canRecoverLostImage) {
@@ -78,6 +105,13 @@ class ImagePickerService {
     if (await marker.exists()) await marker.delete();
     if (response.isEmpty) return null;
     if (response.exception != null) throw response.exception!;
+    if (cameraTarget == 'multi_home') {
+      final files =
+          response.files ?? [if (response.file != null) response.file!];
+      if (files.isNotEmpty) throw LostMultipleImagesException(files);
+      return null;
+    }
+    if (cameraTarget == 'multi_page') throw const LostMultiplePageException();
     if (cameraTarget != null && cameraTarget != 'home') {
       throw const LostCameraPageException();
     }

@@ -73,12 +73,14 @@ class FakeImageRotationService implements ImageRotationService {
 class FakeImagePickerService extends ImagePickerService {
   FakeImagePickerService({
     this.onPick,
+    this.onPickMultiple,
     this.onCamera,
     this.onRetrieveLost,
     this.canRecoverLostImage = false,
   });
 
   final Future<XFile?> Function()? onPick;
+  final Future<List<XFile>> Function()? onPickMultiple;
   final Future<XFile?> Function()? onCamera;
   final Future<XFile?> Function()? onRetrieveLost;
 
@@ -87,6 +89,11 @@ class FakeImagePickerService extends ImagePickerService {
 
   @override
   Future<XFile?> pickFromGallery() async => onPick?.call();
+
+  @override
+  Future<List<XFile>> pickMultipleFromGallery({
+    required bool recoverToHome,
+  }) async => await onPickMultiple?.call() ?? [];
 
   @override
   Future<XFile?> takePhoto({required bool recoverToHome}) async =>
