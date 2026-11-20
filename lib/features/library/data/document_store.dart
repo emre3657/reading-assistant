@@ -243,6 +243,8 @@ class DocumentStore {
     String pageView = 'plain',
     bool pageAnimationEnabled = false,
     String pageAnimationEffect = 'fade',
+    String bookmarkShape = 'ribbon',
+    String bookmarkColor = 'red',
   }) async {
     final database = await _database;
     await database.insert('reading_preferences', {
@@ -256,6 +258,8 @@ class DocumentStore {
       'page_view': pageView,
       'page_animation_enabled': pageAnimationEnabled ? 1 : 0,
       'page_animation_effect': pageAnimationEffect,
+      'bookmark_shape': bookmarkShape,
+      'bookmark_color': bookmarkColor,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 

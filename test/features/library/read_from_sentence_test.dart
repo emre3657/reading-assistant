@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
+import 'package:reading_assistant/features/library/data/reading_position.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
 import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
@@ -134,6 +135,30 @@ List<(int, int, TextStyle?)> _segments(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets(
+    'reading from selected sentence retracts bookmark without jumping to it',
+    (tester) async {
+      final store = _Store();
+      store.bookmarks[7] = const ReadingPosition(
+        pageId: 1,
+        sentenceIndex: 0,
+        pageText: _text,
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech);
+      await tester.tapAt(_character(tester, 7));
+      await tester.pumpAndSettle();
+      await tester.tap(_readFrom);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(speech.spoken, isEmpty);
+      await tester.pumpAndSettle();
+      expect(speech.spoken.single, 'Aynı. ');
+      expect(store.positions[7]?.sentenceIndex, 1);
+      expect(store.bookmarks[7]?.sentenceIndex, 0);
+    },
+  );
+
   testWidgets('sentence selection and reading work after animated navigation', (
     tester,
   ) async {
@@ -709,5 +734,12 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('next-page')))
+          .onPressed,
+      isNotNull,
+    );
   });
 }

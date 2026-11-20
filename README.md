@@ -50,6 +50,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Kayıtlı sayfa okuma ayarlarında isteğe bağlı Yumuşak belirme, Dikey kayma veya kıvrımlı Sayfa çevirme geçişi ve önizlemesi bulunur; sistemin hareket azaltma tercihi uygulanır.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
 - Her içeriğe bir manuel ayraç konabilir; okumaya devam etmek ayracı taşımaz. “Ayraca git” okumayı başlatmadan işaretli cümleyi açar. İşaretli sayfanın metni değişirse ayraç sayfanın başına döner.
+- Okuma ayarlarında ayraç biçimi (Şerit, Kurdele veya Köşe ayracı) ve rengi seçilebilir; okuma başlarken görsel ayraç çekilir, kayıtlı konum korunur.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
 - Kayıt veya sayfaya uzun basarak çoklu seçme ve onayla atomik silme; tekli silme seçenekleri de kullanılabilir.
 - Sayfa okuma ekranında önceki/sonraki düğmeleri veya sayfa göstergesine dokunup numara girerek kayıtlı sırada gezinme; geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Düzenleme sırasında gezinme gizlenir; düzenlemeden vazgeçerken kaydedilmemiş değişiklikler için onay istenir.

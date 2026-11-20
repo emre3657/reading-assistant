@@ -10,6 +10,7 @@ import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
 import '../../listening/presentation/reading_page_surface.dart';
+import '../../listening/presentation/bookmark_artwork.dart';
 import '../../listening/presentation/page_transition.dart';
 import '../../listening/presentation/sentence_highlight.dart';
 import '../../listening/presentation/sentence_follow.dart';
@@ -152,7 +153,7 @@ class _SentenceBubbleLayout extends SingleChildLayoutDelegate {
 }
 
 class _SavedDocumentScreenState extends State<SavedDocumentScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   static const _lockedHint = 'Düzenlemek için okumayı durdur';
 
   late final ListeningController _listening;
@@ -173,6 +174,15 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   final _pageCaptureKey = GlobalKey();
   final _sentenceTapGroup = Object();
   late final _pageAnimation = AnimationController(vsync: this);
+  late final _bookmarkAnimation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+  late final _bookmarkOffset = _bookmarkAnimation
+      .drive(CurveTween(curve: Curves.easeIn))
+      .drive(Tween<Offset>(begin: Offset.zero, end: const Offset(0, -1)));
+  bool _bookmarkRetracting = false;
+  bool _selectionStartPending = false;
   Widget? _previousPage;
   ui.Image? _pageSnapshot;
   bool _capturePending = false;
@@ -234,6 +244,15 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   int get _pageIndex => _pages?.indexWhere((page) => page.id == _pageId) ?? -1;
 
   bool get _hasPageNavigation => _pageIndex >= 0;
+  bool get _showVisualBookmark =>
+      _bookmarkReady &&
+      _bookmark?.pageId == _pageId &&
+      _bookmark?.pageText == _saved.text &&
+      !_editing &&
+      !_exitInProgress &&
+      !_listening.isActive &&
+      !_autoPending &&
+      (!_transitioning || _bookmarkRetracting);
 
   @override
   void initState() {
@@ -341,6 +360,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _scrollController.dispose();
     _pageList.dispose();
     _pageAnimation.dispose();
+    _bookmarkAnimation.dispose();
     super.dispose();
   }
 
@@ -929,6 +949,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       _foreground = false;
       _navigationToken++;
       _readFromToken++;
+      if (_selectionStartPending && !_bookmarkRetracting) {
+        setState(() {
+          _selectionStartPending = false;
+          _transitioning = false;
+        });
+      }
+      _cancelBookmarkRetraction();
       _cancelAutoAdvance();
       _stopPageAnimation();
       _listening.stop();
@@ -944,7 +971,68 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         !(_preferences?.ready ?? false)) {
       return;
     }
-    _beginListening(_resumeSentence ?? 0);
+    final initialSentence = _resumeSentence ?? 0;
+    if (!_showVisualBookmark || MediaQuery.disableAnimationsOf(context)) {
+      _beginListening(initialSentence);
+      return;
+    }
+    final token = ++_readFromToken;
+    final pageId = _pageId;
+    final text = _saved.text;
+    setState(() => _transitioning = true);
+    unawaited(_startAfterRetraction(token, pageId, text, initialSentence));
+  }
+
+  Future<void> _startAfterRetraction(
+    int token,
+    int? pageId,
+    String text,
+    int initialSentence,
+  ) async {
+    try {
+      if (!await _retractBookmark()) return;
+      if (!mounted ||
+          !_foreground ||
+          token != _readFromToken ||
+          _pageId != pageId ||
+          _saved.text != text) {
+        return;
+      }
+      _beginListening(initialSentence);
+    } finally {
+      if (mounted && token == _readFromToken) {
+        _bookmarkAnimation.reset();
+        setState(() {
+          _bookmarkRetracting = false;
+          _transitioning = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _retractBookmark() async {
+    if (MediaQuery.disableAnimationsOf(context)) return true;
+    setState(() => _bookmarkRetracting = true);
+    try {
+      await _bookmarkAnimation.forward(from: 0).orCancel;
+      return true;
+    } on TickerCanceled {
+      return false;
+    }
+  }
+
+  void _cancelBookmarkRetraction() {
+    if (!_bookmarkRetracting) return;
+    _readFromToken++;
+    _bookmarkAnimation.stop(canceled: true);
+    _bookmarkAnimation.reset();
+    if (mounted) {
+      setState(() {
+        _bookmarkRetracting = false;
+        _selectionStartPending = false;
+        _transitioning = false;
+      });
+    }
   }
 
   void _beginListening(int initialSentence) {
@@ -1127,11 +1215,15 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         (_listening.isActive && !_listening.canStop)) {
       return;
     }
+    final retract = _showVisualBookmark;
     if (_autoPending) _cancelAutoAdvance();
     final token = ++_readFromToken;
     final pageId = _pageId;
     final text = _saved.text;
-    setState(() => _transitioning = true);
+    setState(() {
+      _selectionStartPending = true;
+      _transitioning = true;
+    });
     try {
       if (_listening.isActive) {
         await _listening.stop();
@@ -1148,10 +1240,26 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           _selectedSentence != index) {
         return;
       }
+      if (retract && !await _retractBookmark()) return;
+      if (!mounted ||
+          !_foreground ||
+          token != _readFromToken ||
+          _pageId != pageId ||
+          _saved.text != text ||
+          _selectedSentence != index) {
+        return;
+      }
       _pendingReadFrom = index;
       _beginListening(index);
     } finally {
-      if (mounted) setState(() => _transitioning = false);
+      if (mounted && token == _readFromToken) {
+        _bookmarkAnimation.reset();
+        setState(() {
+          _bookmarkRetracting = false;
+          _selectionStartPending = false;
+          _transitioning = false;
+        });
+      }
     }
   }
 
@@ -1255,6 +1363,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   Future<void> _requestExit() async {
+    _cancelBookmarkRetraction();
     if (_previousPage != null || _capturePending) {
       _navigationToken++;
       _cancelAutoAdvance();
@@ -1508,106 +1617,111 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             return Stack(
               key: _readerBodyKey,
               children: [
-                ReadingPageTransition(
-                  animation: _pageAnimation,
-                  effect: _pageEffect,
-                  forward: _pageForward,
-                  previous: _previousPage,
-                  snapshot: _pageSnapshot,
-                  paperColor: readingPagePaperColor(
-                    context,
-                    _preferences!.pageView,
-                  ),
-                  child: RepaintBoundary(
-                    key: _pageCaptureKey,
-                    child: ColoredBox(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      child: SentenceFollow(
-                        key: _followKey,
-                        listening: _listening,
-                        preferences: _preferences!,
-                        textController: _readController,
-                        textKey: _followTextKey,
-                        scrollController: _scrollController,
-                        followTextSizeChanges: true,
-                        child: NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (notification is UserScrollNotification &&
-                                notification.direction !=
-                                    ScrollDirection.idle) {
-                              _dismissSentenceSelection();
-                            }
-                            return false;
-                          },
-                          child: SingleChildScrollView(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  document.category.label,
-                                  style: Theme.of(context).textTheme.labelLarge,
-                                ),
-                                if (_pageNumber != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text('Sayfa $_pageNumber'),
-                                ],
-                                const SizedBox(height: 16),
-                                ReadingPageSurface(
-                                  view: _preferences!.pageView,
-                                  child: KeyedSubtree(
-                                    key: _followTextKey,
-                                    child: TapRegion(
-                                      groupId: _sentenceTapGroup,
-                                      onTapOutside: (_) =>
-                                          _dismissSentenceSelection(),
-                                      child: Listener(
-                                        onPointerDown: _onTextPointerDown,
-                                        onPointerMove: _onTextPointerMove,
-                                        onPointerUp: _onTextPointerUp,
-                                        onPointerCancel: _onTextPointerCancel,
-                                        child: TextField(
-                                          key: const ValueKey(
-                                            'saved-reading-text',
-                                          ),
-                                          controller: _readController,
-                                          readOnly: true,
-                                          showCursor: false,
-                                          maxLines: null,
-                                          decoration:
-                                              const InputDecoration.collapsed(
-                                                hintText: '',
-                                              ),
-                                          textAlign: _preferences!
-                                              .textAlignment
-                                              .textAlign,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodyLarge
-                                              ?.copyWith(
-                                                fontSize:
-                                                    (Theme.of(context)
-                                                            .textTheme
-                                                            .bodyLarge
-                                                            ?.fontSize ??
-                                                        16) *
-                                                    _preferences!
-                                                        .textSize
-                                                        .multiplier,
-                                                height: readingLineHeight(
-                                                  Theme.of(context)
-                                                      .textTheme
-                                                      .bodyLarge,
-                                                  _preferences!.lineSpacing,
+                Positioned.fill(
+                  top: _bookmark == null ? 0 : 48,
+                  child: ReadingPageTransition(
+                    animation: _pageAnimation,
+                    effect: _pageEffect,
+                    forward: _pageForward,
+                    previous: _previousPage,
+                    snapshot: _pageSnapshot,
+                    paperColor: readingPagePaperColor(
+                      context,
+                      _preferences!.pageView,
+                    ),
+                    child: RepaintBoundary(
+                      key: _pageCaptureKey,
+                      child: ColoredBox(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        child: SentenceFollow(
+                          key: _followKey,
+                          listening: _listening,
+                          preferences: _preferences!,
+                          textController: _readController,
+                          textKey: _followTextKey,
+                          scrollController: _scrollController,
+                          followTextSizeChanges: true,
+                          child: NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              if (notification is UserScrollNotification &&
+                                  notification.direction !=
+                                      ScrollDirection.idle) {
+                                _dismissSentenceSelection();
+                              }
+                              return false;
+                            },
+                            child: SingleChildScrollView(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    document.category.label,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge,
+                                  ),
+                                  if (_pageNumber != null) ...[
+                                    const SizedBox(height: 8),
+                                    Text('Sayfa $_pageNumber'),
+                                  ],
+                                  const SizedBox(height: 16),
+                                  ReadingPageSurface(
+                                    view: _preferences!.pageView,
+                                    child: KeyedSubtree(
+                                      key: _followTextKey,
+                                      child: TapRegion(
+                                        groupId: _sentenceTapGroup,
+                                        onTapOutside: (_) =>
+                                            _dismissSentenceSelection(),
+                                        child: Listener(
+                                          onPointerDown: _onTextPointerDown,
+                                          onPointerMove: _onTextPointerMove,
+                                          onPointerUp: _onTextPointerUp,
+                                          onPointerCancel: _onTextPointerCancel,
+                                          child: TextField(
+                                            key: const ValueKey(
+                                              'saved-reading-text',
+                                            ),
+                                            controller: _readController,
+                                            readOnly: true,
+                                            showCursor: false,
+                                            maxLines: null,
+                                            decoration:
+                                                const InputDecoration.collapsed(
+                                                  hintText: '',
                                                 ),
-                                              ),
+                                            textAlign: _preferences!
+                                                .textAlignment
+                                                .textAlign,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyLarge
+                                                ?.copyWith(
+                                                  fontSize:
+                                                      (Theme.of(context)
+                                                              .textTheme
+                                                              .bodyLarge
+                                                              ?.fontSize ??
+                                                          16) *
+                                                      _preferences!
+                                                          .textSize
+                                                          .multiplier,
+                                                  height: readingLineHeight(
+                                                    Theme.of(context)
+                                                        .textTheme
+                                                        .bodyLarge,
+                                                    _preferences!.lineSpacing,
+                                                  ),
+                                                ),
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -1615,6 +1729,49 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                     ),
                   ),
                 ),
+                if (_showVisualBookmark)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: ClipRect(
+                      child: SlideTransition(
+                        position: _bookmarkOffset,
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Semantics(
+                            label: 'İşaretlediğin yere git',
+                            button: true,
+                            enabled: !_bookmarkRetracting && !_bookmarkBusy,
+                            onTap: _bookmarkRetracting || _bookmarkBusy
+                                ? null
+                                : () => unawaited(_goToBookmark()),
+                            child: ExcludeSemantics(
+                              child: IconButton(
+                                key: const ValueKey('visual-bookmark'),
+                                tooltip: 'İşaretlediğin yere git',
+                                padding: EdgeInsets.zero,
+                                onPressed: _bookmarkRetracting || _bookmarkBusy
+                                    ? null
+                                    : () => unawaited(_goToBookmark()),
+                                icon: SizedBox(
+                                  width: 32,
+                                  height: 40,
+                                  child: BookmarkArtwork(
+                                    shape: _preferences!.bookmarkShape,
+                                    color: _preferences!.bookmarkColor
+                                        .forBrightness(
+                                          Theme.of(context).brightness,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (_selectedLine case final line?)
                   CustomSingleChildLayout(
                     delegate: _SentenceBubbleLayout(line),
@@ -1673,6 +1830,8 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                 setState(() => _panelExpanded = !_panelExpanded),
             nextPagePending: _autoPending,
             onCancelNextPage: _cancelAutoAdvance,
+            startPending: _bookmarkRetracting,
+            onCancelStart: _cancelBookmarkRetraction,
           );
     if (pageNavigation == null) {
       return controls == null ? null : ListeningSurface(child: controls);

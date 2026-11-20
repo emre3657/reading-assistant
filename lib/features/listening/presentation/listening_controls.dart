@@ -12,6 +12,8 @@ class ListeningControls extends StatelessWidget {
     required this.onToggleExpanded,
     this.nextPagePending = false,
     this.onCancelNextPage,
+    this.startPending = false,
+    this.onCancelStart,
   });
 
   final ListeningController listening;
@@ -21,6 +23,8 @@ class ListeningControls extends StatelessWidget {
   final VoidCallback onToggleExpanded;
   final bool nextPagePending;
   final VoidCallback? onCancelNextPage;
+  final bool startPending;
+  final VoidCallback? onCancelStart;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +32,8 @@ class ListeningControls extends StatelessWidget {
     final status = listening.status;
     final message = nextPagePending
         ? 'Sonraki sayfa açılıyor…'
+        : startPending
+        ? 'Okuma hazırlanıyor…'
         : switch (status) {
             ListeningStatus.starting => 'Okuma hazırlanıyor…',
             ListeningStatus.speaking => 'Okunuyor…',
@@ -103,6 +109,8 @@ class ListeningControls extends StatelessWidget {
                     OutlinedButton.icon(
                       onPressed: nextPagePending
                           ? onCancelNextPage
+                          : startPending
+                          ? onCancelStart
                           : listening.canStop
                           ? listening.stop
                           : null,
@@ -158,6 +166,7 @@ class ListeningControls extends StatelessWidget {
               if (message != null &&
                   (expanded ||
                       nextPagePending ||
+                      startPending ||
                       status == ListeningStatus.failed))
                 Semantics(
                   liveRegion: true,

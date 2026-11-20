@@ -53,6 +53,30 @@ enum PageAnimationEffect {
   final String label;
 }
 
+enum BookmarkShape {
+  strip('Şerit'),
+  ribbon('Kurdele'),
+  corner('Köşe ayracı');
+
+  const BookmarkShape(this.label);
+  final String label;
+}
+
+enum BookmarkColor {
+  red('Kırmızı', Color(0xff9b303b), Color(0xffff9da3)),
+  teal('Petrol', Color(0xff11655d), Color(0xff79d4c6)),
+  blue('Mavi', Color(0xff344f97), Color(0xffaebfff)),
+  purple('Mor', Color(0xff754481), Color(0xffe6b1f1));
+
+  const BookmarkColor(this.label, this.light, this.dark);
+  final String label;
+  final Color light;
+  final Color dark;
+
+  Color forBrightness(Brightness brightness) =>
+      brightness == Brightness.dark ? dark : light;
+}
+
 double? readingLineHeight(TextStyle? base, ReadingLineSpacing spacing) =>
     spacing == ReadingLineSpacing.normal
     ? base?.height
@@ -98,6 +122,8 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingPageView _pageView = ReadingPageView.plain;
   bool _pageAnimationEnabled = false;
   PageAnimationEffect _pageAnimationEffect = PageAnimationEffect.fade;
+  BookmarkShape _bookmarkShape = BookmarkShape.ribbon;
+  BookmarkColor _bookmarkColor = BookmarkColor.red;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -113,6 +139,8 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingPageView get pageView => _pageView;
   bool get pageAnimationEnabled => _pageAnimationEnabled;
   PageAnimationEffect get pageAnimationEffect => _pageAnimationEffect;
+  BookmarkShape get bookmarkShape => _bookmarkShape;
+  BookmarkColor get bookmarkColor => _bookmarkColor;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -165,6 +193,16 @@ class ReadingPreferences extends ChangeNotifier {
             .where((v) => v.name == row?['page_animation_effect'])
             .firstOrNull ??
         PageAnimationEffect.fade;
+    _bookmarkShape =
+        BookmarkShape.values
+            .where((v) => v.name == row?['bookmark_shape'])
+            .firstOrNull ??
+        BookmarkShape.ribbon;
+    _bookmarkColor =
+        BookmarkColor.values
+            .where((v) => v.name == row?['bookmark_color'])
+            .firstOrNull ??
+        BookmarkColor.red;
   }
 
   /// Call only after pending writes have completed and the restore commits.
@@ -240,6 +278,20 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setBookmarkShape(BookmarkShape value) {
+    if (!_ready || _bookmarkShape == value) return;
+    _bookmarkShape = value;
+    notifyListeners();
+    _save();
+  }
+
+  void setBookmarkColor(BookmarkColor value) {
+    if (!_ready || _bookmarkColor == value) return;
+    _bookmarkColor = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
@@ -250,6 +302,8 @@ class ReadingPreferences extends ChangeNotifier {
     final pageView = _pageView.name;
     final pageAnimationEnabled = _pageAnimationEnabled;
     final pageAnimationEffect = _pageAnimationEffect.name;
+    final bookmarkShape = _bookmarkShape.name;
+    final bookmarkColor = _bookmarkColor.name;
     _writeTail = _writeTail.then((_) async {
       try {
         await _store.saveReadingPreferences(
@@ -262,6 +316,8 @@ class ReadingPreferences extends ChangeNotifier {
           pageView: pageView,
           pageAnimationEnabled: pageAnimationEnabled,
           pageAnimationEffect: pageAnimationEffect,
+          bookmarkShape: bookmarkShape,
+          bookmarkColor: bookmarkColor,
         );
         _saveFailureReported = false;
       } catch (_) {

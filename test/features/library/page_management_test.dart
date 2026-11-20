@@ -371,6 +371,7 @@ void main() {
 
       await action('Ayraç koy');
       expect(store.bookmarks[7]?.pageId, 70);
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsOneWidget);
       expect(
         find.text('Ayraç buraya konuldu. Okumaya devam etsen de burada kalır.'),
         findsOneWidget,
@@ -381,6 +382,7 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('next-page')));
       await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
 
       await action('Ayracı buraya taşı');
       expect(find.text('Ayraç taşınsın mı?'), findsOneWidget);
@@ -405,6 +407,7 @@ void main() {
       await tester.tap(find.text('Taşı'));
       await tester.pumpAndSettle();
       expect(store.bookmarks[7]?.pageId, 71);
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('previous-page')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sesli oku'));
@@ -419,6 +422,7 @@ void main() {
       expect(find.text('Sayfa 2'), findsWidgets);
       await action('Ayracı kaldır');
       expect(store.bookmarks, isEmpty);
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
       expect(store.positions[7]?.pageId, 70);
     },
   );

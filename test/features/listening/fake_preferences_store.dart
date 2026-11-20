@@ -28,6 +28,8 @@ class FakePreferencesStore extends DocumentStore {
     String pageView = 'plain',
     bool pageAnimationEnabled = false,
     String pageAnimationEffect = 'fade',
+    String bookmarkShape = 'ribbon',
+    String bookmarkColor = 'red',
   }) async {
     saveCalls++;
     await saveGate?.future;
@@ -42,6 +44,8 @@ class FakePreferencesStore extends DocumentStore {
       'page_view': pageView,
       'page_animation_enabled': pageAnimationEnabled ? 1 : 0,
       'page_animation_effect': pageAnimationEffect,
+      'bookmark_shape': bookmarkShape,
+      'bookmark_color': bookmarkColor,
     };
   }
 }

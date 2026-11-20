@@ -6,6 +6,7 @@ import 'listening_controller.dart';
 import 'reading_preferences.dart';
 import 'page_transition.dart';
 import 'reading_page_surface.dart';
+import 'bookmark_artwork.dart';
 
 Future<void> showReadingSettings(
   BuildContext context, {
@@ -133,6 +134,8 @@ Future<void> showReadingSettings(
                 if (showPageAnimation) ...[
                   const SizedBox(height: 12),
                   _PageAnimationSettings(preferences: preferences),
+                  const SizedBox(height: 12),
+                  _BookmarkSettings(preferences: preferences),
                 ],
               ],
             ),
@@ -201,6 +204,63 @@ Future<void> showReadingSettings(
       ),
     ),
   );
+}
+
+class _BookmarkSettings extends StatelessWidget {
+  const _BookmarkSettings({required this.preferences});
+  final ReadingPreferences preferences;
+
+  @override
+  Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Ayraç görünümü', style: Theme.of(context).textTheme.titleSmall),
+        RadioGroup<BookmarkShape>(
+          groupValue: preferences.bookmarkShape,
+          onChanged: (shape) {
+            if (shape != null && preferences.ready) {
+              preferences.setBookmarkShape(shape);
+            }
+          },
+          child: Column(
+            children: [
+              for (final shape in BookmarkShape.values)
+                RadioListTile<BookmarkShape>(
+                  contentPadding: EdgeInsets.zero,
+                  value: shape,
+                  enabled: preferences.ready,
+                  title: Text(shape.label),
+                  secondary: BookmarkArtwork(
+                    shape: shape,
+                    color: preferences.bookmarkColor.forBrightness(brightness),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Text('Ayraç rengi', style: Theme.of(context).textTheme.titleSmall),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final color in BookmarkColor.values)
+              ChoiceChip(
+                label: Text(color.label),
+                avatar: CircleAvatar(
+                  backgroundColor: color.forBrightness(brightness),
+                ),
+                selected: preferences.bookmarkColor == color,
+                onSelected: preferences.ready
+                    ? (_) => preferences.setBookmarkColor(color)
+                    : null,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _PageAnimationSettings extends StatefulWidget {

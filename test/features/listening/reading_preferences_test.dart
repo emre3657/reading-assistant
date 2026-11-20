@@ -26,6 +26,8 @@ void main() {
     expect(preferences.pageView, ReadingPageView.plain);
     expect(preferences.pageAnimationEnabled, isFalse);
     expect(preferences.pageAnimationEffect, PageAnimationEffect.fade);
+    expect(preferences.bookmarkShape, BookmarkShape.ribbon);
+    expect(preferences.bookmarkColor, BookmarkColor.red);
     expect(store.saveCalls, 0);
 
     store.values = {
@@ -38,6 +40,8 @@ void main() {
       'page_view': 'invalid',
       'page_animation_enabled': 0,
       'page_animation_effect': 'unknown',
+      'bookmark_shape': 'unknown',
+      'bookmark_color': 'unknown',
     };
     final invalid = ReadingPreferences(store: store);
     await invalid.load();
@@ -49,6 +53,8 @@ void main() {
     expect(invalid.lineSpacing, ReadingLineSpacing.normal);
     expect(invalid.pageView, ReadingPageView.plain);
     expect(invalid.pageAnimationEffect, PageAnimationEffect.fade);
+    expect(invalid.bookmarkShape, BookmarkShape.ribbon);
+    expect(invalid.bookmarkColor, BookmarkColor.red);
   });
 
   test(
@@ -82,6 +88,8 @@ void main() {
       preferences.setLineSpacing(ReadingLineSpacing.wide);
       preferences.setPageView(ReadingPageView.book);
       preferences.setPageAnimationEnabled(true);
+      preferences.setBookmarkShape(BookmarkShape.corner);
+      preferences.setBookmarkColor(BookmarkColor.teal);
       preferences.setPageAnimationEffect(PageAnimationEffect.turn);
       preferences.setPageAnimationEnabled(false);
       preferences.setPageAnimationEnabled(true);
@@ -101,8 +109,10 @@ void main() {
         'page_view': 'book',
         'page_animation_enabled': 1,
         'page_animation_effect': 'turn',
+        'bookmark_shape': 'corner',
+        'bookmark_color': 'teal',
       });
-      expect(store.saveCalls, 17);
+      expect(store.saveCalls, 19);
     },
   );
 
@@ -168,6 +178,8 @@ void main() {
       preferences.setPageView(ReadingPageView.book);
       preferences.setPageAnimationEnabled(true);
       preferences.setPageAnimationEffect(PageAnimationEffect.slide);
+      preferences.setBookmarkShape(BookmarkShape.strip);
+      preferences.setBookmarkColor(BookmarkColor.purple);
       await preferences.pendingWrites;
       await database.close();
       final reopened = await databaseFactoryFfi.openDatabase(
@@ -187,6 +199,8 @@ void main() {
       expect(restored.pageView, ReadingPageView.book);
       expect(restored.pageAnimationEnabled, isTrue);
       expect(restored.pageAnimationEffect, PageAnimationEffect.slide);
+      expect(restored.bookmarkShape, BookmarkShape.strip);
+      expect(restored.bookmarkColor, BookmarkColor.purple);
       await reopened.close();
     } finally {
       await dir.delete(recursive: true);
@@ -205,6 +219,12 @@ void main() {
           onConfigure: configureDocumentDatabase,
           onCreate: (db, version) async {
             await createDocumentSchema(db, version);
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN bookmark_shape',
+            );
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN bookmark_color',
+            );
             await db.execute(
               'ALTER TABLE reading_preferences DROP COLUMN page_view',
             );
@@ -274,63 +294,87 @@ void main() {
     }
   });
 
-  test('v11 upgrade preserves book view and defaults animation', () async {
-    final dir = await Directory.systemTemp.createTemp('animation-migration-');
-    final path = '${dir.path}${Platform.pathSeparator}test.db';
-    try {
-      final old = await databaseFactoryFfi.openDatabase(
-        path,
-        options: OpenDatabaseOptions(
-          version: 11,
-          singleInstance: false,
-          onConfigure: configureDocumentDatabase,
-          onCreate: (db, version) async {
-            await createDocumentSchema(db, version);
-            await db.execute(
-              'ALTER TABLE reading_preferences DROP COLUMN page_animation_enabled',
-            );
-            await db.execute(
-              'ALTER TABLE reading_preferences DROP COLUMN page_animation_effect',
-            );
-          },
-        ),
-      );
-      await old.insert('reading_preferences', {
-        'id': 1,
-        'speed': 'fast',
-        'auto_next_page': 1,
-        'follow_sentence': 1,
-        'text_size': 'large',
-        'text_alignment': 'center',
-        'line_spacing': 'wide',
-        'page_view': 'book',
-      });
-      await old.close();
-      final upgraded = await databaseFactoryFfi.openDatabase(
-        path,
-        options: OpenDatabaseOptions(
-          version: documentDatabaseVersion,
-          singleInstance: false,
-          onConfigure: configureDocumentDatabase,
-          onUpgrade: upgradeDocumentSchema,
-        ),
-      );
-      try {
-        final preferences = ReadingPreferences(
-          store: DocumentStore(databaseOpener: () async => upgraded),
+  for (final version in [11, 12]) {
+    test(
+      'v$version upgrade preserves view and defaults bookmark appearance',
+      () async {
+        final dir = await Directory.systemTemp.createTemp(
+          'animation-migration-',
         );
-        await preferences.load();
-        expect(preferences.pageView, ReadingPageView.book);
-        expect(preferences.pageAnimationEnabled, isFalse);
-        expect(preferences.pageAnimationEffect, PageAnimationEffect.fade);
-        expect(preferences.speed, ReadingSpeed.fast);
-      } finally {
-        await upgraded.close();
-      }
-    } finally {
-      await dir.delete(recursive: true);
-    }
-  });
+        final path = '${dir.path}${Platform.pathSeparator}test.db';
+        try {
+          final old = await databaseFactoryFfi.openDatabase(
+            path,
+            options: OpenDatabaseOptions(
+              version: version,
+              singleInstance: false,
+              onConfigure: configureDocumentDatabase,
+              onCreate: (db, version) async {
+                await createDocumentSchema(db, version);
+                await db.execute(
+                  'ALTER TABLE reading_preferences DROP COLUMN bookmark_shape',
+                );
+                await db.execute(
+                  'ALTER TABLE reading_preferences DROP COLUMN bookmark_color',
+                );
+                if (version == 11) {
+                  await db.execute(
+                    'ALTER TABLE reading_preferences DROP COLUMN page_animation_enabled',
+                  );
+                  await db.execute(
+                    'ALTER TABLE reading_preferences DROP COLUMN page_animation_effect',
+                  );
+                }
+              },
+            ),
+          );
+          await old.insert('reading_preferences', {
+            'id': 1,
+            'speed': 'fast',
+            'auto_next_page': 1,
+            'follow_sentence': 1,
+            'text_size': 'large',
+            'text_alignment': 'center',
+            'line_spacing': 'wide',
+            'page_view': 'book',
+            if (version == 12) 'page_animation_enabled': 1,
+            if (version == 12) 'page_animation_effect': 'turn',
+          });
+          await old.close();
+          final upgraded = await databaseFactoryFfi.openDatabase(
+            path,
+            options: OpenDatabaseOptions(
+              version: documentDatabaseVersion,
+              singleInstance: false,
+              onConfigure: configureDocumentDatabase,
+              onUpgrade: upgradeDocumentSchema,
+            ),
+          );
+          try {
+            final preferences = ReadingPreferences(
+              store: DocumentStore(databaseOpener: () async => upgraded),
+            );
+            await preferences.load();
+            expect(preferences.pageView, ReadingPageView.book);
+            expect(preferences.pageAnimationEnabled, version == 12);
+            expect(
+              preferences.pageAnimationEffect,
+              version == 12
+                  ? PageAnimationEffect.turn
+                  : PageAnimationEffect.fade,
+            );
+            expect(preferences.bookmarkShape, BookmarkShape.ribbon);
+            expect(preferences.bookmarkColor, BookmarkColor.red);
+            expect(preferences.speed, ReadingSpeed.fast);
+          } finally {
+            await upgraded.close();
+          }
+        } finally {
+          await dir.delete(recursive: true);
+        }
+      },
+    );
+  }
 
   for (final version in [7, 8]) {
     test(
@@ -445,6 +489,8 @@ void main() {
             'page_view': 'plain',
             'page_animation_enabled': 0,
             'page_animation_effect': 'fade',
+            'bookmark_shape': 'ribbon',
+            'bookmark_color': 'red',
           });
           await upgraded.close();
         } finally {
@@ -525,6 +571,8 @@ void main() {
         'page_view': 'plain',
         'page_animation_enabled': 0,
         'page_animation_effect': 'fade',
+        'bookmark_shape': 'ribbon',
+        'bookmark_color': 'red',
       });
       await upgraded.close();
     } finally {

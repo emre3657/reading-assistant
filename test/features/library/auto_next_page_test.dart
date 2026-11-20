@@ -14,6 +14,7 @@ import 'package:reading_assistant/features/library/presentation/saved_document_s
 import 'package:reading_assistant/features/library/presentation/page_navigation_bar.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 import 'package:reading_assistant/features/listening/presentation/page_transition.dart';
+import 'package:reading_assistant/features/listening/presentation/bookmark_artwork.dart';
 
 import '../listening/fake_speech_service.dart';
 import '../listening/fake_preferences_store.dart';
@@ -95,6 +96,7 @@ Future<void> _show(
   ReadingPreferences? preferences,
   bool disableAnimations = false,
   double textScale = 1,
+  Brightness brightness = Brightness.light,
   Future<ui.Image> Function(GlobalKey, double)? capturePageImage,
 }) async {
   tester.view.physicalSize = size;
@@ -107,6 +109,7 @@ Future<void> _show(
       preferences:
           preferences ?? ReadingPreferences(store: FakePreferencesStore()),
       child: MaterialApp(
+        theme: ThemeData(brightness: brightness),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
             disableAnimations: disableAnimations,
@@ -188,6 +191,297 @@ Future<void> _finish(WidgetTester tester, FakeSpeechService speech) async {
 
 void main() {
   testWidgets(
+    'bookmark appearance settings preview and persist without adding a bookmark',
+    (tester) async {
+      final settingsStore = FakePreferencesStore();
+      final preferences = ReadingPreferences(store: settingsStore);
+      await preferences.load();
+      final store = _Store(_threePages());
+      await _show(
+        tester,
+        store,
+        FakeSpeechService(),
+        preferences: preferences,
+        size: const Size(320, 700),
+        textScale: 1.5,
+      );
+      await _openMore(tester);
+      await tester.ensureVisible(find.text('Ayraç görünümü'));
+      await tester.pumpAndSettle();
+      for (final shape in BookmarkShape.values) {
+        await tester.ensureVisible(find.text(shape.label));
+        await tester.tap(find.text(shape.label));
+        await tester.pumpAndSettle();
+        expect(preferences.bookmarkShape, shape);
+        expect(find.byType(BookmarkArtwork), findsNWidgets(3));
+      }
+      await tester.ensureVisible(find.text('Mavi'));
+      await tester.tap(find.text('Mavi'));
+      await tester.pumpAndSettle();
+      expect(preferences.bookmarkColor, BookmarkColor.blue);
+      await preferences.pendingWrites;
+      final restored = ReadingPreferences(store: settingsStore);
+      await restored.load();
+      expect(restored.bookmarkShape, BookmarkShape.corner);
+      expect(restored.bookmarkColor, BookmarkColor.blue);
+      expect(store.bookmarks, isEmpty);
+      await _closeSettings(tester);
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
+      await tester.tap(find.byTooltip('Ayraç seçenekleri'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ayraç koy'));
+      await tester.pumpAndSettle();
+      final artwork = tester.widget<BookmarkArtwork>(
+        find.descendant(
+          of: find.byKey(const ValueKey('visual-bookmark')),
+          matching: find.byType(BookmarkArtwork),
+        ),
+      );
+      expect(artwork.shape, BookmarkShape.corner);
+      expect(artwork.color, BookmarkColor.blue.light);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'bookmark artwork reveals its location without changing progress',
+    (tester) async {
+      final text = List.generate(80, (index) => 'Cümle $index.').join('\n\n');
+      final store = _Store([_page(30, 0, text), _page(10, 1, 'Sonraki.')]);
+      store.bookmarks[7] = ReadingPosition(
+        pageId: 30,
+        sentenceIndex: 60,
+        pageText: text,
+      );
+      store.positions[7] = ReadingPosition(
+        pageId: 30,
+        sentenceIndex: 1,
+        pageText: text,
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech);
+      final bookmark = find.byTooltip('İşaretlediğin yere git');
+      expect(bookmark, findsOneWidget);
+      expect(tester.getSize(bookmark).width, greaterThanOrEqualTo(48));
+      expect(tester.getSize(bookmark).height, greaterThanOrEqualTo(48));
+      await tester.tap(bookmark);
+      await tester.pumpAndSettle();
+      final scroll = tester.widget<SingleChildScrollView>(
+        find
+            .descendant(
+              of: find.byType(SavedDocumentScreen),
+              matching: find.byType(SingleChildScrollView),
+            )
+            .first,
+      );
+      expect(scroll.controller!.offset, greaterThan(0));
+      final scrollFinder = find
+          .descendant(
+            of: find.byType(SavedDocumentScreen),
+            matching: find.byType(SingleChildScrollView),
+          )
+          .first;
+      expect(
+        tester.getRect(bookmark).overlaps(tester.getRect(scrollFinder)),
+        isFalse,
+      );
+      expect(store.positions[7]?.sentenceIndex, 1);
+      expect(store.bookmarks[7]?.sentenceIndex, 60);
+      expect(speech.spoken, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'retraction precedes speech and stop restores the unchanged bookmark',
+    (tester) async {
+      final store = _Store(_threePages());
+      store.bookmarks[7] = const ReadingPosition(
+        pageId: 30,
+        sentenceIndex: 1,
+        pageText: 'Birinci sayfa. İkinci cümle.',
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech);
+      final bookmark = find.byKey(const ValueKey('visual-bookmark'));
+      expect(bookmark, findsOneWidget);
+      await tester.tap(_button('Sesli oku'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(speech.prepareCalls, 0);
+      expect(store.positionWrites, 0);
+      expect(_enabled(_button('Sesli oku')), isFalse);
+      await tester.pumpAndSettle();
+      expect(speech.spoken.single, 'Birinci sayfa. ');
+      expect(bookmark, findsNothing);
+      await tester.tap(_button('Duraklat'));
+      await tester.pumpAndSettle();
+      expect(bookmark, findsNothing);
+      await tester.tap(_button('Durdur'));
+      await tester.pumpAndSettle();
+      expect(bookmark, findsOneWidget);
+      expect(store.bookmarks[7]?.sentenceIndex, 1);
+      expect(store.positions[7]?.sentenceIndex, 0);
+    },
+  );
+
+  testWidgets('retraction can be stopped or closed without starting speech', (
+    tester,
+  ) async {
+    final store = _Store(_threePages());
+    store.bookmarks[7] = const ReadingPosition(
+      pageId: 30,
+      sentenceIndex: 0,
+      pageText: 'Birinci sayfa. İkinci cümle.',
+    );
+    final speech = FakeSpeechService();
+    await _show(tester, store, speech);
+    await tester.tap(_button('Sesli oku'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.tap(_button('Durdur'));
+    await tester.pumpAndSettle();
+    expect(speech.prepareCalls, 0);
+    expect(find.byKey(const ValueKey('visual-bookmark')), findsOneWidget);
+    await tester.tap(_button('Sesli oku'));
+    await tester.pump();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('aç'), findsOneWidget);
+    expect(speech.prepareCalls, 0);
+    expect(store.bookmarks[7], isNotNull);
+  });
+
+  testWidgets(
+    'bookmark waits for page transition and reduced motion starts immediately',
+    (tester) async {
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      preferences.setPageAnimationEnabled(true);
+      preferences.setPageAnimationEffect(PageAnimationEffect.slide);
+      final store = _Store(_threePages());
+      store.bookmarks[7] = const ReadingPosition(
+        pageId: 10,
+        sentenceIndex: 0,
+        pageText: 'Üçüncü cümle.',
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech, preferences: preferences);
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
+      await tester.tap(_next);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await _show(
+        tester,
+        store,
+        speech,
+        preferences: preferences,
+        disableAnimations: true,
+      );
+      await tester.tap(_next);
+      await tester.pumpAndSettle();
+      await tester.tap(_button('Sesli oku'));
+      await tester.pump();
+      await tester.pump();
+      expect(speech.spoken, ['Üçüncü cümle.']);
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'automatic next page does not retract its bookmark before speech',
+    (tester) async {
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      preferences.setAutoNextPage(true);
+      final store = _Store([_page(30, 0, 'Birinci.'), _page(10, 1, 'İkinci.')]);
+      store.bookmarks[7] = const ReadingPosition(
+        pageId: 10,
+        sentenceIndex: 0,
+        pageText: 'İkinci.',
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech, preferences: preferences);
+      await _read(tester);
+      speech.finishCurrent();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(speech.spoken, ['Birinci.', 'İkinci.']);
+      expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
+      expect(store.bookmarks[7]?.pageId, 10);
+    },
+  );
+
+  testWidgets('bookmark is accessible on a narrow dark screen', (tester) async {
+    final store = _Store(_threePages());
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageView(ReadingPageView.book);
+    preferences.setBookmarkColor(BookmarkColor.purple);
+    store.bookmarks[7] = const ReadingPosition(
+      pageId: 30,
+      sentenceIndex: 0,
+      pageText: 'Birinci sayfa. İkinci cümle.',
+    );
+    final semantics = tester.ensureSemantics();
+    await _show(
+      tester,
+      store,
+      FakeSpeechService(),
+      size: const Size(320, 700),
+      textScale: 2,
+      brightness: Brightness.dark,
+      preferences: preferences,
+    );
+    final bookmark = find.byTooltip('İşaretlediğin yere git');
+    expect(bookmark.hitTestable(), findsOneWidget);
+    expect(tester.getSize(bookmark), const Size(48, 48));
+    final artwork = tester.widget<BookmarkArtwork>(
+      find.descendant(of: bookmark, matching: find.byType(BookmarkArtwork)),
+    );
+    expect(artwork.color, BookmarkColor.purple.dark);
+    expect(find.bySemanticsLabel('İşaretlediğin yere git'), findsOneWidget);
+    expect(
+      tester
+          .getSemantics(find.bySemanticsLabel('İşaretlediğin yere git'))
+          .getSemanticsData()
+          .hasAction(ui.SemanticsAction.tap),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('background cancels bookmark retraction', (tester) async {
+    final store = _Store(_threePages());
+    store.bookmarks[7] = const ReadingPosition(
+      pageId: 30,
+      sentenceIndex: 0,
+      pageText: 'Birinci sayfa. İkinci cümle.',
+    );
+    final speech = FakeSpeechService();
+    await _show(tester, store, speech);
+    await tester.tap(_button('Sesli oku'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pumpAndSettle();
+    expect(speech.prepareCalls, 0);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('visual-bookmark')), findsOneWidget);
+    expect(store.bookmarks[7]?.pageId, 30);
+  });
+
+  testWidgets(
     'bookmark navigation animates only between pages and reveals text',
     (tester) async {
       final preferences = ReadingPreferences(store: FakePreferencesStore());
@@ -248,15 +542,16 @@ void main() {
       );
       await tester.pumpAndSettle();
       await _read(tester);
+      await tester.pumpAndSettle();
       expect(speech.spoken.single, startsWith('Cümle 60.'));
     },
   );
 
   for (final effect in PageAnimationEffect.values) {
     final expectedDuration = switch (effect) {
-      PageAnimationEffect.fade => const Duration(milliseconds: 300),
-      PageAnimationEffect.slide => const Duration(milliseconds: 350),
-      PageAnimationEffect.turn => const Duration(milliseconds: 500),
+      PageAnimationEffect.fade => const Duration(milliseconds: 500),
+      PageAnimationEffect.slide => const Duration(milliseconds: 500),
+      PageAnimationEffect.turn => const Duration(milliseconds: 800),
     };
     testWidgets(
       '${effect.name} transitions both directions and removes old page',

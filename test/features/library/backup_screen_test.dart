@@ -43,6 +43,8 @@ final _backup = BackupData.fromTables({
       'page_view': 'book',
       'page_animation_enabled': 1,
       'page_animation_effect': 'slide',
+      'bookmark_shape': 'corner',
+      'bookmark_color': 'purple',
     },
   ],
 });
@@ -311,6 +313,8 @@ void main() {
       expect(preferences.pageView, ReadingPageView.book);
       expect(preferences.pageAnimationEnabled, isTrue);
       expect(preferences.pageAnimationEffect, PageAnimationEffect.slide);
+      expect(preferences.bookmarkShape, BookmarkShape.corner);
+      expect(preferences.bookmarkColor, BookmarkColor.purple);
       expect(find.byType(BackupScreen), findsNothing);
     },
   );

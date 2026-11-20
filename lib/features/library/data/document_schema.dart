@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'saved_document.dart';
 import 'turkish_text.dart';
 
-const documentDatabaseVersion = 12;
+const documentDatabaseVersion = 13;
 
 String normalizeCategoryName(String name) => normalizeTurkishCase(name.trim());
 
@@ -180,6 +180,8 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(addReadingPageViewSql);
   await database.execute(addPageAnimationEnabledSql);
   await database.execute(addPageAnimationEffectSql);
+  await database.execute(addBookmarkShapeSql);
+  await database.execute(addBookmarkColorSql);
   await database.execute(createBookmarksSql);
   await database.execute(resetBookmarkOnEditSql);
 }
@@ -203,6 +205,10 @@ const addPageAnimationEnabledSql =
     'ALTER TABLE reading_preferences ADD COLUMN page_animation_enabled INTEGER NOT NULL DEFAULT 0';
 const addPageAnimationEffectSql =
     "ALTER TABLE reading_preferences ADD COLUMN page_animation_effect TEXT NOT NULL DEFAULT 'fade'";
+const addBookmarkShapeSql =
+    "ALTER TABLE reading_preferences ADD COLUMN bookmark_shape TEXT NOT NULL DEFAULT 'ribbon'";
+const addBookmarkColorSql =
+    "ALTER TABLE reading_preferences ADD COLUMN bookmark_color TEXT NOT NULL DEFAULT 'red'";
 
 Future<void> upgradeDocumentSchema(
   Database database,
@@ -250,5 +256,9 @@ Future<void> upgradeDocumentSchema(
   if (oldVersion < 12 && newVersion >= 12) {
     await database.execute(addPageAnimationEnabledSql);
     await database.execute(addPageAnimationEffectSql);
+  }
+  if (oldVersion < 13 && newVersion >= 13) {
+    await database.execute(addBookmarkShapeSql);
+    await database.execute(addBookmarkColorSql);
   }
 }

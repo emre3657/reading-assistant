@@ -167,6 +167,12 @@ void main() {
         await old.execute(
           'ALTER TABLE reading_preferences DROP COLUMN page_animation_effect',
         );
+        await old.execute(
+          'ALTER TABLE reading_preferences DROP COLUMN bookmark_shape',
+        );
+        await old.execute(
+          'ALTER TABLE reading_preferences DROP COLUMN bookmark_color',
+        );
         final preferences = await oldStore.loadReadingPreferences();
         await old.close();
         await expectLater(
@@ -215,6 +221,8 @@ void main() {
           'page_view': 'plain',
           'page_animation_enabled': 0,
           'page_animation_effect': 'fade',
+          'bookmark_shape': 'ribbon',
+          'bookmark_color': 'red',
         });
         expect(await writer.bookmark(id), isNull);
         await writer.saveBookmark(

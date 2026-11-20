@@ -46,6 +46,8 @@ const backupColumns = <String, Map<String, Type>>{
     'page_view': String,
     'page_animation_enabled': int,
     'page_animation_effect': String,
+    'bookmark_shape': String,
+    'bookmark_color': String,
   },
 };
 
@@ -98,6 +100,8 @@ class BackupData {
           'page_view': 'plain',
           'page_animation_enabled': 0,
           'page_animation_effect': 'fade',
+          'bookmark_shape': 'ribbon',
+          'bookmark_color': 'red',
         };
         final missing = entry.key == 'reading_preferences'
             ? optionalDefaults.keys
@@ -127,6 +131,19 @@ class BackupData {
         if (entry.key == 'reading_preferences' &&
             !{'fade', 'slide', 'turn'}.contains(row['page_animation_effect'])) {
           row['page_animation_effect'] = 'fade';
+        }
+        if (entry.key == 'reading_preferences' &&
+            !{'strip', 'ribbon', 'corner'}.contains(row['bookmark_shape'])) {
+          row['bookmark_shape'] = 'ribbon';
+        }
+        if (entry.key == 'reading_preferences' &&
+            !{
+              'red',
+              'teal',
+              'blue',
+              'purple',
+            }.contains(row['bookmark_color'])) {
+          row['bookmark_color'] = 'red';
         }
         rows.add(row);
       }
