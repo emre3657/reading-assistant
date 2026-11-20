@@ -44,6 +44,15 @@ enum ReadingPageView {
   final String label;
 }
 
+enum PageAnimationEffect {
+  fade('Yumuşak belirme'),
+  slide('Dikey kayma'),
+  turn('Sayfa çevirme');
+
+  const PageAnimationEffect(this.label);
+  final String label;
+}
+
 double? readingLineHeight(TextStyle? base, ReadingLineSpacing spacing) =>
     spacing == ReadingLineSpacing.normal
     ? base?.height
@@ -87,6 +96,8 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingTextAlignment _textAlignment = ReadingTextAlignment.start;
   ReadingLineSpacing _lineSpacing = ReadingLineSpacing.normal;
   ReadingPageView _pageView = ReadingPageView.plain;
+  bool _pageAnimationEnabled = false;
+  PageAnimationEffect _pageAnimationEffect = PageAnimationEffect.fade;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -100,6 +111,8 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingTextAlignment get textAlignment => _textAlignment;
   ReadingLineSpacing get lineSpacing => _lineSpacing;
   ReadingPageView get pageView => _pageView;
+  bool get pageAnimationEnabled => _pageAnimationEnabled;
+  PageAnimationEffect get pageAnimationEffect => _pageAnimationEffect;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -146,6 +159,12 @@ class ReadingPreferences extends ChangeNotifier {
             .where((v) => v.name == row?['page_view'])
             .firstOrNull ??
         ReadingPageView.plain;
+    _pageAnimationEnabled = row?['page_animation_enabled'] == 1;
+    _pageAnimationEffect =
+        PageAnimationEffect.values
+            .where((v) => v.name == row?['page_animation_effect'])
+            .firstOrNull ??
+        PageAnimationEffect.fade;
   }
 
   /// Call only after pending writes have completed and the restore commits.
@@ -207,6 +226,20 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setPageAnimationEnabled(bool value) {
+    if (!_ready || _pageAnimationEnabled == value) return;
+    _pageAnimationEnabled = value;
+    notifyListeners();
+    _save();
+  }
+
+  void setPageAnimationEffect(PageAnimationEffect value) {
+    if (!_ready || _pageAnimationEffect == value) return;
+    _pageAnimationEffect = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
@@ -215,6 +248,8 @@ class ReadingPreferences extends ChangeNotifier {
     final textAlignment = _textAlignment.name;
     final lineSpacing = _lineSpacing.name;
     final pageView = _pageView.name;
+    final pageAnimationEnabled = _pageAnimationEnabled;
+    final pageAnimationEffect = _pageAnimationEffect.name;
     _writeTail = _writeTail.then((_) async {
       try {
         await _store.saveReadingPreferences(
@@ -225,6 +260,8 @@ class ReadingPreferences extends ChangeNotifier {
           textAlignment: textAlignment,
           lineSpacing: lineSpacing,
           pageView: pageView,
+          pageAnimationEnabled: pageAnimationEnabled,
+          pageAnimationEffect: pageAnimationEffect,
         );
         _saveFailureReported = false;
       } catch (_) {

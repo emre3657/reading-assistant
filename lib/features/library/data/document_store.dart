@@ -241,6 +241,8 @@ class DocumentStore {
     required String textAlignment,
     required String lineSpacing,
     String pageView = 'plain',
+    bool pageAnimationEnabled = false,
+    String pageAnimationEffect = 'fade',
   }) async {
     final database = await _database;
     await database.insert('reading_preferences', {
@@ -252,6 +254,8 @@ class DocumentStore {
       'text_alignment': textAlignment,
       'line_spacing': lineSpacing,
       'page_view': pageView,
+      'page_animation_enabled': pageAnimationEnabled ? 1 : 0,
+      'page_animation_effect': pageAnimationEffect,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 

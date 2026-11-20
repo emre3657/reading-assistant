@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'saved_document.dart';
 import 'turkish_text.dart';
 
-const documentDatabaseVersion = 11;
+const documentDatabaseVersion = 12;
 
 String normalizeCategoryName(String name) => normalizeTurkishCase(name.trim());
 
@@ -178,6 +178,8 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(addReadingTextAlignmentSql);
   await database.execute(addReadingLineSpacingSql);
   await database.execute(addReadingPageViewSql);
+  await database.execute(addPageAnimationEnabledSql);
+  await database.execute(addPageAnimationEffectSql);
   await database.execute(createBookmarksSql);
   await database.execute(resetBookmarkOnEditSql);
 }
@@ -196,6 +198,11 @@ const addReadingLineSpacingSql =
 
 const addReadingPageViewSql =
     "ALTER TABLE reading_preferences ADD COLUMN page_view TEXT NOT NULL DEFAULT 'plain'";
+
+const addPageAnimationEnabledSql =
+    'ALTER TABLE reading_preferences ADD COLUMN page_animation_enabled INTEGER NOT NULL DEFAULT 0';
+const addPageAnimationEffectSql =
+    "ALTER TABLE reading_preferences ADD COLUMN page_animation_effect TEXT NOT NULL DEFAULT 'fade'";
 
 Future<void> upgradeDocumentSchema(
   Database database,
@@ -239,5 +246,9 @@ Future<void> upgradeDocumentSchema(
   }
   if (oldVersion < 11 && newVersion >= 11) {
     await database.execute(addReadingPageViewSql);
+  }
+  if (oldVersion < 12 && newVersion >= 12) {
+    await database.execute(addPageAnimationEnabledSql);
+    await database.execute(addPageAnimationEffectSql);
   }
 }

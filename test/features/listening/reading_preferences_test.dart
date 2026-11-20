@@ -24,6 +24,8 @@ void main() {
     expect(preferences.textAlignment, ReadingTextAlignment.start);
     expect(preferences.lineSpacing, ReadingLineSpacing.normal);
     expect(preferences.pageView, ReadingPageView.plain);
+    expect(preferences.pageAnimationEnabled, isFalse);
+    expect(preferences.pageAnimationEffect, PageAnimationEffect.fade);
     expect(store.saveCalls, 0);
 
     store.values = {
@@ -34,6 +36,8 @@ void main() {
       'text_alignment': 'invalid',
       'line_spacing': 'invalid',
       'page_view': 'invalid',
+      'page_animation_enabled': 0,
+      'page_animation_effect': 'unknown',
     };
     final invalid = ReadingPreferences(store: store);
     await invalid.load();
@@ -44,6 +48,7 @@ void main() {
     expect(invalid.textAlignment, ReadingTextAlignment.start);
     expect(invalid.lineSpacing, ReadingLineSpacing.normal);
     expect(invalid.pageView, ReadingPageView.plain);
+    expect(invalid.pageAnimationEffect, PageAnimationEffect.fade);
   });
 
   test(
@@ -76,6 +81,10 @@ void main() {
       preferences.setLineSpacing(ReadingLineSpacing.relaxed);
       preferences.setLineSpacing(ReadingLineSpacing.wide);
       preferences.setPageView(ReadingPageView.book);
+      preferences.setPageAnimationEnabled(true);
+      preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+      preferences.setPageAnimationEnabled(false);
+      preferences.setPageAnimationEnabled(true);
       preferences.setFollowSentence(false);
       preferences.setFollowSentence(true);
       await Future<void>.delayed(Duration.zero);
@@ -90,8 +99,10 @@ void main() {
         'text_alignment': 'justify',
         'line_spacing': 'wide',
         'page_view': 'book',
+        'page_animation_enabled': 1,
+        'page_animation_effect': 'turn',
       });
-      expect(store.saveCalls, 13);
+      expect(store.saveCalls, 17);
     },
   );
 
@@ -155,6 +166,8 @@ void main() {
       preferences.setTextAlignment(ReadingTextAlignment.center);
       preferences.setLineSpacing(ReadingLineSpacing.relaxed);
       preferences.setPageView(ReadingPageView.book);
+      preferences.setPageAnimationEnabled(true);
+      preferences.setPageAnimationEffect(PageAnimationEffect.slide);
       await preferences.pendingWrites;
       await database.close();
       final reopened = await databaseFactoryFfi.openDatabase(
@@ -172,6 +185,8 @@ void main() {
       expect(restored.textAlignment, ReadingTextAlignment.center);
       expect(restored.lineSpacing, ReadingLineSpacing.relaxed);
       expect(restored.pageView, ReadingPageView.book);
+      expect(restored.pageAnimationEnabled, isTrue);
+      expect(restored.pageAnimationEffect, PageAnimationEffect.slide);
       await reopened.close();
     } finally {
       await dir.delete(recursive: true);
@@ -192,6 +207,12 @@ void main() {
             await createDocumentSchema(db, version);
             await db.execute(
               'ALTER TABLE reading_preferences DROP COLUMN page_view',
+            );
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN page_animation_enabled',
+            );
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN page_animation_effect',
             );
           },
         ),
@@ -245,6 +266,64 @@ void main() {
         expect((await store.pages(42)).single.position, 4);
         expect((await store.readingPosition(42))?.sentenceIndex, 1);
         expect((await store.bookmark(42))?.sentenceIndex, 1);
+      } finally {
+        await upgraded.close();
+      }
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
+
+  test('v11 upgrade preserves book view and defaults animation', () async {
+    final dir = await Directory.systemTemp.createTemp('animation-migration-');
+    final path = '${dir.path}${Platform.pathSeparator}test.db';
+    try {
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 11,
+          singleInstance: false,
+          onConfigure: configureDocumentDatabase,
+          onCreate: (db, version) async {
+            await createDocumentSchema(db, version);
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN page_animation_enabled',
+            );
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN page_animation_effect',
+            );
+          },
+        ),
+      );
+      await old.insert('reading_preferences', {
+        'id': 1,
+        'speed': 'fast',
+        'auto_next_page': 1,
+        'follow_sentence': 1,
+        'text_size': 'large',
+        'text_alignment': 'center',
+        'line_spacing': 'wide',
+        'page_view': 'book',
+      });
+      await old.close();
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: documentDatabaseVersion,
+          singleInstance: false,
+          onConfigure: configureDocumentDatabase,
+          onUpgrade: upgradeDocumentSchema,
+        ),
+      );
+      try {
+        final preferences = ReadingPreferences(
+          store: DocumentStore(databaseOpener: () async => upgraded),
+        );
+        await preferences.load();
+        expect(preferences.pageView, ReadingPageView.book);
+        expect(preferences.pageAnimationEnabled, isFalse);
+        expect(preferences.pageAnimationEffect, PageAnimationEffect.fade);
+        expect(preferences.speed, ReadingSpeed.fast);
       } finally {
         await upgraded.close();
       }
@@ -364,6 +443,8 @@ void main() {
             'text_alignment': version >= 8 ? 'center' : 'start',
             'line_spacing': 'normal',
             'page_view': 'plain',
+            'page_animation_enabled': 0,
+            'page_animation_effect': 'fade',
           });
           await upgraded.close();
         } finally {
@@ -442,6 +523,8 @@ void main() {
         'text_alignment': 'start',
         'line_spacing': 'normal',
         'page_view': 'plain',
+        'page_animation_enabled': 0,
+        'page_animation_effect': 'fade',
       });
       await upgraded.close();
     } finally {

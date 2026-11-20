@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
 import '../../listening/presentation/reading_page_surface.dart';
+import '../../listening/presentation/page_transition.dart';
 import '../../listening/presentation/sentence_highlight.dart';
 import '../../listening/presentation/sentence_follow.dart';
 import '../../listening/services/sentence_splitter.dart';
@@ -33,6 +35,7 @@ class SavedDocumentScreen extends StatefulWidget {
     this.store,
     this.speechService,
     this.onUpdated,
+    this.capturePageImage,
   });
 
   final SavedDocument document;
@@ -52,11 +55,75 @@ class SavedDocumentScreen extends StatefulWidget {
   /// Called after the record was updated successfully.
   final VoidCallback? onUpdated;
 
+  @visibleForTesting
+  final Future<ui.Image> Function(GlobalKey, double)? capturePageImage;
+
   @override
   State<SavedDocumentScreen> createState() => _SavedDocumentScreenState();
 }
 
 enum _ExitChoice { keepEditing, discard, save }
+
+class _PreviousPage extends StatefulWidget {
+  const _PreviousPage({
+    required this.text,
+    required this.category,
+    required this.number,
+    required this.offset,
+    required this.view,
+    required this.alignment,
+    required this.style,
+  });
+
+  final String text;
+  final String category;
+  final int? number;
+  final double offset;
+  final ReadingPageView view;
+  final TextAlign alignment;
+  final TextStyle? style;
+
+  @override
+  State<_PreviousPage> createState() => _PreviousPageState();
+}
+
+class _PreviousPageState extends State<_PreviousPage> {
+  late final _scroll = ScrollController(initialScrollOffset: widget.offset);
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: Theme.of(context).scaffoldBackgroundColor,
+    child: SingleChildScrollView(
+      controller: _scroll,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.category, style: Theme.of(context).textTheme.labelLarge),
+          if (widget.number != null) ...[
+            const SizedBox(height: 8),
+            Text('Sayfa ${widget.number}'),
+          ],
+          const SizedBox(height: 16),
+          ReadingPageSurface(
+            view: widget.view,
+            child: Text(
+              widget.text,
+              style: widget.style,
+              textAlign: widget.alignment,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 class _SentenceBubbleLayout extends SingleChildLayoutDelegate {
   const _SentenceBubbleLayout(this.line);
@@ -85,7 +152,7 @@ class _SentenceBubbleLayout extends SingleChildLayoutDelegate {
 }
 
 class _SavedDocumentScreenState extends State<SavedDocumentScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   static const _lockedHint = 'Düzenlemek için okumayı durdur';
 
   late final ListeningController _listening;
@@ -103,7 +170,17 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   final _followKey = GlobalKey<SentenceFollowState>();
   final _followTextKey = GlobalKey();
   final _readerBodyKey = GlobalKey();
+  final _pageCaptureKey = GlobalKey();
   final _sentenceTapGroup = Object();
+  late final _pageAnimation = AnimationController(vsync: this);
+  Widget? _previousPage;
+  ui.Image? _pageSnapshot;
+  bool _capturePending = false;
+  int _pageTransitionToken = 0;
+  bool _pageForward = true;
+  PageAnimationEffect _pageEffect = PageAnimationEffect.fade;
+  bool _foreground = true;
+  int _navigationToken = 0;
 
   late SavedDocument _saved;
 
@@ -240,6 +317,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       pageChanges: _pageList,
       showAutoNextPage: () => _hasPageNavigation && _pages!.length > 1,
       appearanceOnly: _editing,
+      showPageAnimation: !_editing,
     );
     if (mounted) _showPreferencesError();
   }
@@ -247,6 +325,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   @override
   void dispose() {
     _autoToken++;
+    _navigationToken++;
+    _pageTransitionToken++;
+    _pageSnapshot?.dispose();
     _readFromToken++;
     _tapTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -259,6 +340,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _scrollController.removeListener(_scheduleAnchorUpdate);
     _scrollController.dispose();
     _pageList.dispose();
+    _pageAnimation.dispose();
     super.dispose();
   }
 
@@ -410,10 +492,11 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       _bookmarkBusy = true;
       _transitioning = true;
     });
+    final token = _navigationToken;
     try {
       if (_listening.isActive) {
         await _listening.stop();
-        if (!mounted) return;
+        if (!mounted || token != _navigationToken) return;
         if (_listening.status == ListeningStatus.failed) {
           _showMessage(_listening.message ?? 'Okuma durdurulamadı.');
           return;
@@ -421,7 +504,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       }
       final bookmark = await _store.bookmark(_saved.id);
       final pages = await _store.pages(_saved.id);
-      if (!mounted) return;
+      if (!mounted || !_foreground || token != _navigationToken) return;
       final index = pages.indexWhere(
         (page) =>
             page.id == bookmark?.pageId && page.text == bookmark?.pageText,
@@ -431,14 +514,19 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         _showMessage('Ayraç bulunamadı.');
         return;
       }
-      _applyPage(
+      final currentIndex = pages.indexWhere((page) => page.id == _pageId);
+      final completed = await _transitionToPage(
         pages,
         index,
+        index > currentIndex,
         alsoSet: () {
           _bookmark = bookmark;
           _resumeSentence = bookmark.sentenceIndex;
         },
       );
+      if (!completed || !mounted || !_foreground || token != _navigationToken) {
+        return;
+      }
       _revealPosition(bookmark.sentenceIndex);
     } catch (_) {
       if (mounted) _showMessage('Ayraç açılamadı. Tekrar deneyebilirsin.');
@@ -470,6 +558,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     }
     setState(() => _transitioning = true);
     final session = _editSession;
+    final token = _navigationToken;
 
     try {
       if (_editing && _hasChanges) {
@@ -480,7 +569,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           discardLabel: 'Kaydetmeden geç',
           saveLabel: 'Kaydet ve geç',
         );
-        if (!mounted || session != _editSession) return;
+        if (!mounted || session != _editSession || token != _navigationToken) {
+          return;
+        }
         if (choice == null || choice == _ExitChoice.keepEditing) return;
         if (choice == _ExitChoice.save) {
           final saved = await _persist();
@@ -491,7 +582,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       FocusManager.instance.primaryFocus?.unfocus();
       if (_listening.isActive) {
         await _listening.stop();
-        if (!mounted) return;
+        if (!mounted || token != _navigationToken) return;
         if (_listening.status == ListeningStatus.failed) {
           _showMessage(_listening.message ?? 'Okuma durdurulamadı.');
           return;
@@ -499,7 +590,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       }
 
       final pages = await _store.pages(_saved.id);
-      if (!mounted) return;
+      if (!mounted || !_foreground || token != _navigationToken) return;
       final index = pages.indexWhere((page) => page.id == _pageId);
       if (index < 0) {
         _showMessage('Bu sayfa bulunamadı. Sayfa değiştirilemedi.');
@@ -513,7 +604,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         }
         return;
       }
-      _applyPage(pages, targetIndex);
+      await _transitionToPage(pages, targetIndex, targetIndex > index);
     } catch (_) {
       if (mounted) {
         _showMessage('Sayfa açılamadı. Mevcut sayfa korundu.');
@@ -521,6 +612,100 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     } finally {
       if (mounted) setState(() => _transitioning = false);
     }
+  }
+
+  Future<bool> _transitionToPage(
+    List<DocumentPage> pages,
+    int index,
+    bool forward, {
+    VoidCallback? alsoSet,
+  }) async {
+    if (pages[index].id == _pageId ||
+        !_preferences!.pageAnimationEnabled ||
+        MediaQuery.disableAnimationsOf(context)) {
+      _applyPage(pages, index, alsoSet: alsoSet);
+      return true;
+    }
+    final effect = _preferences!.pageAnimationEffect;
+    final token = ++_pageTransitionToken;
+    ui.Image? snapshot;
+    if (effect == PageAnimationEffect.turn) {
+      _capturePending = true;
+      try {
+        snapshot = await (widget.capturePageImage ?? capturePage)(
+          _pageCaptureKey,
+          MediaQuery.devicePixelRatioOf(context),
+        );
+      } catch (error, stack) {
+        if (mounted && token == _pageTransitionToken) {
+          debugPrint('Sayfa görüntüsü alınamadı: $error\n$stack');
+        }
+      }
+      if (!mounted || token != _pageTransitionToken || !_foreground) {
+        snapshot?.dispose();
+        return false;
+      }
+      _capturePending = false;
+      if (snapshot == null ||
+          !_preferences!.pageAnimationEnabled ||
+          MediaQuery.disableAnimationsOf(context)) {
+        snapshot?.dispose();
+        _applyPage(pages, index, alsoSet: alsoSet);
+        return true;
+      }
+    }
+    final theme = Theme.of(context);
+    final baseStyle = theme.textTheme.bodyLarge;
+    final oldPage = _PreviousPage(
+      text: _saved.text,
+      category: _saved.category.label,
+      number: _pageNumber,
+      offset: _scrollController.hasClients ? _scrollController.offset : 0,
+      view: _preferences!.pageView,
+      alignment: _preferences!.textAlignment.textAlign,
+      style: baseStyle?.copyWith(
+        fontSize:
+            (baseStyle.fontSize ?? 16) * _preferences!.textSize.multiplier,
+        height: readingLineHeight(baseStyle, _preferences!.lineSpacing),
+      ),
+    );
+    setState(() {
+      _previousPage = oldPage;
+      _pageSnapshot = snapshot;
+      _pageForward = forward;
+      _pageEffect = effect;
+    });
+    _applyPage(pages, index, alsoSet: alsoSet);
+    _pageAnimation.duration = pageTransitionDuration(effect);
+    try {
+      await _pageAnimation.forward(from: 0).orCancel;
+    } on TickerCanceled {
+      return false;
+    } finally {
+      if (mounted && identical(_previousPage, oldPage)) {
+        setState(() {
+          _previousPage = null;
+          _pageSnapshot = null;
+        });
+        snapshot?.dispose();
+      }
+    }
+    return true;
+  }
+
+  void _stopPageAnimation() {
+    _pageTransitionToken++;
+    _capturePending = false;
+    if (_previousPage == null) return;
+    _pageAnimation.stop(canceled: true);
+    final snapshot = _pageSnapshot;
+    if (mounted) {
+      setState(() {
+        _previousPage = null;
+        _pageSnapshot = null;
+      });
+    }
+    snapshot?.dispose();
   }
 
   /// Shows the page at [index] of [pages] and scrolls its text to the top.
@@ -626,6 +811,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   /// compares its token and does nothing.
   void _cancelAutoAdvance() {
     _autoToken++;
+    if (_autoPending) _stopPageAnimation();
     if (_autoPending && mounted) {
       setState(() {
         _autoPending = false;
@@ -664,14 +850,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
       final text = pages[index + 1].text;
       final readable = text.trim().isNotEmpty;
-      _applyPage(
-        pages,
-        index + 1,
-        alsoSet: () {
-          _autoPending = false;
-          _transitioning = false;
-        },
-      );
+      final completed = await _transitionToPage(pages, index + 1, true);
+      if (!completed || stale()) return;
+      setState(() {
+        _autoPending = false;
+        _transitioning = false;
+      });
       if (readable) {
         unawaited(_listening.start(text));
       } else {
@@ -737,12 +921,16 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _foreground = true;
     // Temporary inactive states, such as system dialogs, do not stop reading.
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _foreground = false;
+      _navigationToken++;
       _readFromToken++;
       _cancelAutoAdvance();
+      _stopPageAnimation();
       _listening.stop();
     }
   }
@@ -1067,6 +1255,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   Future<void> _requestExit() async {
+    if (_previousPage != null || _capturePending) {
+      _navigationToken++;
+      _cancelAutoAdvance();
+      _stopPageAnimation();
+      _transitioning = false;
+      _bookmarkBusy = false;
+    }
     if (_bookmarkBusy ||
         _saving ||
         _transitioning ||
@@ -1255,7 +1450,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           IconButton(
             tooltip: 'Görünüm ve sesli okuma',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: _openReadingSettings,
+            onPressed: _previousPage != null ? null : _openReadingSettings,
           ),
           IconButton(
             tooltip: listeningActive ? _lockedHint : 'Düzenle',
@@ -1313,83 +1508,109 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
             return Stack(
               key: _readerBodyKey,
               children: [
-                SentenceFollow(
-                  key: _followKey,
-                  listening: _listening,
-                  preferences: _preferences!,
-                  textController: _readController,
-                  textKey: _followTextKey,
-                  scrollController: _scrollController,
-                  followTextSizeChanges: true,
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: (notification) {
-                      if (notification is UserScrollNotification &&
-                          notification.direction != ScrollDirection.idle) {
-                        _dismissSentenceSelection();
-                      }
-                      return false;
-                    },
-                    child: SingleChildScrollView(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            document.category.label,
-                            style: Theme.of(context).textTheme.labelLarge,
-                          ),
-                          if (_pageNumber != null) ...[
-                            const SizedBox(height: 8),
-                            Text('Sayfa $_pageNumber'),
-                          ],
-                          const SizedBox(height: 16),
-                          ReadingPageSurface(
-                            view: _preferences!.pageView,
-                            child: KeyedSubtree(
-                              key: _followTextKey,
-                              child: TapRegion(
-                                groupId: _sentenceTapGroup,
-                                onTapOutside: (_) =>
-                                    _dismissSentenceSelection(),
-                                child: Listener(
-                                  onPointerDown: _onTextPointerDown,
-                                  onPointerMove: _onTextPointerMove,
-                                  onPointerUp: _onTextPointerUp,
-                                  onPointerCancel: _onTextPointerCancel,
-                                  child: TextField(
-                                    key: const ValueKey('saved-reading-text'),
-                                    controller: _readController,
-                                    readOnly: true,
-                                    showCursor: false,
-                                    maxLines: null,
-                                    decoration: const InputDecoration.collapsed(
-                                      hintText: '',
-                                    ),
-                                    textAlign:
-                                        _preferences!.textAlignment.textAlign,
-                                    style: Theme.of(context).textTheme.bodyLarge
-                                        ?.copyWith(
-                                          fontSize:
-                                              (Theme.of(context)
-                                                      .textTheme
-                                                      .bodyLarge
-                                                      ?.fontSize ??
-                                                  16) *
-                                              _preferences!.textSize.multiplier,
-                                          height: readingLineHeight(
-                                            Theme.of(context)
-                                                .textTheme
-                                                .bodyLarge,
-                                            _preferences!.lineSpacing,
+                ReadingPageTransition(
+                  animation: _pageAnimation,
+                  effect: _pageEffect,
+                  forward: _pageForward,
+                  previous: _previousPage,
+                  snapshot: _pageSnapshot,
+                  paperColor: readingPagePaperColor(
+                    context,
+                    _preferences!.pageView,
+                  ),
+                  child: RepaintBoundary(
+                    key: _pageCaptureKey,
+                    child: ColoredBox(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      child: SentenceFollow(
+                        key: _followKey,
+                        listening: _listening,
+                        preferences: _preferences!,
+                        textController: _readController,
+                        textKey: _followTextKey,
+                        scrollController: _scrollController,
+                        followTextSizeChanges: true,
+                        child: NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (notification is UserScrollNotification &&
+                                notification.direction !=
+                                    ScrollDirection.idle) {
+                              _dismissSentenceSelection();
+                            }
+                            return false;
+                          },
+                          child: SingleChildScrollView(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  document.category.label,
+                                  style: Theme.of(context).textTheme.labelLarge,
+                                ),
+                                if (_pageNumber != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text('Sayfa $_pageNumber'),
+                                ],
+                                const SizedBox(height: 16),
+                                ReadingPageSurface(
+                                  view: _preferences!.pageView,
+                                  child: KeyedSubtree(
+                                    key: _followTextKey,
+                                    child: TapRegion(
+                                      groupId: _sentenceTapGroup,
+                                      onTapOutside: (_) =>
+                                          _dismissSentenceSelection(),
+                                      child: Listener(
+                                        onPointerDown: _onTextPointerDown,
+                                        onPointerMove: _onTextPointerMove,
+                                        onPointerUp: _onTextPointerUp,
+                                        onPointerCancel: _onTextPointerCancel,
+                                        child: TextField(
+                                          key: const ValueKey(
+                                            'saved-reading-text',
                                           ),
+                                          controller: _readController,
+                                          readOnly: true,
+                                          showCursor: false,
+                                          maxLines: null,
+                                          decoration:
+                                              const InputDecoration.collapsed(
+                                                hintText: '',
+                                              ),
+                                          textAlign: _preferences!
+                                              .textAlignment
+                                              .textAlign,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyLarge
+                                              ?.copyWith(
+                                                fontSize:
+                                                    (Theme.of(context)
+                                                            .textTheme
+                                                            .bodyLarge
+                                                            ?.fontSize ??
+                                                        16) *
+                                                    _preferences!
+                                                        .textSize
+                                                        .multiplier,
+                                                height: readingLineHeight(
+                                                  Theme.of(context)
+                                                      .textTheme
+                                                      .bodyLarge,
+                                                  _preferences!.lineSpacing,
+                                                ),
+                                              ),
                                         ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),

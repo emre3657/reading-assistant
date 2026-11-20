@@ -134,6 +134,28 @@ List<(int, int, TextStyle?)> _segments(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets('sentence selection and reading work after animated navigation', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageAnimationEnabled(true);
+    preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+    preferences.setPageView(ReadingPageView.book);
+    final store = _Store();
+    final speech = FakeSpeechService();
+    await _show(tester, store, speech, preferences: preferences);
+    await tester.tap(find.byKey(const ValueKey('next-page')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(_character(tester, 1));
+    await tester.pumpAndSettle();
+    expect(_readFrom.hitTestable(), findsOneWidget);
+    await _tap(tester, _readFrom);
+    expect(speech.spoken, ['Başka sayfa.']);
+    expect(store.positions[7]?.pageId, 2);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'size reflow reanchors selection bubble and preserves tap target',
     (tester) async {

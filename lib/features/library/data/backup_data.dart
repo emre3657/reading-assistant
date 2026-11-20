@@ -44,6 +44,8 @@ const backupColumns = <String, Map<String, Type>>{
     'text_alignment': String,
     'line_spacing': String,
     'page_view': String,
+    'page_animation_enabled': int,
+    'page_animation_effect': String,
   },
 };
 
@@ -92,16 +94,25 @@ class BackupData {
         if (item is! Map) {
           throw const FormatException('Invalid row.');
         }
-        final legacyPreferences =
-            entry.key == 'reading_preferences' &&
-            !item.containsKey('page_view');
-        if (item.length != entry.value.length - (legacyPreferences ? 1 : 0)) {
+        const optionalDefaults = <String, Object>{
+          'page_view': 'plain',
+          'page_animation_enabled': 0,
+          'page_animation_effect': 'fade',
+        };
+        final missing = entry.key == 'reading_preferences'
+            ? optionalDefaults.keys
+                  .where((key) => !item.containsKey(key))
+                  .length
+            : 0;
+        if (item.length != entry.value.length - missing) {
           throw const FormatException('Invalid row.');
         }
         final row = <String, Object?>{};
         for (final column in entry.value.entries) {
-          final field = legacyPreferences && column.key == 'page_view'
-              ? 'plain'
+          final field =
+              entry.key == 'reading_preferences' &&
+                  !item.containsKey(column.key)
+              ? optionalDefaults[column.key]
               : item[column.key];
           if ((column.value == int && field is! int) ||
               (column.value == String && field is! String)) {
@@ -112,6 +123,10 @@ class BackupData {
         if (entry.key == 'reading_preferences' &&
             !{'plain', 'book'}.contains(row['page_view'])) {
           row['page_view'] = 'plain';
+        }
+        if (entry.key == 'reading_preferences' &&
+            !{'fade', 'slide', 'turn'}.contains(row['page_animation_effect'])) {
+          row['page_animation_effect'] = 'fade';
         }
         rows.add(row);
       }
@@ -185,6 +200,7 @@ class BackupData {
           !{'slow', 'normal', 'fast', 'faster'}.contains(row['speed']) ||
           !{0, 1}.contains(row['auto_next_page']) ||
           !{0, 1}.contains(row['follow_sentence']) ||
+          !{0, 1}.contains(row['page_animation_enabled']) ||
           !{'normal', 'large', 'extraLarge'}.contains(row['text_size']) ||
           !{
             'start',

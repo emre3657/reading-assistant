@@ -41,6 +41,8 @@ final _backup = BackupData.fromTables({
       'text_alignment': 'justify',
       'line_spacing': 'wide',
       'page_view': 'book',
+      'page_animation_enabled': 1,
+      'page_animation_effect': 'slide',
     },
   ],
 });
@@ -307,6 +309,8 @@ void main() {
       expect(preferences.textAlignment, ReadingTextAlignment.justify);
       expect(preferences.lineSpacing, ReadingLineSpacing.wide);
       expect(preferences.pageView, ReadingPageView.book);
+      expect(preferences.pageAnimationEnabled, isTrue);
+      expect(preferences.pageAnimationEffect, PageAnimationEffect.slide);
       expect(find.byType(BackupScreen), findsNothing);
     },
   );

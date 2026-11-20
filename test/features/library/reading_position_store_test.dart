@@ -161,6 +161,12 @@ void main() {
         await old.execute(
           'ALTER TABLE reading_preferences DROP COLUMN page_view',
         );
+        await old.execute(
+          'ALTER TABLE reading_preferences DROP COLUMN page_animation_enabled',
+        );
+        await old.execute(
+          'ALTER TABLE reading_preferences DROP COLUMN page_animation_effect',
+        );
         final preferences = await oldStore.loadReadingPreferences();
         await old.close();
         await expectLater(
@@ -207,6 +213,8 @@ void main() {
         expect(await writer.loadReadingPreferences(), {
           ...?preferences,
           'page_view': 'plain',
+          'page_animation_enabled': 0,
+          'page_animation_effect': 'fade',
         });
         expect(await writer.bookmark(id), isNull);
         await writer.saveBookmark(

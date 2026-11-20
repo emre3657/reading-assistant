@@ -68,6 +68,8 @@ void main() {
       textAlignment: 'justify',
       lineSpacing: 'wide',
       pageView: 'book',
+      pageAnimationEnabled: true,
+      pageAnimationEffect: 'turn',
     );
     return source.backupSnapshot();
   }
@@ -96,6 +98,14 @@ void main() {
     );
     expect((await target.loadReadingPreferences())?['line_spacing'], 'wide');
     expect((await target.loadReadingPreferences())?['page_view'], 'book');
+    expect(
+      (await target.loadReadingPreferences())?['page_animation_enabled'],
+      1,
+    );
+    expect(
+      (await target.loadReadingPreferences())?['page_animation_effect'],
+      'turn',
+    );
   });
 
   test('legacy and unknown page view restore with plain default', () async {
@@ -108,14 +118,25 @@ void main() {
           data['data']['reading_preferences'][0] as Map<String, dynamic>;
       if (legacy) {
         row.remove('page_view');
+        row.remove('page_animation_enabled');
+        row.remove('page_animation_effect');
       } else {
         row['page_view'] = 'future';
+        row['page_animation_effect'] = 'future';
       }
       final parsed = BackupData.decode(
         Uint8List.fromList(utf8.encode(jsonEncode(data))),
       );
       await target.restoreBackup(parsed);
       expect((await target.loadReadingPreferences())?['page_view'], 'plain');
+      expect(
+        (await target.loadReadingPreferences())?['page_animation_effect'],
+        'fade',
+      );
+      expect(
+        (await target.loadReadingPreferences())?['page_animation_enabled'],
+        legacy ? 0 : 1,
+      );
       expect((await target.loadReadingPreferences())?['line_spacing'], 'wide');
       expect(
         await target.bookmark(parsed.tables['documents']!.single['id'] as int),

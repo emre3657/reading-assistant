@@ -26,6 +26,8 @@ class FakePreferencesStore extends DocumentStore {
     required String textAlignment,
     required String lineSpacing,
     String pageView = 'plain',
+    bool pageAnimationEnabled = false,
+    String pageAnimationEffect = 'fade',
   }) async {
     saveCalls++;
     await saveGate?.future;
@@ -38,6 +40,8 @@ class FakePreferencesStore extends DocumentStore {
       'text_alignment': textAlignment,
       'line_spacing': lineSpacing,
       'page_view': pageView,
+      'page_animation_enabled': pageAnimationEnabled ? 1 : 0,
+      'page_animation_effect': pageAnimationEffect,
     };
   }
 }

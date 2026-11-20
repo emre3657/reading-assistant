@@ -1,15 +1,19 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'fake_reading_positions.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
+import 'package:reading_assistant/features/library/data/reading_position.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
 import 'package:reading_assistant/features/library/presentation/page_navigation_bar.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
+import 'package:reading_assistant/features/listening/presentation/page_transition.dart';
 
 import '../listening/fake_speech_service.dart';
 import '../listening/fake_preferences_store.dart';
@@ -88,6 +92,10 @@ Future<void> _show(
   _Store store,
   FakeSpeechService speech, {
   Size size = const Size(800, 1600),
+  ReadingPreferences? preferences,
+  bool disableAnimations = false,
+  double textScale = 1,
+  Future<ui.Image> Function(GlobalKey, double)? capturePageImage,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -96,8 +104,16 @@ Future<void> _show(
   final open = store.pageList.first;
   await tester.pumpWidget(
     ReadingPreferencesScope(
-      preferences: ReadingPreferences(store: FakePreferencesStore()),
+      preferences:
+          preferences ?? ReadingPreferences(store: FakePreferencesStore()),
       child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            disableAnimations: disableAnimations,
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: child!,
+        ),
         home: Builder(
           builder: (context) => Scaffold(
             body: TextButton(
@@ -115,6 +131,7 @@ Future<void> _show(
                     pageNumber: 1,
                     store: store,
                     speechService: speech,
+                    capturePageImage: capturePageImage,
                   ),
                 ),
               ),
@@ -170,6 +187,435 @@ Future<void> _finish(WidgetTester tester, FakeSpeechService speech) async {
 }
 
 void main() {
+  testWidgets(
+    'bookmark navigation animates only between pages and reveals text',
+    (tester) async {
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      preferences.setPageAnimationEnabled(true);
+      final text = List.generate(80, (index) => 'Cümle $index.').join('\n\n');
+      final store = _Store([
+        _page(30, 0, 'Birinci sayfa.'),
+        _page(10, 4, text),
+      ]);
+      store.positions[7] = const ReadingPosition(
+        pageId: 30,
+        sentenceIndex: 0,
+        pageText: 'Birinci sayfa.',
+      );
+      store.bookmarks[7] = ReadingPosition(
+        pageId: 10,
+        sentenceIndex: 60,
+        pageText: text,
+      );
+      final speech = FakeSpeechService();
+      await _show(tester, store, speech, preferences: preferences);
+
+      Future<void> jump() async {
+        await tester.tap(find.byTooltip('Ayraç seçenekleri'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Ayraca git'));
+        await tester.pump();
+      }
+
+      await jump();
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(
+        tester
+            .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+            .previous,
+        isNotNull,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Sayfa 2 / 2'), findsOneWidget);
+      final scroll = tester.widget<SingleChildScrollView>(
+        find
+            .descendant(
+              of: find.byType(SavedDocumentScreen),
+              matching: find.byType(SingleChildScrollView),
+            )
+            .first,
+      );
+      expect(scroll.controller!.offset, greaterThan(0));
+      expect(store.positions[7]?.pageId, 30);
+      expect(speech.spoken, isEmpty);
+      await jump();
+      expect(
+        tester
+            .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+            .previous,
+        isNull,
+      );
+      await tester.pumpAndSettle();
+      await _read(tester);
+      expect(speech.spoken.single, startsWith('Cümle 60.'));
+    },
+  );
+
+  for (final effect in PageAnimationEffect.values) {
+    final expectedDuration = switch (effect) {
+      PageAnimationEffect.fade => const Duration(milliseconds: 300),
+      PageAnimationEffect.slide => const Duration(milliseconds: 350),
+      PageAnimationEffect.turn => const Duration(milliseconds: 500),
+    };
+    testWidgets(
+      '${effect.name} transitions both directions and removes old page',
+      (tester) async {
+        final preferences = ReadingPreferences(store: FakePreferencesStore());
+        await preferences.load();
+        preferences.setPageAnimationEnabled(true);
+        preferences.setPageAnimationEffect(effect);
+        final speech = FakeSpeechService();
+        await _show(
+          tester,
+          _Store(_threePages()),
+          speech,
+          preferences: preferences,
+        );
+        var transition = tester.widget<ReadingPageTransition>(
+          find.byType(ReadingPageTransition),
+        );
+        expect(transition.previous, isNull);
+        await tester.tap(_next);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        transition = tester.widget<ReadingPageTransition>(
+          find.byType(ReadingPageTransition),
+        );
+        expect(transition.previous, isNotNull);
+        expect(transition.forward, isTrue);
+        expect(transition.effect, effect);
+        expect(
+          (transition.animation as AnimationController).duration,
+          expectedDuration,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(ReadingPageTransition),
+            matching: find.byType(ExcludeSemantics),
+          ),
+          findsWidgets,
+        );
+        expect(_pageButtonEnabled(_next), isFalse);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+              .previous,
+          isNull,
+        );
+        expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+        expect(speech.spoken, isEmpty);
+        await tester.tap(find.byKey(const ValueKey('previous-page')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        transition = tester.widget<ReadingPageTransition>(
+          find.byType(ReadingPageTransition),
+        );
+        expect(transition.previous, isNotNull);
+        expect(transition.forward, isFalse);
+        await tester.pumpAndSettle();
+        expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+        expect(
+          tester
+              .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+              .previous,
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final effect in PageAnimationEffect.values) {
+    testWidgets('${effect.name} preview uses the same duration as the reader', (
+      tester,
+    ) async {
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      preferences.setPageAnimationEnabled(true);
+      preferences.setPageAnimationEffect(effect);
+      await _show(
+        tester,
+        _Store(_threePages()),
+        FakeSpeechService(),
+        preferences: preferences,
+      );
+      await _openMore(tester);
+      final preview = find.text('Önizlemeyi oynat');
+      await tester.ensureVisible(preview);
+      await tester.pumpAndSettle();
+      await tester.tap(preview);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      final transition = tester
+          .widgetList<ReadingPageTransition>(find.byType(ReadingPageTransition))
+          .singleWhere((item) => item.previous != null);
+      expect(
+        (transition.animation as AnimationController).duration,
+        pageTransitionDuration(effect),
+      );
+      if (effect == PageAnimationEffect.turn) {
+        expect(transition.snapshot, isNotNull);
+      }
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('background cancels a curl preview and releases its snapshot', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageAnimationEnabled(true);
+    preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+    await _show(
+      tester,
+      _Store(_threePages()),
+      FakeSpeechService(),
+      preferences: preferences,
+    );
+    await _openMore(tester);
+    final preview = find.text('Önizlemeyi oynat');
+    await tester.ensureVisible(preview);
+    await tester.pumpAndSettle();
+    await tester.tap(preview);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    final snapshot = tester
+        .widgetList<ReadingPageTransition>(find.byType(ReadingPageTransition))
+        .singleWhere((item) => item.snapshot != null)
+        .snapshot!;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pumpAndSettle();
+    expect(snapshot.debugDisposed, isTrue);
+    expect(_enabled(_button('Önizlemeyi oynat')), isTrue);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('curl captures the visible scrolled viewport', (tester) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageAnimationEnabled(true);
+    preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+    final text = List.generate(120, (index) => 'Satır $index.').join('\n\n');
+    await _show(
+      tester,
+      _Store([_page(30, 0, text), _page(10, 1, 'Sonraki.')]),
+      FakeSpeechService(),
+      preferences: preferences,
+      size: const Size(360, 700),
+    );
+    final scroll = find
+        .descendant(
+          of: find.byType(SavedDocumentScreen),
+          matching: find.byType(SingleChildScrollView),
+        )
+        .first;
+    await tester.drag(scroll, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<SingleChildScrollView>(scroll).controller!.offset,
+      greaterThan(0),
+    );
+    final boundaryFinder = find.ancestor(
+      of: find.byKey(const ValueKey('saved-reading-text')),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is RepaintBoundary && widget.key is GlobalKey,
+      ),
+    );
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      boundaryFinder.first,
+    );
+    final before = boundary.toImageSync();
+    final expected = await tester.runAsync(
+      () => before.toByteData(format: ui.ImageByteFormat.rawRgba),
+    );
+    before.dispose();
+
+    await tester.tap(_next);
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+      if (tester
+              .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+              .snapshot !=
+          null) {
+        break;
+      }
+    }
+    final snapshot = tester
+        .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+        .snapshot!;
+    expect(snapshot.width, boundary.size.width.round());
+    expect(snapshot.height, boundary.size.height.round());
+    final actual = await tester.runAsync(
+      () => snapshot.toByteData(format: ui.ImageByteFormat.rawRgba),
+    );
+    expect(
+      actual!.buffer.asUint8List(),
+      orderedEquals(expected!.buffer.asUint8List()),
+    );
+    await tester.pumpAndSettle();
+    expect(snapshot.debugDisposed, isTrue);
+  });
+
+  testWidgets('capture failure falls back to a direct readable page', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageAnimationEnabled(true);
+    preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+    final oldDebugPrint = debugPrint;
+    final messages = <String?>[];
+    debugPrint = (String? message, {int? wrapWidth}) => messages.add(message);
+    addTearDown(() => debugPrint = oldDebugPrint);
+    await _show(
+      tester,
+      _Store(_threePages()),
+      FakeSpeechService(),
+      preferences: preferences,
+      capturePageImage: (_, _) => Future.error(StateError('capture failed')),
+    );
+    await tester.tap(_next);
+    await tester.pumpAndSettle();
+    expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+    expect(
+      tester
+          .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+          .previous,
+      isNull,
+    );
+    expect(
+      messages.any((message) => message?.contains('capture failed') ?? false),
+      isTrue,
+    );
+    expect(_pageButtonEnabled(_next), isTrue);
+    debugPrint = oldDebugPrint;
+  });
+
+  testWidgets('closing while capture is pending disposes its late image', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageAnimationEnabled(true);
+    preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+    final capture = Completer<ui.Image>();
+    final store = _Store(_threePages());
+    await _show(
+      tester,
+      store,
+      FakeSpeechService(),
+      preferences: preferences,
+      capturePageImage: (_, _) => capture.future,
+    );
+    await tester.tap(_next);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+    expect(_pageButtonEnabled(_next), isFalse);
+    final pagesCalls = store.pagesCalls;
+    await tester.tap(_next);
+    await tester.pump();
+    expect(store.pagesCalls, pagesCalls);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('aç'), findsOneWidget);
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawColor(Colors.white, BlendMode.src);
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync(1, 1);
+    capture.complete(image);
+    await tester.pump();
+    expect(image.debugDisposed, isTrue);
+    picture.dispose();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('automatic reading waits for animation and starts once', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageAnimationEnabled(true);
+    preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+    preferences.setAutoNextPage(true);
+    final store = _Store(_threePages());
+    final speech = FakeSpeechService();
+    await _show(tester, store, speech, preferences: preferences);
+    await _read(tester);
+    await _finish(tester, speech);
+    speech.finishCurrent();
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+      if (tester
+              .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+              .previous !=
+          null) {
+        break;
+      }
+    }
+    expect(
+      tester
+          .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+          .previous,
+      isNotNull,
+    );
+    expect(speech.spoken, ['Birinci sayfa. ', 'İkinci cümle.']);
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(speech.spoken, ['Birinci sayfa. ', 'İkinci cümle.']);
+    await tester.pumpAndSettle();
+    expect(speech.spoken, [
+      'Birinci sayfa. ',
+      'İkinci cümle.',
+      'Üçüncü cümle.',
+    ]);
+    expect(store.positions[7]?.pageId, 10);
+  });
+
+  testWidgets('reduced motion moves immediately and preserves the preference', (
+    tester,
+  ) async {
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await preferences.load();
+    preferences.setPageAnimationEnabled(true);
+    preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+    var captures = 0;
+    await _show(
+      tester,
+      _Store(_threePages()),
+      FakeSpeechService(),
+      preferences: preferences,
+      disableAnimations: true,
+      capturePageImage: (_, _) {
+        captures++;
+        return Future.error(StateError('capture should not run'));
+      },
+    );
+    await tester.tap(_next);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+          .previous,
+      isNull,
+    );
+    expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+    expect(preferences.pageAnimationEnabled, isTrue);
+    expect(preferences.pageAnimationEffect, PageAnimationEffect.turn);
+    expect(captures, 0);
+  });
+
   group('automatic next page', () {
     testWidgets('is off by default and does not move at the end', (
       tester,
@@ -445,11 +891,146 @@ void main() {
             .onPressed,
         isNull,
       );
-
       store.pagesGate!.complete();
       await tester.pumpAndSettle();
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(speech.spoken.last, 'Üçüncü cümle.');
+    });
+
+    testWidgets(
+      'settings preview plays only on request and keeps selected effect',
+      (tester) async {
+        final preferences = ReadingPreferences(store: FakePreferencesStore());
+        await preferences.load();
+        preferences.setPageView(ReadingPageView.book);
+        await _show(
+          tester,
+          _Store(_threePages()),
+          FakeSpeechService(),
+          preferences: preferences,
+          size: const Size(320, 700),
+          textScale: 1.6,
+        );
+        await _openMore(tester);
+        final toggle = find.byKey(const ValueKey('page-animation-enabled'));
+        await tester.ensureVisible(toggle);
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(preferences.pageAnimationEffect, PageAnimationEffect.fade);
+        final option = find.text('Dikey kayma');
+        await tester.ensureVisible(option);
+        await tester.tap(option);
+        await tester.pumpAndSettle();
+        expect(preferences.pageAnimationEffect, PageAnimationEffect.slide);
+        final preview = find.text('Önizlemeyi oynat');
+        await tester.ensureVisible(preview);
+        await tester.pumpAndSettle();
+        expect(find.text('Örnek sayfa 1'), findsOneWidget);
+        expect(find.text('Örnek sayfa 2'), findsNothing);
+        await tester.tap(preview);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        final transitions = tester.widgetList<ReadingPageTransition>(
+          find.byType(ReadingPageTransition),
+        );
+        expect(
+          transitions.where(
+            (t) => t.previous != null && t.effect == PageAnimationEffect.slide,
+          ),
+          hasLength(1),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Örnek sayfa 2'), findsOneWidget);
+        await tester.ensureVisible(toggle);
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(preferences.pageAnimationEffect, PageAnimationEffect.slide);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'load failure and closing during an animation keep navigation safe',
+      (tester) async {
+        final preferences = ReadingPreferences(store: FakePreferencesStore());
+        await preferences.load();
+        preferences.setPageAnimationEnabled(true);
+        final store = _Store(_threePages());
+        final speech = FakeSpeechService();
+        await _show(tester, store, speech, preferences: preferences);
+        store.pagesError = StateError('disk');
+        await tester.tap(_next);
+        await tester.pumpAndSettle();
+        expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+        expect(
+          find.text('Sayfa açılamadı. Mevcut sayfa korundu.'),
+          findsOneWidget,
+        );
+        store.pagesError = null;
+        await tester.tap(_next);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        expect(_pageButtonEnabled(_next), isFalse);
+        await tester.tap(find.byType(BackButton));
+        await tester.pumpAndSettle();
+        expect(find.text('aç'), findsOneWidget);
+        expect(speech.spoken, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('background during animation cancels automatic speech', (
+      tester,
+    ) async {
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      preferences.setPageAnimationEnabled(true);
+      preferences.setPageAnimationEffect(PageAnimationEffect.turn);
+      preferences.setAutoNextPage(true);
+      final speech = FakeSpeechService();
+      await _show(
+        tester,
+        _Store(_threePages()),
+        speech,
+        preferences: preferences,
+      );
+      await _read(tester);
+      await _finish(tester, speech);
+      speech.finishCurrent();
+      await tester.pump();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+        if (tester
+                .widget<ReadingPageTransition>(
+                  find.byType(ReadingPageTransition),
+                )
+                .snapshot !=
+            null) {
+          break;
+        }
+      }
+      final snapshot = tester
+          .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+          .snapshot!;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pumpAndSettle();
+      expect(snapshot.debugDisposed, isTrue);
+      expect(speech.spoken, ['Birinci sayfa. ', 'İkinci cümle.']);
+      expect(
+        tester
+            .widget<ReadingPageTransition>(find.byType(ReadingPageTransition))
+            .previous,
+        isNull,
+      );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('going to the background cancels the pending move', (
