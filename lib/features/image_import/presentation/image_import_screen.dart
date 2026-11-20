@@ -7,6 +7,7 @@ import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
+import '../../listening/presentation/reading_page_surface.dart';
 import '../../listening/presentation/sentence_follow.dart';
 import '../../listening/services/speech_service.dart';
 
@@ -1182,47 +1183,50 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                       ),
                     ],
                     const SizedBox(height: 4),
-                    Semantics(
-                      label: listeningActive
-                          ? 'Metin, düzenleme kilitli. '
-                                'Düzenlemek için okumayı durdur'
-                          : (controller.hasRecognizedText
-                                ? 'Çıkarılan metin'
-                                : 'Metin'),
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onTap: listeningActive ? _showEditLockNotice : null,
-                        child: KeyedSubtree(
-                          key: _followTextKey,
-                          child: TextField(
-                            key: ValueKey(
-                              _addingPage ? 'new-page-text' : 'import-text',
-                            ),
-                            controller: controller.textController,
-                            style: readingInputTextStyle(
-                              context,
-                              _preferences!.textSize,
-                              _preferences!.lineSpacing,
-                            ),
-                            textAlign: _preferences!.textAlignment.textAlign,
-                            readOnly:
-                                controller.isRecognizing ||
-                                listeningActive ||
-                                _pageLocked,
-                            canRequestFocus: !listeningActive,
-                            enableInteractiveSelection: !listeningActive,
-                            // While locked, the parent handles taps.
-                            ignorePointers: listeningActive,
-                            minLines: 6,
-                            maxLines: null,
-                            keyboardType: TextInputType.multiline,
-                            textInputAction: TextInputAction.newline,
-                            decoration: InputDecoration(
-                              hintText: controller.hasRecognizedText
-                                  ? null
-                                  : 'Metnini yaz veya buraya yapıştır.',
-                              alignLabelWithHint: true,
-                              border: const OutlineInputBorder(),
+                    ReadingPageSurface(
+                      view: _preferences!.pageView,
+                      child: Semantics(
+                        label: listeningActive
+                            ? 'Metin, düzenleme kilitli. '
+                                  'Düzenlemek için okumayı durdur'
+                            : (controller.hasRecognizedText
+                                  ? 'Çıkarılan metin'
+                                  : 'Metin'),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: listeningActive ? _showEditLockNotice : null,
+                          child: KeyedSubtree(
+                            key: _followTextKey,
+                            child: TextField(
+                              key: ValueKey(
+                                _addingPage ? 'new-page-text' : 'import-text',
+                              ),
+                              controller: controller.textController,
+                              style: readingInputTextStyle(
+                                context,
+                                _preferences!.textSize,
+                                _preferences!.lineSpacing,
+                              ),
+                              textAlign: _preferences!.textAlignment.textAlign,
+                              readOnly:
+                                  controller.isRecognizing ||
+                                  listeningActive ||
+                                  _pageLocked,
+                              canRequestFocus: !listeningActive,
+                              enableInteractiveSelection: !listeningActive,
+                              // While locked, the parent handles taps.
+                              ignorePointers: listeningActive,
+                              minLines: 6,
+                              maxLines: null,
+                              keyboardType: TextInputType.multiline,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                hintText: controller.hasRecognizedText
+                                    ? null
+                                    : 'Metnini yaz veya buraya yapıştır.',
+                                alignLabelWithHint: true,
+                                border: const OutlineInputBorder(),
+                              ),
                             ),
                           ),
                         ),

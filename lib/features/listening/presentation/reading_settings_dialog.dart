@@ -100,6 +100,31 @@ Future<void> showReadingSettings(
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Sayfa görünümü',
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<ReadingPageView>(
+                      key: const ValueKey('reading-page-view'),
+                      value: preferences.pageView,
+                      isExpanded: true,
+                      items: [
+                        for (final view in ReadingPageView.values)
+                          DropdownMenuItem(
+                            value: view,
+                            child: Text(view.label),
+                          ),
+                      ],
+                      onChanged: preferences.ready
+                          ? (view) {
+                              if (view != null) preferences.setPageView(view);
+                            }
+                          : null,
+                    ),
+                  ),
+                ),
               ],
             ),
             if (!appearanceOnly) ...[

@@ -40,6 +40,7 @@ final _backup = BackupData.fromTables({
       'text_size': 'large',
       'text_alignment': 'justify',
       'line_spacing': 'wide',
+      'page_view': 'book',
     },
   ],
 });
@@ -305,6 +306,7 @@ void main() {
       expect(store.restores, 1);
       expect(preferences.textAlignment, ReadingTextAlignment.justify);
       expect(preferences.lineSpacing, ReadingLineSpacing.wide);
+      expect(preferences.pageView, ReadingPageView.book);
       expect(find.byType(BackupScreen), findsNothing);
     },
   );

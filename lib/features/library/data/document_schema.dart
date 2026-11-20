@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'saved_document.dart';
 import 'turkish_text.dart';
 
-const documentDatabaseVersion = 10;
+const documentDatabaseVersion = 11;
 
 String normalizeCategoryName(String name) => normalizeTurkishCase(name.trim());
 
@@ -177,6 +177,7 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await createCategories(database);
   await database.execute(addReadingTextAlignmentSql);
   await database.execute(addReadingLineSpacingSql);
+  await database.execute(addReadingPageViewSql);
   await database.execute(createBookmarksSql);
   await database.execute(resetBookmarkOnEditSql);
 }
@@ -192,6 +193,9 @@ const addReadingTextAlignmentSql =
 
 const addReadingLineSpacingSql =
     "ALTER TABLE reading_preferences ADD COLUMN line_spacing TEXT NOT NULL DEFAULT 'normal'";
+
+const addReadingPageViewSql =
+    "ALTER TABLE reading_preferences ADD COLUMN page_view TEXT NOT NULL DEFAULT 'plain'";
 
 Future<void> upgradeDocumentSchema(
   Database database,
@@ -232,5 +236,8 @@ Future<void> upgradeDocumentSchema(
   if (oldVersion < 10 && newVersion >= 10) {
     await database.execute(createBookmarksSql);
     await database.execute(resetBookmarkOnEditSql);
+  }
+  if (oldVersion < 11 && newVersion >= 11) {
+    await database.execute(addReadingPageViewSql);
   }
 }

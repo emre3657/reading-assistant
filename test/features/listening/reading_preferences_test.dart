@@ -23,6 +23,7 @@ void main() {
     expect(preferences.textSize, ReadingTextSize.normal);
     expect(preferences.textAlignment, ReadingTextAlignment.start);
     expect(preferences.lineSpacing, ReadingLineSpacing.normal);
+    expect(preferences.pageView, ReadingPageView.plain);
     expect(store.saveCalls, 0);
 
     store.values = {
@@ -32,6 +33,7 @@ void main() {
       'text_size': 'invalid',
       'text_alignment': 'invalid',
       'line_spacing': 'invalid',
+      'page_view': 'invalid',
     };
     final invalid = ReadingPreferences(store: store);
     await invalid.load();
@@ -41,6 +43,7 @@ void main() {
     expect(invalid.textSize, ReadingTextSize.normal);
     expect(invalid.textAlignment, ReadingTextAlignment.start);
     expect(invalid.lineSpacing, ReadingLineSpacing.normal);
+    expect(invalid.pageView, ReadingPageView.plain);
   });
 
   test(
@@ -72,6 +75,7 @@ void main() {
       preferences.setTextSize(ReadingTextSize.extraLarge);
       preferences.setLineSpacing(ReadingLineSpacing.relaxed);
       preferences.setLineSpacing(ReadingLineSpacing.wide);
+      preferences.setPageView(ReadingPageView.book);
       preferences.setFollowSentence(false);
       preferences.setFollowSentence(true);
       await Future<void>.delayed(Duration.zero);
@@ -85,8 +89,9 @@ void main() {
         'text_size': 'extraLarge',
         'text_alignment': 'justify',
         'line_spacing': 'wide',
+        'page_view': 'book',
       });
-      expect(store.saveCalls, 12);
+      expect(store.saveCalls, 13);
     },
   );
 
@@ -149,6 +154,7 @@ void main() {
       preferences.setTextSize(ReadingTextSize.extraLarge);
       preferences.setTextAlignment(ReadingTextAlignment.center);
       preferences.setLineSpacing(ReadingLineSpacing.relaxed);
+      preferences.setPageView(ReadingPageView.book);
       await preferences.pendingWrites;
       await database.close();
       final reopened = await databaseFactoryFfi.openDatabase(
@@ -165,7 +171,83 @@ void main() {
       expect(restored.textSize, ReadingTextSize.extraLarge);
       expect(restored.textAlignment, ReadingTextAlignment.center);
       expect(restored.lineSpacing, ReadingLineSpacing.relaxed);
+      expect(restored.pageView, ReadingPageView.book);
       await reopened.close();
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
+
+  test('v10 migration preserves contents, locations and preferences', () async {
+    final dir = await Directory.systemTemp.createTemp('page-view-migration-');
+    final path = '${dir.path}${Platform.pathSeparator}test.db';
+    try {
+      final old = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 10,
+          singleInstance: false,
+          onConfigure: configureDocumentDatabase,
+          onCreate: (db, version) async {
+            await createDocumentSchema(db, version);
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN page_view',
+            );
+          },
+        ),
+      );
+      await old.insert('documents', {
+        'id': 42,
+        'title': 'Eski',
+        'category': 'note',
+        'created_at': 7,
+      });
+      await old.insert('pages', {
+        'id': 9,
+        'document_id': 42,
+        'position': 4,
+        'text': 'Bir. İki.',
+      });
+      for (final table in ['reading_positions', 'bookmarks']) {
+        await old.insert(table, {
+          'document_id': 42,
+          'page_id': 9,
+          'sentence_index': 1,
+          'page_text': 'Bir. İki.',
+        });
+      }
+      await old.insert('reading_preferences', {
+        'id': 1,
+        'speed': 'fast',
+        'auto_next_page': 1,
+        'follow_sentence': 1,
+        'text_size': 'large',
+        'text_alignment': 'center',
+        'line_spacing': 'wide',
+      });
+      await old.close();
+      final upgraded = await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: documentDatabaseVersion,
+          singleInstance: false,
+          onConfigure: configureDocumentDatabase,
+          onUpgrade: upgradeDocumentSchema,
+        ),
+      );
+      try {
+        final store = DocumentStore(databaseOpener: () async => upgraded);
+        final preferences = ReadingPreferences(store: store);
+        await preferences.load();
+        expect(preferences.pageView, ReadingPageView.plain);
+        expect(preferences.lineSpacing, ReadingLineSpacing.wide);
+        expect((await store.getDocument(42))?.title, 'Eski');
+        expect((await store.pages(42)).single.position, 4);
+        expect((await store.readingPosition(42))?.sentenceIndex, 1);
+        expect((await store.bookmark(42))?.sentenceIndex, 1);
+      } finally {
+        await upgraded.close();
+      }
     } finally {
       await dir.delete(recursive: true);
     }
@@ -281,6 +363,7 @@ void main() {
             'text_size': 'large',
             'text_alignment': version >= 8 ? 'center' : 'start',
             'line_spacing': 'normal',
+            'page_view': 'plain',
           });
           await upgraded.close();
         } finally {
@@ -358,6 +441,7 @@ void main() {
         'text_size': 'normal',
         'text_alignment': 'start',
         'line_spacing': 'normal',
+        'page_view': 'plain',
       });
       await upgraded.close();
     } finally {

@@ -174,6 +174,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(_readFrom.hitTestable(), findsOneWidget);
       expect(tester.getTopLeft(_readFrom), isNot(beforeSpacing));
+      final beforePage = tester.getTopLeft(_readFrom);
+      preferences.setPageView(ReadingPageView.book);
+      await tester.pumpAndSettle();
+      expect(_readFrom.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(_readFrom), isNot(beforePage));
       await _tap(tester, _readFrom);
       expect(speech.spoken, ['Aynı. ']);
     },

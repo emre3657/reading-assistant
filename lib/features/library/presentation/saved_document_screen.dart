@@ -8,6 +8,7 @@ import '../../listening/presentation/listening_controller.dart';
 import '../../listening/presentation/listening_controls.dart';
 import '../../listening/presentation/reading_settings_dialog.dart';
 import '../../listening/presentation/reading_preferences.dart';
+import '../../listening/presentation/reading_page_surface.dart';
 import '../../listening/presentation/sentence_highlight.dart';
 import '../../listening/presentation/sentence_follow.dart';
 import '../../listening/services/sentence_splitter.dart';
@@ -1343,41 +1344,47 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                             Text('Sayfa $_pageNumber'),
                           ],
                           const SizedBox(height: 16),
-                          KeyedSubtree(
-                            key: _followTextKey,
-                            child: TapRegion(
-                              groupId: _sentenceTapGroup,
-                              onTapOutside: (_) => _dismissSentenceSelection(),
-                              child: Listener(
-                                onPointerDown: _onTextPointerDown,
-                                onPointerMove: _onTextPointerMove,
-                                onPointerUp: _onTextPointerUp,
-                                onPointerCancel: _onTextPointerCancel,
-                                child: TextField(
-                                  key: const ValueKey('saved-reading-text'),
-                                  controller: _readController,
-                                  readOnly: true,
-                                  showCursor: false,
-                                  maxLines: null,
-                                  decoration: const InputDecoration.collapsed(
-                                    hintText: '',
-                                  ),
-                                  textAlign:
-                                      _preferences!.textAlignment.textAlign,
-                                  style: Theme.of(context).textTheme.bodyLarge
-                                      ?.copyWith(
-                                        fontSize:
-                                            (Theme.of(context)
-                                                    .textTheme
-                                                    .bodyLarge
-                                                    ?.fontSize ??
-                                                16) *
-                                            _preferences!.textSize.multiplier,
-                                        height: readingLineHeight(
-                                          Theme.of(context).textTheme.bodyLarge,
-                                          _preferences!.lineSpacing,
+                          ReadingPageSurface(
+                            view: _preferences!.pageView,
+                            child: KeyedSubtree(
+                              key: _followTextKey,
+                              child: TapRegion(
+                                groupId: _sentenceTapGroup,
+                                onTapOutside: (_) =>
+                                    _dismissSentenceSelection(),
+                                child: Listener(
+                                  onPointerDown: _onTextPointerDown,
+                                  onPointerMove: _onTextPointerMove,
+                                  onPointerUp: _onTextPointerUp,
+                                  onPointerCancel: _onTextPointerCancel,
+                                  child: TextField(
+                                    key: const ValueKey('saved-reading-text'),
+                                    controller: _readController,
+                                    readOnly: true,
+                                    showCursor: false,
+                                    maxLines: null,
+                                    decoration: const InputDecoration.collapsed(
+                                      hintText: '',
+                                    ),
+                                    textAlign:
+                                        _preferences!.textAlignment.textAlign,
+                                    style: Theme.of(context).textTheme.bodyLarge
+                                        ?.copyWith(
+                                          fontSize:
+                                              (Theme.of(context)
+                                                      .textTheme
+                                                      .bodyLarge
+                                                      ?.fontSize ??
+                                                  16) *
+                                              _preferences!.textSize.multiplier,
+                                          height: readingLineHeight(
+                                            Theme.of(context)
+                                                .textTheme
+                                                .bodyLarge,
+                                            _preferences!.lineSpacing,
+                                          ),
                                         ),
-                                      ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -1507,28 +1514,32 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                       ),
                   ],
                 ),
-                Semantics(
-                  label: 'Metin',
-                  child: TextFormField(
-                    key: const ValueKey('document-text'),
-                    controller: _textController,
-                    enabled: !_saving,
-                    textAlign: _preferences!.textAlignment.textAlign,
-                    style: readingInputTextStyle(
-                      context,
-                      _preferences!.textSize,
-                      _preferences!.lineSpacing,
+                ReadingPageSurface(
+                  view: _preferences!.pageView,
+                  child: Semantics(
+                    label: 'Metin',
+                    child: TextFormField(
+                      key: const ValueKey('document-text'),
+                      controller: _textController,
+                      enabled: !_saving,
+                      textAlign: _preferences!.textAlignment.textAlign,
+                      style: readingInputTextStyle(
+                        context,
+                        _preferences!.textSize,
+                        _preferences!.lineSpacing,
+                      ),
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      minLines: 8,
+                      maxLines: null,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty
+                          ? 'Metin boş olamaz.'
+                          : null,
                     ),
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    minLines: 8,
-                    maxLines: null,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Metin boş olamaz.'
-                        : null,
                   ),
                 ),
                 if (_error != null) ...[

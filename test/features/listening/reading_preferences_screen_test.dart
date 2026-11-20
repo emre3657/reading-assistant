@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
+import 'package:reading_assistant/features/image_import/presentation/image_import_controller.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
 import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
+import 'package:reading_assistant/features/listening/presentation/reading_page_surface.dart';
 
 import '../image_import/test_doubles.dart';
 import '../library/fake_reading_positions.dart';
@@ -58,6 +60,172 @@ Future<void> _createText(WidgetTester tester) async {
 }
 
 void main() {
+  for (final brightness in Brightness.values) {
+    testWidgets('book surface stays readable and bounded in $brightness', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      preferences.setPageView(ReadingPageView.book);
+      preferences.setTextSize(ReadingTextSize.extraLarge);
+      preferences.setLineSpacing(ReadingLineSpacing.wide);
+      await tester.pumpWidget(
+        ReadingPreferencesScope(
+          preferences: preferences,
+          child: MaterialApp(
+            theme: ThemeData(brightness: brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(1.7)),
+              child: child!,
+            ),
+            home: _import(FakeSpeechService()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Metin yaz veya yapıştır'));
+      await tester.tap(find.text('Metin yaz veya yapıştır'));
+      await tester.pumpAndSettle();
+      final field = find.byKey(const ValueKey('import-text'));
+      await tester.enterText(field, List.filled(30, 'Uzun metin.').join('\n'));
+      await tester.pumpAndSettle();
+      final surface = find.ancestor(
+        of: field,
+        matching: find.byType(ReadingPageSurface),
+      );
+      final container = tester.widget<Container>(
+        find.descendant(of: surface, matching: find.byType(Container)).first,
+      );
+      final background = (container.decoration! as BoxDecoration).color!;
+      final context = tester.element(field);
+      final color = Theme.of(context).textTheme.bodyLarge!.color!;
+      final a = color.computeLuminance();
+      final b = background.computeLuminance();
+      expect(
+        ((a > b ? a : b) + 0.05) / ((a < b ? a : b) + 0.05),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(tester.getSize(field).width, greaterThan(200));
+      final scroll = tester
+          .widget<SingleChildScrollView>(
+            find.byKey(const ValueKey('content-scroll')),
+          )
+          .controller!;
+      expect(scroll.position.maxScrollExtent, greaterThan(0));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('book surface limits wide lines and plain surface does not', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Future<void> show(ReadingPageView view) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReadingPageSurface(
+              view: view,
+              child: const TextField(key: ValueKey('field')),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await show(ReadingPageView.plain);
+    expect(tester.getSize(find.byKey(const ValueKey('field'))).width, 1200);
+    await show(ReadingPageView.book);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('field'))).width,
+      lessThan(720),
+    );
+  });
+
+  testWidgets(
+    'book surface applies to import, page and batch drafts without losing selection',
+    (tester) async {
+      final preferences = ReadingPreferences(store: FakePreferencesStore());
+      await preferences.load();
+      final batch = ImageImportController(
+        pickerService: FakeImagePickerService(),
+        textRecognitionService: FakeTextRecognitionService((_) async => ''),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: fileImageProvider,
+      );
+      addTearDown(batch.dispose);
+      for (final mode in ['home', 'page', 'batch']) {
+        await tester.pumpWidget(
+          _app(
+            preferences,
+            mode == 'batch'
+                ? ImageImportScreen(
+                    batchController: batch,
+                    speechService: FakeSpeechService(),
+                  )
+                : _import(FakeSpeechService(), newPage: mode == 'page'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        if (mode != 'batch') {
+          await tester.tap(find.text('Metin yaz veya yapıştır'));
+          await tester.pumpAndSettle();
+        }
+        final field = find.byKey(
+          ValueKey(mode == 'page' ? 'new-page-text' : 'import-text'),
+        );
+        await tester.enterText(field, 'Taslak metni.');
+        final controller = tester.widget<TextField>(field).controller!;
+        controller.selection = const TextSelection(
+          baseOffset: 1,
+          extentOffset: 5,
+        );
+        await tester.pump();
+        final state = tester.state<EditableTextState>(
+          find.descendant(of: field, matching: find.byType(EditableText)),
+        );
+        final plainWidth = tester.getSize(field).width;
+        preferences.setPageView(ReadingPageView.book);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<ReadingPageSurface>(
+                find.ancestor(
+                  of: field,
+                  matching: find.byType(ReadingPageSurface),
+                ),
+              )
+              .view,
+          ReadingPageView.book,
+        );
+        expect(tester.getSize(field).width, lessThan(plainWidth));
+        expect(
+          tester.state<EditableTextState>(
+            find.descendant(of: field, matching: find.byType(EditableText)),
+          ),
+          same(state),
+        );
+        expect(controller.text, 'Taslak metni.');
+        expect(
+          controller.selection,
+          const TextSelection(baseOffset: 1, extentOffset: 5),
+        );
+        preferences.setPageView(ReadingPageView.plain);
+        await tester.pumpAndSettle();
+        expect(tester.getSize(field).width, closeTo(plainWidth, 0.01));
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
   testWidgets(
     'line spacing changes actual line positions on all four screens',
     (tester) async {
@@ -188,6 +356,7 @@ void main() {
       expect(find.text('Yazı boyutu'), findsOneWidget);
       expect(find.text('Metin hizalaması'), findsOneWidget);
       expect(find.text('Satır aralığı'), findsOneWidget);
+      expect(find.text('Sayfa görünümü'), findsOneWidget);
       expect(find.text('Okuma hızı'), findsNothing);
       expect(find.byKey(const ValueKey('auto-next-page')), findsNothing);
       expect(find.byKey(const ValueKey('follow-sentence')), findsNothing);
@@ -206,6 +375,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Rahat').last);
       await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('reading-page-view')),
+      );
+      await tester.tap(find.byKey(const ValueKey('reading-page-view')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kitap').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Kapat'));
       await tester.pumpAndSettle();
       final edit = find.descendant(
@@ -215,6 +391,17 @@ void main() {
       expect(tester.widget<TextField>(edit).style!.fontSize, 20);
       expect(tester.widget<TextField>(edit).textAlign, TextAlign.center);
       expect(tester.widget<TextField>(edit).style!.height, 1.75);
+      expect(
+        tester
+            .widget<ReadingPageSurface>(
+              find.ancestor(
+                of: edit,
+                matching: find.byType(ReadingPageSurface),
+              ),
+            )
+            .view,
+        ReadingPageView.book,
+      );
       await tester.tap(find.text('Düzenlemekten vazgeç'));
       await tester.pumpAndSettle();
       expect(find.text('Kaydedilmemiş değişiklikler var'), findsNothing);
@@ -243,6 +430,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('reading-line-spacing')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Geniş').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('reading-page-view')),
+      );
+      await tester.tap(find.byKey(const ValueKey('reading-page-view')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sade').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Kapat'));
       await tester.pumpAndSettle();
@@ -317,6 +511,19 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Rahat').last);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('reading-page-view')));
+    await tester.tap(find.byKey(const ValueKey('reading-page-view')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kitap').last);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ReadingPageSurface>(
+            find.ancestor(of: field, matching: find.byType(ReadingPageSurface)),
+          )
+          .view,
+      ReadingPageView.book,
+    );
     expect(tester.widget<TextField>(field).style!.fontSize, originalSize * 1.5);
     expect(tester.widget<TextField>(field).textAlign, TextAlign.justify);
     expect(tester.widget<TextField>(field).style!.height, 1.75);
@@ -426,6 +633,7 @@ void main() {
         preferences.setTextSize(ReadingTextSize.extraLarge);
         preferences.setTextAlignment(ReadingTextAlignment.right);
         preferences.setLineSpacing(ReadingLineSpacing.wide);
+        preferences.setPageView(ReadingPageView.book);
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
         expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
@@ -471,6 +679,7 @@ void main() {
         expect(reopened.textSize, ReadingTextSize.extraLarge);
         expect(reopened.textAlignment, ReadingTextAlignment.right);
         expect(reopened.lineSpacing, ReadingLineSpacing.wide);
+        expect(reopened.pageView, ReadingPageView.book);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();
         await tester.pumpWidget(
@@ -495,6 +704,7 @@ void main() {
         await preferences.load();
         preferences.setTextSize(ReadingTextSize.extraLarge);
         preferences.setLineSpacing(ReadingLineSpacing.wide);
+        preferences.setPageView(ReadingPageView.book);
         await tester.pumpWidget(
           ReadingPreferencesScope(
             preferences: preferences,
@@ -557,6 +767,7 @@ void main() {
     await preferences.load();
     preferences.setTextSize(ReadingTextSize.extraLarge);
     preferences.setLineSpacing(ReadingLineSpacing.wide);
+    preferences.setPageView(ReadingPageView.book);
     final text = List.filled(30, 'Uzun metin burada okunur.').join('\n\n');
     await tester.pumpWidget(
       ReadingPreferencesScope(

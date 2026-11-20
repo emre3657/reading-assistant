@@ -67,6 +67,7 @@ void main() {
       textSize: 'large',
       textAlignment: 'justify',
       lineSpacing: 'wide',
+      pageView: 'book',
     );
     return source.backupSnapshot();
   }
@@ -94,6 +95,33 @@ void main() {
       (await target.pages(id)).first.id,
     );
     expect((await target.loadReadingPreferences())?['line_spacing'], 'wide');
+    expect((await target.loadReadingPreferences())?['page_view'], 'book');
+  });
+
+  test('legacy and unknown page view restore with plain default', () async {
+    final backup = await populated();
+    Map<String, dynamic> fresh() =>
+        jsonDecode(utf8.decode(backup.encode())) as Map<String, dynamic>;
+    for (final legacy in [true, false]) {
+      final data = fresh();
+      final row =
+          data['data']['reading_preferences'][0] as Map<String, dynamic>;
+      if (legacy) {
+        row.remove('page_view');
+      } else {
+        row['page_view'] = 'future';
+      }
+      final parsed = BackupData.decode(
+        Uint8List.fromList(utf8.encode(jsonEncode(data))),
+      );
+      await target.restoreBackup(parsed);
+      expect((await target.loadReadingPreferences())?['page_view'], 'plain');
+      expect((await target.loadReadingPreferences())?['line_spacing'], 'wide');
+      expect(
+        await target.bookmark(parsed.tables['documents']!.single['id'] as int),
+        isNotNull,
+      );
+    }
   });
 
   test('empty target can restore a snapshot', () async {

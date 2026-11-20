@@ -43,6 +43,7 @@ const backupColumns = <String, Map<String, Type>>{
     'text_size': String,
     'text_alignment': String,
     'line_spacing': String,
+    'page_view': String,
   },
 };
 
@@ -88,17 +89,29 @@ class BackupData {
       if (value is! List) throw const FormatException('Invalid table.');
       final rows = <Map<String, Object?>>[];
       for (final item in value) {
-        if (item is! Map || item.length != entry.value.length) {
+        if (item is! Map) {
+          throw const FormatException('Invalid row.');
+        }
+        final legacyPreferences =
+            entry.key == 'reading_preferences' &&
+            !item.containsKey('page_view');
+        if (item.length != entry.value.length - (legacyPreferences ? 1 : 0)) {
           throw const FormatException('Invalid row.');
         }
         final row = <String, Object?>{};
         for (final column in entry.value.entries) {
-          final field = item[column.key];
+          final field = legacyPreferences && column.key == 'page_view'
+              ? 'plain'
+              : item[column.key];
           if ((column.value == int && field is! int) ||
               (column.value == String && field is! String)) {
             throw const FormatException('Invalid field.');
           }
           row[column.key] = field;
+        }
+        if (entry.key == 'reading_preferences' &&
+            !{'plain', 'book'}.contains(row['page_view'])) {
+          row['page_view'] = 'plain';
         }
         rows.add(row);
       }

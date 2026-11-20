@@ -46,6 +46,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - İlk ekrandan veya sayfa ekleme ekranından birden fazla galeri görseli seçip taslakları sıralama, sayfa bazında düzenleme ve sırayla OCR sonrası birlikte kaydetme.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Sayfa düzenleme taslağını onayla temizleme; kayıt ayrıca kaydedilene kadar değişmez.
+- Genel görünüm ayarındaki “Sayfa görünümü” Sade veya kâğıt tonlu Kitap olarak tüm ana metinlere uygulanır ve cihazda saklanır.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
 - Her içeriğe bir manuel ayraç konabilir; okumaya devam etmek ayracı taşımaz. “Ayraca git” okumayı başlatmadan işaretli cümleyi açar. İşaretli sayfanın metni değişirse ayraç sayfanın başına döner.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
@@ -55,7 +56,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.
 - Ana ekrandaki “Yedekle ve geri yükle” menüsüyle belgeleri, kategorileri, sayfa sırasını, okuma konumlarını, ayraçları ve genel tercihleri yerel dosyaya yedekleme.
 
-Yedek UTF-8 JSON biçimindedir: kökte `format: reading-assistant`, `version: 1` ve `data` bulunur. `data` içinde `categories`, `documents`, `pages`, `reading_positions`, `bookmarks` ve `reading_preferences` kayıt dizileri SQLite alan adlarıyla yer alır; kategori kimlikleri metin, belge ve sayfa kimlikleri, sayfa sırası ve oluşturma zamanı (UTC milisaniye) sayısaldır. Bu sürüm yalnızca 1 numaralı biçimi geri yükler. Geri yükleme mevcut kayıtları ve ayarları yedeğin içeriğiyle değiştirir. Kaydedilmemiş taslaklar ve geçici OCR görselleri yedeğe alınmaz; kayıtlı içeriklerde kalıcı görsel dosyası bulunmaz. Yedek şifrelenmez; dosyayı güvenli bir yerde saklayın.
+Yedek UTF-8 JSON biçimindedir: kökte `format: reading-assistant`, `version: 1` ve `data` bulunur. `data` içinde `categories`, `documents`, `pages`, `reading_positions`, `bookmarks` ve `reading_preferences` kayıt dizileri SQLite alan adlarıyla yer alır; kategori kimlikleri metin, belge ve sayfa kimlikleri, sayfa sırası ve oluşturma zamanı (UTC milisaniye) sayısaldır. Sayfa görünümü alanı bulunmayan eski yedeklerde Sade kullanılır. Bu sürüm yalnızca 1 numaralı biçimi geri yükler. Geri yükleme mevcut kayıtları ve ayarları yedeğin içeriğiyle değiştirir. Kaydedilmemiş taslaklar ve geçici OCR görselleri yedeğe alınmaz; kayıtlı içeriklerde kalıcı görsel dosyası bulunmaz. Yedek şifrelenmez; dosyayı güvenli bir yerde saklayın.
 
 Son sayfa silindiğinde içerik kaydı korunur ve yeniden sayfa eklenebilir. Silme sonrasında kalan sayfalar ekranda kesintisiz numaralanır.
 

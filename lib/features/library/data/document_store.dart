@@ -240,6 +240,7 @@ class DocumentStore {
     required String textSize,
     required String textAlignment,
     required String lineSpacing,
+    String pageView = 'plain',
   }) async {
     final database = await _database;
     await database.insert('reading_preferences', {
@@ -250,6 +251,7 @@ class DocumentStore {
       'text_size': textSize,
       'text_alignment': textAlignment,
       'line_spacing': lineSpacing,
+      'page_view': pageView,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 

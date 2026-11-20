@@ -158,6 +158,9 @@ void main() {
           textAlignment: 'center',
           lineSpacing: 'wide',
         );
+        await old.execute(
+          'ALTER TABLE reading_preferences DROP COLUMN page_view',
+        );
         final preferences = await oldStore.loadReadingPreferences();
         await old.close();
         await expectLater(
@@ -201,7 +204,10 @@ void main() {
         );
         final writer = DocumentStore(databaseOpener: () async => upgraded);
         expect((await writer.readingPosition(id))?.sentenceIndex, 1);
-        expect(await writer.loadReadingPreferences(), preferences);
+        expect(await writer.loadReadingPreferences(), {
+          ...?preferences,
+          'page_view': 'plain',
+        });
         expect(await writer.bookmark(id), isNull);
         await writer.saveBookmark(
           documentId: id,

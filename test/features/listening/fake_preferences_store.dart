@@ -25,6 +25,7 @@ class FakePreferencesStore extends DocumentStore {
     required String textSize,
     required String textAlignment,
     required String lineSpacing,
+    String pageView = 'plain',
   }) async {
     saveCalls++;
     await saveGate?.future;
@@ -36,6 +37,7 @@ class FakePreferencesStore extends DocumentStore {
       'text_size': textSize,
       'text_alignment': textAlignment,
       'line_spacing': lineSpacing,
+      'page_view': pageView,
     };
   }
 }

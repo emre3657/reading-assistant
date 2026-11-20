@@ -36,6 +36,14 @@ enum ReadingLineSpacing {
   final double extraHeight;
 }
 
+enum ReadingPageView {
+  plain('Sade'),
+  book('Kitap');
+
+  const ReadingPageView(this.label);
+  final String label;
+}
+
 double? readingLineHeight(TextStyle? base, ReadingLineSpacing spacing) =>
     spacing == ReadingLineSpacing.normal
     ? base?.height
@@ -78,6 +86,7 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingTextSize _textSize = ReadingTextSize.normal;
   ReadingTextAlignment _textAlignment = ReadingTextAlignment.start;
   ReadingLineSpacing _lineSpacing = ReadingLineSpacing.normal;
+  ReadingPageView _pageView = ReadingPageView.plain;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -90,6 +99,7 @@ class ReadingPreferences extends ChangeNotifier {
   ReadingTextSize get textSize => _textSize;
   ReadingTextAlignment get textAlignment => _textAlignment;
   ReadingLineSpacing get lineSpacing => _lineSpacing;
+  ReadingPageView get pageView => _pageView;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -131,6 +141,11 @@ class ReadingPreferences extends ChangeNotifier {
             .where((v) => v.name == row?['line_spacing'])
             .firstOrNull ??
         ReadingLineSpacing.normal;
+    _pageView =
+        ReadingPageView.values
+            .where((v) => v.name == row?['page_view'])
+            .firstOrNull ??
+        ReadingPageView.plain;
   }
 
   /// Call only after pending writes have completed and the restore commits.
@@ -185,6 +200,13 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setPageView(ReadingPageView value) {
+    if (!_ready || _pageView == value) return;
+    _pageView = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
@@ -192,6 +214,7 @@ class ReadingPreferences extends ChangeNotifier {
     final textSize = _textSize.name;
     final textAlignment = _textAlignment.name;
     final lineSpacing = _lineSpacing.name;
+    final pageView = _pageView.name;
     _writeTail = _writeTail.then((_) async {
       try {
         await _store.saveReadingPreferences(
@@ -201,6 +224,7 @@ class ReadingPreferences extends ChangeNotifier {
           textSize: textSize,
           textAlignment: textAlignment,
           lineSpacing: lineSpacing,
+          pageView: pageView,
         );
         _saveFailureReported = false;
       } catch (_) {

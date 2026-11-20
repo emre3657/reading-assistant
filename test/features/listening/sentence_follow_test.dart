@@ -112,6 +112,8 @@ void main() {
     expect(scroll.offset, greaterThan(sizeOffset));
     preferences.setTextAlignment(ReadingTextAlignment.center);
     await tester.pumpAndSettle();
+    preferences.setPageView(ReadingPageView.book);
+    await tester.pumpAndSettle();
     final editable = tester
         .state<EditableTextState>(find.byType(EditableText))
         .renderEditable;
@@ -152,6 +154,7 @@ void main() {
     preferences.setTextSize(ReadingTextSize.extraLarge);
     preferences.setTextAlignment(ReadingTextAlignment.right);
     preferences.setLineSpacing(ReadingLineSpacing.wide);
+    preferences.setPageView(ReadingPageView.book);
     await tester.pumpAndSettle();
     expect(scroll.offset, before);
     expect(find.text('Okunan cümleye dön'), findsOneWidget);
