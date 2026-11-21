@@ -44,10 +44,9 @@ class MultiPageScreen extends StatefulWidget {
 }
 
 class _PageDraft {
-  _PageDraft(this.id, this.controller, {this.borrowed = false});
+  _PageDraft(this.id, this.controller);
   final int id;
   final ImageImportController controller;
-  final bool borrowed;
 }
 
 class _MultiPageScreenState extends State<MultiPageScreen> {
@@ -73,10 +72,10 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
     super.initState();
     _pages = [];
     if (widget.initialController case final controller?) {
-      final page = _PageDraft(_nextId++, controller, borrowed: true);
+      final page = _PageDraft(_nextId++, controller.copyForBatch());
       _pages.add(page);
-      _validationStarted = controller.hasEncounteredEmptyOcr;
-      controller.addListener(_changed);
+      _validationStarted = page.controller.hasEncounteredEmptyOcr;
+      page.controller.addListener(_changed);
     }
     _appendFiles(widget.files);
   }
@@ -162,7 +161,7 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
   void dispose() {
     for (final page in _pages) {
       page.controller.removeListener(_changed);
-      if (!page.borrowed) page.controller.dispose();
+      page.controller.dispose();
     }
     super.dispose();
   }
@@ -195,7 +194,7 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
         _pages.isEmpty ||
         await _confirm(
           'Taslaklardan çıkılsın mı?',
-          _pages.any((page) => page.borrowed)
+          widget.initialController != null
               ? 'Eklenen sayfa taslakları kaybolacak; ilk sayfanın taslağı korunacak.'
               : 'Kaydedilmemiş sayfa taslakları kaybolacak.',
           'Kaydetmeden çık',
@@ -224,11 +223,7 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
       _refreshEmptyPages();
     });
     page.controller.removeListener(_changed);
-    if (page.borrowed) {
-      page.controller.removeImage(expectedRevision: page.controller.revision);
-    } else {
-      page.controller.dispose();
-    }
+    page.controller.dispose();
   }
 
   Future<void> _open(_PageDraft page) async {

@@ -495,9 +495,6 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         ),
       ),
     );
-    if (initialController != null && mounted) {
-      _controller.textController.attachListening(_listening);
-    }
     if (!mounted || savedCount == null) return;
     if (_addingPage) {
       await _closePage(savedCount);

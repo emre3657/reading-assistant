@@ -139,6 +139,39 @@ class ImageImportController extends ChangeNotifier {
     return text.isNotEmpty && text != _generatedText;
   }
 
+  /// Copies a settled draft without sharing its editable state or listeners.
+  ImageImportController copyForBatch() {
+    if (_disposed || isBusy) {
+      throw StateError('Cannot copy a disposed or busy image draft.');
+    }
+    final copy =
+        ImageImportController(
+            pickerService: pickerService,
+            textRecognitionService: textRecognitionService,
+            rotationService: rotationService,
+            previewImageBuilder: previewImageBuilder,
+          )
+          .._selection = _selection
+          .._quarterTurns = _quarterTurns
+          .._lastSelectionId = _lastSelectionId
+          .._revision = _revision
+          .._recognitionId = _recognitionId
+          .._hasEncounteredEmptyOcr = _hasEncounteredEmptyOcr
+          .._generatedText = _generatedText
+          .._ocrResult = _ocrResult == null
+              ? null
+              : OcrResult(
+                  _ocrResult!.text,
+                  lines: List.unmodifiable(_ocrResult!.lines),
+                )
+          .._joinLines = _joinLines;
+    copy.textController.value = textController.value;
+    copy
+      .._errorMessage = _errorMessage
+      .._infoMessage = _infoMessage;
+    return copy;
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }

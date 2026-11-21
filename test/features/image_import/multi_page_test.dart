@@ -586,13 +586,14 @@ void main() {
       (path) async => '${path.startsWith('/tmp/') ? 'a' : path} bir\niki',
     );
     final rotation = FakeImageRotationService();
+    final speech = FakeSpeechService();
     await _show(
       tester,
       ImageImportScreen(
         pickerService: picker,
         textRecognitionService: ocr,
         rotationService: rotation,
-        speechService: FakeSpeechService(),
+        speechService: speech,
         previewImageBuilder: (_) => _image,
       ),
     );
@@ -636,7 +637,308 @@ void main() {
     );
     await _tap(tester, find.text('Kaydetmeden çık'));
     expect(find.byType(MultiPageScreen), findsNothing);
+    expect(tester.widget<TextField>(_field).controller!.text, 'Elle düzeltme');
+    expect(find.textContaining('90° döndürüldü'), findsOneWidget);
+    expect(
+      tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+      false,
+    );
+    await _tap(tester, find.text('Sesli oku'));
+    expect(speech.spoken, ['Elle düzeltme']);
+    await _tap(tester, find.text('Durdur'));
+    await _tap(tester, find.text('Satırları birleştir'));
+    await _tap(tester, find.text('Metni sil ve uygula'));
     expect(tester.widget<TextField>(_field).controller!.text, 'a bir iki');
+    await _tap(tester, find.text('Temizle'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Temizle'));
+    expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
+    expect(find.text('Sesli oku'), findsNothing);
+    expect(speech.spoken, ['Elle düzeltme']);
+  });
+
+  for (final addingPage in [false, true]) {
+    testWidgets(
+      'discard restores an empty ${addingPage ? 'added page' : 'home draft'}',
+      (tester) async {
+        final picker = _SequencePicker()
+          ..cameras.addAll([XFile('a'), XFile('b')]);
+        final speech = FakeSpeechService();
+        await _show(
+          tester,
+          ImageImportScreen(
+            pickerService: picker,
+            textRecognitionService: FakeTextRecognitionService((_) async => ''),
+            rotationService: FakeImageRotationService(),
+            speechService: speech,
+            previewImageBuilder: (_) => _image,
+            onSavePage: addingPage ? (_) async {} : null,
+            onSavePages: addingPage ? (_) async {} : null,
+          ),
+        );
+        await _tap(tester, find.text('Fotoğraf çek'));
+        await _tap(tester, find.text('Metni çıkar'));
+        expect(
+          find.textContaining('Görselde metin bulunamadı'),
+          findsOneWidget,
+        );
+        await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+        await _tap(tester, find.text('Fotoğraf çek').last);
+        await _open(tester, 0);
+        await tester.enterText(_field, 'Yalnızca taslak');
+        await _back(tester);
+        await _back(tester);
+        await _tap(tester, find.text('Vazgeç'));
+        expect(_draft(0), findsOneWidget);
+        expect(_draft(1), findsOneWidget);
+        await _open(tester, 0);
+        expect(
+          tester.widget<TextField>(_field).controller!.text,
+          'Yalnızca taslak',
+        );
+        await _back(tester);
+        await _back(tester);
+        await _tap(tester, find.text('Kaydetmeden çık'));
+        expect(find.byType(MultiPageScreen), findsNothing);
+        expect(find.byType(ImagePreview), findsOneWidget);
+        expect(
+          find.textContaining('Görselde metin bulunamadı'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(ValueKey(addingPage ? 'new-page-text' : 'import-text')),
+          findsNothing,
+        );
+        expect(find.text('Sesli oku'), findsNothing);
+        if (addingPage) {
+          expect(
+            tester
+                .widget<TextButton>(find.byKey(const ValueKey('save-page')))
+                .onPressed,
+            isNull,
+          );
+        } else {
+          expect(
+            tester
+                .widget<IconButton>(
+                  find
+                      .ancestor(
+                        of: find.byTooltip('Metni kaydet'),
+                        matching: find.byType(IconButton),
+                      )
+                      .first,
+                )
+                .onPressed,
+            isNull,
+          );
+        }
+        expect(speech.spoken, isEmpty);
+      },
+    );
+  }
+
+  testWidgets('removing the first batch page leaves the single draft intact', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..cameras.addAll([XFile('a'), XFile('b')]);
+    final speech = FakeSpeechService();
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: picker,
+        textRecognitionService: FakeTextRecognitionService((_) async => 'Önce'),
+        rotationService: FakeImageRotationService(),
+        speechService: speech,
+        previewImageBuilder: (_) => _image,
+      ),
+    );
+    await _tap(tester, find.text('Fotoğraf çek'));
+    await _tap(tester, find.text('Metni çıkar'));
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek').last);
+    await _open(tester, 0);
+    await _tap(tester, find.text('Temizle'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Temizle'));
+    expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
+    expect(find.text('Sesli oku'), findsNothing);
+    await _back(tester);
+    await _tap(tester, _action(0, 'Kaldır'));
+    expect(_draft(0), findsNothing);
+    await _back(tester);
+    await _tap(tester, find.text('Kaydetmeden çık'));
+    expect(find.byType(ImagePreview), findsOneWidget);
+    expect(tester.widget<TextField>(_field).controller!.text, 'Önce');
+    await _tap(tester, find.text('Sesli oku'));
+    expect(speech.spoken, ['Önce']);
+  });
+
+  testWidgets('single to batch save appends edited pages and returns', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..cameras.addAll([XFile('a'), XFile('b')]);
+    final store = _BatchStore();
+    await _show(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.push<int>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AddPageScreen(
+                  documentId: 7,
+                  documentTitle: 'Kitap',
+                  store: store,
+                  pickerService: picker,
+                  textRecognitionService: FakeTextRecognitionService(
+                    (path) async => path,
+                  ),
+                  rotationService: FakeImageRotationService(),
+                  previewImageBuilder: (_) => _image,
+                  speechService: FakeSpeechService(),
+                ),
+              ),
+            ),
+            child: const Text('Aç'),
+          ),
+        ),
+      ),
+    );
+    await _tap(tester, find.text('Aç'));
+    await _tap(tester, find.text('Fotoğraf çek'));
+    await _tap(tester, find.text('Metni çıkar'));
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek').last);
+    await _open(tester, 0);
+    await tester.enterText(_field, 'Düzenlenen ilk sayfa');
+    await _back(tester);
+    await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
+    await _tap(tester, find.byKey(const ValueKey('save-batch')));
+    expect(store.owner, 7);
+    expect(store.texts, ['Düzenlenen ilk sayfa', 'b']);
+    expect(find.byType(AddPageScreen), findsNothing);
+    expect(find.text('Aç'), findsOneWidget);
+  });
+
+  testWidgets('after discard the restored added page is spoken and saved', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..cameras.addAll([XFile('a'), XFile('b')]);
+    final speech = FakeSpeechService();
+    String? saved;
+    await _show(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.push<int>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ImageImportScreen(
+                  pickerService: picker,
+                  textRecognitionService: FakeTextRecognitionService(
+                    (path) async => path,
+                  ),
+                  rotationService: FakeImageRotationService(),
+                  previewImageBuilder: (_) => _image,
+                  speechService: speech,
+                  pageDocumentTitle: 'Kitap',
+                  onSavePage: (text) async => saved = text,
+                  onSavePages: (_) async {},
+                ),
+              ),
+            ),
+            child: const Text('Aç'),
+          ),
+        ),
+      ),
+    );
+    await _tap(tester, find.text('Aç'));
+    await _tap(tester, find.text('Fotoğraf çek'));
+    await _tap(tester, find.text('Metni çıkar'));
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek').last);
+    await _open(tester, 0);
+    await tester.enterText(_field, 'Terk edilen değişiklik');
+    await _back(tester);
+    await _back(tester);
+    await _tap(tester, find.text('Kaydetmeden çık'));
+    final text = tester
+        .widget<TextField>(find.byKey(const ValueKey('new-page-text')))
+        .controller!
+        .text;
+    expect(text, 'a');
+    await _tap(tester, find.text('Sesli oku'));
+    expect(speech.spoken, [text]);
+    await _tap(tester, find.text('Durdur'));
+    await _tap(tester, find.byKey(const ValueKey('save-page')));
+    expect(saved, text);
+    expect(find.text('Aç'), findsOneWidget);
+  });
+
+  testWidgets('single to batch save creates a document and returns home', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..cameras.addAll([XFile('a'), XFile('b')]);
+    final store = _BatchStore();
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: picker,
+        textRecognitionService: FakeTextRecognitionService(
+          (path) async => path,
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+        store: store,
+      ),
+    );
+    await _tap(tester, find.text('Fotoğraf çek'));
+    await _tap(tester, find.text('Metni çıkar'));
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek').last);
+    await _open(tester, 0);
+    await tester.enterText(_field, 'Toplu düzenleme');
+    await _back(tester);
+    await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
+    await _tap(tester, find.byKey(const ValueKey('save-batch')));
+    await tester.enterText(find.byType(TextFormField).first, 'Belge');
+    await _tap(tester, find.text('2 sayfayı ekle').last);
+    expect(store.texts, ['Toplu düzenleme', 'b']);
+    expect(find.byType(MultiPageScreen), findsNothing);
+    expect(find.text('Sayfalar kaydedildi.'), findsOneWidget);
+    expect(tester.widget<TextField>(_field).controller!.text, 'a');
+  });
+
+  testWidgets('late batch OCR does not change the discarded original', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..cameras.addAll([XFile('a'), XFile('b')]);
+    final pending = Completer<String>();
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: picker,
+        textRecognitionService: FakeTextRecognitionService(
+          (_) => pending.future,
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _tap(tester, find.text('Fotoğraf çek'));
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek').last);
+    await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
+    await _back(tester);
+    await _tap(tester, find.text('Kaydetmeden çık'));
+    pending.complete('Geç gelen metin');
+    await tester.pumpAndSettle();
+    expect(find.byType(MultiPageScreen), findsNothing);
+    expect(_field, findsNothing);
+    expect(find.text('Sesli oku'), findsNothing);
+    expect(find.byType(ImagePreview), findsOneWidget);
   });
 
   testWidgets(

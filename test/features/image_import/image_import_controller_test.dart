@@ -82,6 +82,40 @@ void main() {
     expect(c.recognitionId, 2);
   });
 
+  test(
+    'batch copy preserves OCR and edits without sharing draft state',
+    () async {
+      ocr = FakeTextRecognitionService((_) async => 'bir\niki');
+      final original = await withImage();
+      addTearDown(original.dispose);
+      original.rotate(1);
+      await original.extractText(expectedRevision: original.revision);
+      original.setJoinLines(false, expectedRevision: original.revision);
+      original.textController.value = const TextEditingValue(
+        text: 'Düzenleme',
+        selection: TextSelection(baseOffset: 1, extentOffset: 4),
+      );
+      final copy = original.copyForBatch();
+      addTearDown(copy.dispose);
+      expect(copy.selection?.id, original.selection?.id);
+      expect(copy.selection?.file.path, '/a.jpg');
+      expect(copy.quarterTurns, 1);
+      expect(copy.textController.value, original.textController.value);
+      expect(copy.joinLines, isFalse);
+      expect(copy.hasEditedText, isTrue);
+
+      copy.setJoinLines(true, expectedRevision: copy.revision);
+      expect(copy.textController.text, 'bir iki');
+      copy.applySelectedFile(XFile('/replacement.jpg'));
+      expect(original.selection?.file.path, '/a.jpg');
+      expect(original.quarterTurns, 1);
+      expect(original.textController.text, 'Düzenleme');
+      expect(original.joinLines, isFalse);
+      original.setJoinLines(true, expectedRevision: original.revision);
+      expect(original.textController.text, 'bir iki');
+    },
+  );
+
   test('detects edits and notifies only when the state flips', () async {
     final c = await withImage();
     addTearDown(c.dispose);
