@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/image_import/presentation/multi_page_screen.dart';
+import 'package:reading_assistant/features/image_import/presentation/widgets/image_preview.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
@@ -21,6 +25,25 @@ final _image = MemoryImage(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   ),
 );
+
+class _DelayedImage extends ImageProvider<_DelayedImage> {
+  final ready = Completer<ui.Image>();
+  final Uint8List bytes = Uint8List.fromList(
+    img.encodePng(img.Image(width: 20, height: 60)),
+  );
+
+  @override
+  Future<_DelayedImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    _DelayedImage key,
+    ImageDecoderCallback decode,
+  ) => OneFrameImageStreamCompleter(
+    ready.future.then((image) => ImageInfo(image: image.clone())),
+  );
+}
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
@@ -125,6 +148,139 @@ Future<void> _back(WidgetTester tester) async {
 }
 
 void main() {
+  for (final saveFirst in [false, true]) {
+    testWidgets(
+      'first ${saveFirst ? 'save' : 'page open'} reveals error after image layout',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 560);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final image = _DelayedImage();
+        final decoded = await tester.runAsync(() async {
+          final codec = await ui.instantiateImageCodec(image.bytes);
+          final frame = await codec.getNextFrame();
+          codec.dispose();
+          return frame.image;
+        });
+        addTearDown(decoded!.dispose);
+        await _show(
+          tester,
+          ImageImportScreen(
+            pickerService: FakeImagePickerService(
+              onPickMultiple: () async => [XFile('a'), XFile('b')],
+            ),
+            textRecognitionService: FakeTextRecognitionService(
+              (path) async => path,
+            ),
+            rotationService: FakeImageRotationService(),
+            speechService: FakeSpeechService(),
+            previewImageBuilder: (_) => image,
+          ),
+        );
+        await _tap(tester, find.text('Galeriden görsel seç'));
+        if (saveFirst) {
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('save-batch')),
+            200,
+          );
+          await _tap(tester, find.byKey(const ValueKey('save-batch')));
+        } else {
+          await _open(tester, 0);
+        }
+        final error = find.text(
+          'Bu sayfanın metni boş. Metni çıkarın veya yazın.',
+        );
+        expect(error, findsOneWidget);
+        expect(tester.testTextInput.isVisible, isFalse);
+        image.ready.complete(decoded);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getSize(find.byType(ImagePreview)).height,
+          greaterThan(500),
+        );
+        expect(error.hitTestable(), findsOneWidget);
+        expect(tester.testTextInput.isVisible, isFalse);
+      },
+    );
+  }
+
+  testWidgets('manual scroll cancels pending validation scroll', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 560);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final image = _DelayedImage();
+    final decoded = await tester.runAsync(() async {
+      final codec = await ui.instantiateImageCodec(image.bytes);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      return frame.image;
+    });
+    addTearDown(decoded!.dispose);
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a')],
+        pickerService: FakeImagePickerService(),
+        textRecognitionService: FakeTextRecognitionService(
+          (path) async => path,
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _open(tester, 0);
+    final scroll = tester
+        .widget<SingleChildScrollView>(
+          find.byKey(const ValueKey('content-scroll')),
+        )
+        .controller!;
+    await tester.drag(
+      find.byKey(const ValueKey('content-scroll')),
+      const Offset(0, -100),
+    );
+    await tester.pumpAndSettle();
+    expect(scroll.offset, greaterThan(0));
+    final offset = scroll.offset;
+    image.ready.complete(decoded);
+    await tester.pumpAndSettle();
+    expect(scroll.offset, offset);
+    expect(tester.testTextInput.isVisible, isFalse);
+  });
+
+  testWidgets('preview failure still reveals validation error', (tester) async {
+    tester.view.physicalSize = const Size(320, 560);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final image = _DelayedImage();
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a')],
+        pickerService: FakeImagePickerService(),
+        textRecognitionService: FakeTextRecognitionService(
+          (path) async => path,
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _open(tester, 0);
+    image.ready.completeError(StateError('image unavailable'));
+    await tester.pumpAndSettle();
+    expect(
+      find
+          .text('Bu sayfanın metni boş. Metni çıkarın veya yazın.')
+          .hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('empty OCR notice follows the edited page text', (tester) async {
     final ocr = FakeTextRecognitionService((_) async => '');
     await _show(
@@ -197,7 +353,7 @@ void main() {
     expect(ocr.paths, ['a', 'b', 'a']);
   });
 
-  testWidgets('OCR in an unvalidated page activates blank validation', (
+  testWidgets('OCR activates batch validation and retains preview validation', (
     tester,
   ) async {
     final ocr = FakeTextRecognitionService((_) async => '');
@@ -216,7 +372,7 @@ void main() {
     final previewError = find.text(
       'Bu sayfanın metni boş. Metni çıkarın veya yazın.',
     );
-    expect(previewError, findsNothing);
+    expect(previewError, findsOneWidget);
     await _tap(tester, find.text('Metni çıkar'));
     expect(previewError, findsOneWidget);
     expect(find.textContaining('Görselde metin bulunamadı'), findsOneWidget);
@@ -652,6 +808,14 @@ void main() {
     tester.platformDispatcher.textScaleFactorTestValue = 2;
     addTearDown(tester.view.reset);
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final image = _DelayedImage();
+    final decoded = await tester.runAsync(() async {
+      final codec = await ui.instantiateImageCodec(image.bytes);
+      final frame = await codec.getNextFrame();
+      codec.dispose();
+      return frame.image;
+    });
+    addTearDown(decoded!.dispose);
     await _show(
       tester,
       MultiPageScreen(
@@ -661,7 +825,7 @@ void main() {
           (path) async => path,
         ),
         rotationService: FakeImageRotationService(),
-        previewImageBuilder: (_) => _image,
+        previewImageBuilder: (_) => image,
         speechService: FakeSpeechService(),
       ),
     );
@@ -671,6 +835,8 @@ void main() {
     );
     await _tap(tester, find.byKey(const ValueKey('save-batch')));
     final error = find.text('Bu sayfanın metni boş. Metni çıkarın veya yazın.');
+    image.ready.complete(decoded);
+    await tester.pumpAndSettle();
     expect(error.hitTestable(), findsOneWidget);
     expect(tester.testTextInput.isVisible, isFalse);
     expect(tester.takeException(), isNull);

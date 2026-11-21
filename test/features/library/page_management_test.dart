@@ -669,6 +669,7 @@ void main() {
     await _show(tester, store, onUpdated: () => updates++);
     await _add(tester);
     await tester.enterText(_newText, 'Üçüncü\n\nsayfa.');
+    await tester.pump();
     await tester.tap(_savePage);
     await tester.pumpAndSettle();
     expect(store.appendedDocumentId, 7);
@@ -737,9 +738,9 @@ void main() {
     await _show(tester, store);
     await _add(tester);
     await tester.enterText(_newText, ' \n ');
-    await tester.tap(_savePage);
     await tester.pumpAndSettle();
-    expect(find.text('Sayfa metni boş olamaz.'), findsOneWidget);
+    expect(tester.widget<TextButton>(_savePage).onPressed, isNull);
+    expect(find.text('Sayfa metni boş olamaz.'), findsNothing);
     expect(store.appendCalls, 0);
   });
 
@@ -750,6 +751,7 @@ void main() {
     await _show(tester, store);
     await _add(tester);
     await tester.enterText(_newText, 'Korunan taslak.');
+    await tester.pump();
     await tester.tap(_savePage);
     await tester.pumpAndSettle();
     expect(find.textContaining('Sayfa eklenemedi'), findsOneWidget);
@@ -804,6 +806,7 @@ void main() {
     await _show(tester, store);
     await _add(tester);
     await tester.enterText(_newText, 'Taslak.');
+    await tester.pump();
     await tester.tap(_savePage);
     await tester.pump();
     expect(tester.widget<TextButton>(_savePage).onPressed, isNull);

@@ -11,11 +11,13 @@ class ImagePreview extends StatefulWidget {
     super.key,
     required this.image,
     required this.onError,
+    this.onReady,
     this.quarterTurns = 0,
   });
 
   final ImageProvider image;
   final VoidCallback onError;
+  final VoidCallback? onReady;
   final int quarterTurns;
 
   @override
@@ -24,6 +26,15 @@ class ImagePreview extends StatefulWidget {
 
 class _ImagePreviewState extends State<ImagePreview> {
   bool _errorReported = false;
+  bool _readyReported = false;
+
+  void _reportReady() {
+    if (_readyReported) return;
+    _readyReported = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onReady?.call();
+    });
+  }
 
   void _reportError() {
     if (_errorReported) return;
@@ -53,6 +64,10 @@ class _ImagePreviewState extends State<ImagePreview> {
             ),
             fit: BoxFit.contain,
             semanticLabel: 'Seçilen görselin önizlemesi',
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (frame != null || wasSynchronouslyLoaded) _reportReady();
+              return child;
+            },
             errorBuilder: (context, error, stackTrace) {
               _reportError();
               return const SizedBox.shrink();

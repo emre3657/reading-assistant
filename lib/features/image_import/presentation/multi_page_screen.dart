@@ -238,7 +238,9 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
         builder: (_) => ImageImportScreen(
           batchController: page.controller,
           batchPageNumber: _pages.indexOf(page) + 1,
-          batchTextValidated: _validationStarted,
+          batchTextValidated:
+              _validationStarted ||
+              page.controller.textController.text.trim().isEmpty,
           pickerService: widget.pickerService,
           textRecognitionService: widget.textRecognitionService,
           rotationService: widget.rotationService,

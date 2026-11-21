@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
+import 'package:reading_assistant/features/image_import/presentation/widgets/image_preview.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/image_import/services/ocr_result.dart';
 import 'package:reading_assistant/features/image_import/services/text_recognition_service.dart';
@@ -101,6 +102,80 @@ Future<void> _open(WidgetTester tester, _Store store, _Ocr ocr) async {
 }
 
 void main() {
+  testWidgets('single page validation follows edits and clear', (tester) async {
+    final store = _Store();
+    await _open(tester, store, _Ocr());
+    tester.view.physicalSize = const Size(320, 560);
+    await tester.pumpAndSettle();
+    final save = find.byKey(const ValueKey('save-page'));
+    final error = find.text('Sayfa metni boş olamaz.');
+    expect(tester.widget<TextButton>(save).onPressed, isNull);
+    expect(error, findsNothing);
+
+    await tester.ensureVisible(find.text('Metin yaz veya yapıştır'));
+    await tester.tap(find.text('Metin yaz veya yapıştır'));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('new-page-text'));
+    await tester.enterText(field, 'Taslak');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextButton>(save).onPressed, isNotNull);
+    final focus = FocusManager.instance.primaryFocus;
+
+    await tester.enterText(field, '   ');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextButton>(save).onPressed, isNull);
+    expect(error.hitTestable(), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus, same(focus));
+    final scroll = tester
+        .widget<SingleChildScrollView>(
+          find.byKey(const ValueKey('content-scroll')),
+        )
+        .controller!;
+    scroll.jumpTo(0);
+    await tester.pumpAndSettle();
+    final offset = scroll.offset;
+    final controller = tester.widget<TextField>(field).controller!;
+    controller.text = '  ';
+    await tester.pumpAndSettle();
+    expect(scroll.offset, offset);
+
+    await tester.enterText(field, 'Yeni metin');
+    await tester.pumpAndSettle();
+    expect(error, findsNothing);
+    expect(tester.widget<TextButton>(save).onPressed, isNotNull);
+    await tester.ensureVisible(find.text('Temizle'));
+    await tester.tap(find.text('Temizle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Temizle'));
+    await tester.pumpAndSettle();
+    expect(error.hitTestable(), findsOneWidget);
+    expect(tester.widget<TextButton>(save).onPressed, isNull);
+    expect(store.calls, 0);
+  });
+
+  testWidgets('empty page error is below the image after OCR text is deleted', (
+    tester,
+  ) async {
+    await _open(tester, _Store(), _Ocr());
+    tester.view.physicalSize = const Size(320, 560);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Fotoğraf çek'));
+    await tester.tap(find.text('Fotoğraf çek'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Metni çıkar'));
+    await tester.tap(find.text('Metni çıkar'));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('new-page-text'));
+    await tester.enterText(field, '');
+    await tester.pumpAndSettle();
+    final error = find.text('Sayfa metni boş olamaz.');
+    expect(error.hitTestable(), findsOneWidget);
+    expect(
+      tester.getTopLeft(error).dy,
+      greaterThan(tester.getBottomLeft(find.byType(ImagePreview)).dy),
+    );
+  });
+
   testWidgets('offers gallery and manual entry in one screen', (tester) async {
     await _open(tester, _Store(), _Ocr());
     expect(find.text('Galeriden görsel seç'), findsOneWidget);
@@ -120,9 +195,21 @@ void main() {
     await tester.tap(find.text('Fotoğraf çek'));
     await tester.pumpAndSettle();
     expect(ocr.calls, 0);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(const ValueKey('save-page')))
+          .onPressed,
+      isNull,
+    );
     await tester.tap(find.text('Metni çıkar'));
     await tester.pumpAndSettle();
     expect(ocr.calls, 1);
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(const ValueKey('save-page')))
+          .onPressed,
+      isNotNull,
+    );
     await tester.tap(find.byKey(const ValueKey('save-page')));
     await tester.pumpAndSettle();
     expect(store.owner, 7);
