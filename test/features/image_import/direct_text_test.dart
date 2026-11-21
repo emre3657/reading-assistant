@@ -14,7 +14,12 @@ class _Picker extends ImagePickerService {
   @override
   bool get canRecoverLostImage => false;
   @override
-  Future<XFile?> pickFromGallery() async => result;
+  Future<XFile?> pickFromGallery({bool recoverToHome = true}) async => result;
+  @override
+  Future<List<XFile>> pickMultipleFromGallery({
+    required bool recoverToHome,
+    int? limit,
+  }) async => [?result];
 }
 
 class _Store extends DocumentStore {

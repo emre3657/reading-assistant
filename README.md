@@ -43,7 +43,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - “Kayıtlarım” ekranında başlık arama, çoklu kategori filtresi ve oluşturma tarihine göre sıralama.
 - Kategori oluşturma, yeniden adlandırma ve kayıtları başka kategoriye taşıyarak silme.
 - Mevcut içeriğe aynı ekranda galeri/OCR veya yazma/yapıştırma yoluyla sayfa ekleme.
-- İlk ekrandan veya sayfa ekleme ekranından birden fazla galeri görseli seçip taslakları sıralama, sayfa bazında düzenleme ve sırayla OCR sonrası birlikte kaydetme.
+- İlk ekranda veya sayfa eklerken galeriden tek ya da birden fazla görsel seçme; kamera ve galeriden aynı taslağa yeni sayfalar ekleme. Bir ekleme oturumunda en fazla 20 görsel bulunur; kayıtlı belgenin toplam sayfa sayısı sınırlanmaz. Taslaklar sıralanabilir, ayrı ayrı düzenlenebilir ve sırayla OCR sonrası birlikte kaydedilebilir.
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Sayfa düzenleme taslağını onayla temizleme; kayıt ayrıca kaydedilene kadar değişmez.
 - Genel görünüm ayarındaki “Sayfa görünümü” Sade veya kâğıt tonlu Kitap olarak tüm ana metinlere uygulanır ve cihazda saklanır.
@@ -111,5 +111,6 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
 - Android, sayfa eklerken kamera açıkken uygulamayı sonlandırırsa fotoğraf yanlış içeriğe uygulanmaz; ilgili sayfada yeniden çekmek gerekir.
 - Android, mevcut içeriğe çoklu görsel seçilirken uygulamayı sonlandırırsa görseller yanlış içeriğe eklenmez; seçim ilgili içerikten tekrarlanmalıdır.
+- Android, mevcut taslağa görsel ekleme veya taslaktaki görseli değiştirme sırasında uygulamayı sonlandırırsa kaydedilmemiş taslak kurtarılamaz; işlem yeniden yapılmalıdır.
 
 Kod ve çalışma kuralları için [Copilot talimatlarına](.github/copilot-instructions.md) bakın.

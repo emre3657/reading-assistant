@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 
+const maxImagesPerSession = 20;
+
 class LostCameraPageException implements Exception {
   const LostCameraPageException();
 }
@@ -45,31 +47,52 @@ class ImagePickerService {
       defaultTargetPlatform == TargetPlatform.android;
 
   /// Opens the system photo picker. Returns null when the user cancels.
-  Future<XFile?> pickFromGallery() => _run(() {
-    // Full metadata is not needed and would request extra photo permissions.
-    return _picker().pickImage(
-      source: ImageSource.gallery,
-      requestFullMetadata: false,
-    );
+  Future<XFile?> pickFromGallery({bool recoverToHome = true}) => _run(() async {
+    File? marker;
+    if (canRecoverLostImage) {
+      marker = await _cameraMarker();
+      await marker.parent.create(recursive: true);
+      await marker.writeAsString(recoverToHome ? 'home' : 'page', flush: true);
+    }
+    try {
+      return await _picker().pickImage(
+        source: ImageSource.gallery,
+        requestFullMetadata: false,
+      );
+    } finally {
+      if (marker != null && await marker.exists()) await marker.delete();
+    }
   });
 
-  Future<List<XFile>> pickMultipleFromGallery({required bool recoverToHome}) =>
-      _run(() async {
-        File? marker;
-        if (canRecoverLostImage) {
-          marker = await _cameraMarker();
-          await marker.parent.create(recursive: true);
-          await marker.writeAsString(
-            recoverToHome ? 'multi_home' : 'multi_page',
-            flush: true,
-          );
-        }
-        try {
-          return await _picker().pickMultiImage(requestFullMetadata: false);
-        } finally {
-          if (marker != null && await marker.exists()) await marker.delete();
-        }
-      });
+  Future<List<XFile>> pickMultipleFromGallery({
+    required bool recoverToHome,
+    int? limit,
+  }) => _run(() async {
+    File? marker;
+    if (canRecoverLostImage) {
+      marker = await _cameraMarker();
+      await marker.parent.create(recursive: true);
+      await marker.writeAsString(
+        recoverToHome ? 'multi_home' : 'multi_page',
+        flush: true,
+      );
+    }
+    try {
+      if (limit == 1) {
+        final file = await _picker().pickImage(
+          source: ImageSource.gallery,
+          requestFullMetadata: false,
+        );
+        return [?file];
+      }
+      return await _picker().pickMultiImage(
+        requestFullMetadata: false,
+        limit: limit,
+      );
+    } finally {
+      if (marker != null && await marker.exists()) await marker.delete();
+    }
+  });
 
   Future<XFile?> takePhoto({required bool recoverToHome}) => _run(() async {
     File? marker;

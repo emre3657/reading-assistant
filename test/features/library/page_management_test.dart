@@ -26,11 +26,12 @@ class _NoPicker extends ImagePickerService {
   bool get canRecoverLostImage => false;
 
   @override
-  Future<XFile?> pickFromGallery() async => null;
+  Future<XFile?> pickFromGallery({bool recoverToHome = true}) async => null;
 
   @override
   Future<List<XFile>> pickMultipleFromGallery({
     required bool recoverToHome,
+    int? limit,
   }) async => multiple;
 }
 

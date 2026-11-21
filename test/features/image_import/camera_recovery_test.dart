@@ -12,6 +12,7 @@ class _Picker extends ImagePicker {
   final opened = Completer<void>();
   LostDataResponse response = LostDataResponse.empty();
   ImageSource? source;
+  int? limit;
 
   @override
   Future<XFile?> pickImage({
@@ -39,6 +40,7 @@ class _Picker extends ImagePicker {
     bool requestFullMetadata = true,
   }) async {
     expect(requestFullMetadata, isFalse);
+    this.limit = limit;
     opened.complete();
     return multiGate!.future;
   }
@@ -80,6 +82,53 @@ void main() {
       picker.gate!.complete(XFile('/camera.jpg'));
       expect((await pending)?.path, '/camera.jpg');
       expect(await marker().exists(), isFalse);
+    },
+  );
+
+  test('remaining gallery capacity is passed to the multi picker', () async {
+    picker.multiGate = Completer<List<XFile>>();
+    final pending = service.pickMultipleFromGallery(
+      recoverToHome: false,
+      limit: 7,
+    );
+    await picker.opened.future;
+    expect(picker.limit, 7);
+    expect(await marker().readAsString(), 'multi_page');
+    picker.multiGate!.complete([]);
+    await pending;
+  });
+
+  test(
+    'one remaining slot uses the single picker with an add marker',
+    () async {
+      picker.gate = Completer<XFile?>();
+      final pending = service.pickMultipleFromGallery(
+        recoverToHome: false,
+        limit: 1,
+      );
+      await picker.opened.future;
+      expect(picker.source, ImageSource.gallery);
+      expect(await marker().readAsString(), 'multi_page');
+      picker.gate!.complete(XFile('one'));
+      expect((await pending).single.path, 'one');
+    },
+  );
+
+  test(
+    'replacement gallery result is marked as belonging to a draft',
+    () async {
+      picker.gate = Completer<XFile?>();
+      final pending = service.pickFromGallery(recoverToHome: false);
+      await picker.opened.future;
+      expect(await marker().readAsString(), 'page');
+      picker.gate!.complete(null);
+      await pending;
+      picker.response = LostDataResponse(file: XFile('replacement'));
+      await marker().writeAsString('page');
+      await expectLater(
+        service.retrieveLostImage(),
+        throwsA(isA<LostCameraPageException>()),
+      );
     },
   );
 

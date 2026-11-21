@@ -78,6 +78,40 @@ class _BatchStore extends DocumentStore {
   }
 }
 
+class _SequencePicker extends FakeImagePickerService {
+  final List<List<XFile>> selections = [];
+  final List<int?> limits = [];
+  final List<XFile?> cameras = [];
+  final List<XFile?> replacements = [];
+  final List<bool> recoveryTargets = [];
+  Completer<List<XFile>>? selectionGate;
+  Object? cameraError;
+
+  @override
+  Future<List<XFile>> pickMultipleFromGallery({
+    required bool recoverToHome,
+    int? limit,
+  }) async {
+    limits.add(limit);
+    recoveryTargets.add(recoverToHome);
+    if (selectionGate case final gate?) return gate.future;
+    return selections.removeAt(0);
+  }
+
+  @override
+  Future<XFile?> takePhoto({required bool recoverToHome}) async {
+    recoveryTargets.add(recoverToHome);
+    if (cameraError case final error?) throw error;
+    return cameras.removeAt(0);
+  }
+
+  @override
+  Future<XFile?> pickFromGallery({bool recoverToHome = true}) async {
+    recoveryTargets.add(recoverToHome);
+    return replacements.removeAt(0);
+  }
+}
+
 Future<void> _open(WidgetTester tester, int id) async {
   await _tap(
     tester,
@@ -91,6 +125,318 @@ Future<void> _back(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('closing during a gallery addition ignores the late result', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..selectionGate = Completer<List<XFile>>();
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a')],
+        pickerService: picker,
+        textRecognitionService: FakeTextRecognitionService(
+          (path) async => path,
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await tester.tap(find.text('Galeriden seç'));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
+    picker.selectionGate!.complete([XFile('late')]);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home replacement uses a draft recovery target', (tester) async {
+    final picker = _SequencePicker()
+      ..selections.add([XFile('a')])
+      ..replacements.add(XFile('b'));
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: picker,
+        speechService: FakeSpeechService(),
+        previewImageBuilder: (_) => _image,
+      ),
+    );
+    await _tap(tester, find.text('Galeriden görsel seç'));
+    await _tap(tester, find.text('Görseli değiştir'));
+    expect(picker.recoveryTargets, [true, false]);
+  });
+
+  testWidgets('pending addition is locked and cancellation keeps drafts', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..selectionGate = Completer<List<XFile>>();
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a'), XFile('b')],
+        pickerService: picker,
+        textRecognitionService: FakeTextRecognitionService(
+          (path) async => path,
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await tester.tap(find.text('Galeriden seç'));
+    await tester.pump();
+    expect(
+      tester
+          .widget<OutlinedButton>(find.byKey(const ValueKey('add-draft-pages')))
+          .onPressed,
+      isNull,
+    );
+    expect(picker.limits, [18]);
+    picker.selectionGate!.complete([]);
+    await tester.pumpAndSettle();
+    expect(_draft(0), findsOneWidget);
+    expect(_draft(1), findsOneWidget);
+    expect(_draft(2), findsNothing);
+    picker.cameraError = StateError('camera');
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek'));
+    expect(
+      find.text('Görseller eklenemedi. Tekrar deneyebilirsin.'),
+      findsOneWidget,
+    );
+    expect(_draft(0), findsOneWidget);
+    expect(_draft(1), findsOneWidget);
+  });
+
+  testWidgets('gallery and camera additions preserve order and save together', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()
+      ..selections.addAll([
+        [XFile('a')],
+        [XFile('c'), XFile('d')],
+      ])
+      ..cameras.add(XFile('b'))
+      ..replacements.add(XFile('replacement'));
+    final store = _BatchStore();
+    final ocr = FakeTextRecognitionService((path) async => path);
+    await _show(
+      tester,
+      AddPageScreen(
+        documentId: 7,
+        documentTitle: 'Kitap',
+        store: store,
+        pickerService: picker,
+        textRecognitionService: ocr,
+        rotationService: FakeImageRotationService(),
+        speechService: FakeSpeechService(),
+        previewImageBuilder: (_) => _image,
+      ),
+    );
+    await _tap(tester, find.text('Galeriden görsel seç'));
+    expect(find.byType(MultiPageScreen), findsNothing);
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek').last);
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Galeriden seç'));
+    expect(picker.limits, [20, 18]);
+    await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
+    expect(ocr.paths, ['a', 'b', 'c', 'd']);
+    await _open(tester, 1);
+    await _tap(tester, find.text('Görseli değiştir'));
+    await _tap(tester, find.text('Metni çıkar'));
+    await _back(tester);
+    await _tap(tester, _action(3, 'Yukarı'));
+    await _tap(tester, find.byKey(const ValueKey('save-batch')));
+    expect(store.owner, 7);
+    expect(store.texts, ['a', 'replacement', 'd', 'c']);
+    expect(picker.recoveryTargets, [false, false, false, false]);
+  });
+
+  testWidgets('empty batch accepts a new page after removal', (tester) async {
+    final picker = _SequencePicker()..cameras.add(XFile('new'));
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a')],
+        pickerService: picker,
+        textRecognitionService: FakeTextRecognitionService(
+          (path) async => path,
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _tap(tester, _action(0, 'Kaldır'));
+    expect(find.text('Henüz sayfa yok. Sayfa ekleyebilirsin.'), findsOneWidget);
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek'));
+    expect(_draft(1), findsOneWidget);
+  });
+
+  testWidgets('camera draft survives adding another camera page', (
+    tester,
+  ) async {
+    final picker = _SequencePicker()..cameras.addAll([XFile('a'), XFile('b')]);
+    final ocr = FakeTextRecognitionService(
+      (path) async => '${path.startsWith('/tmp/') ? 'a' : path} bir\niki',
+    );
+    final rotation = FakeImageRotationService();
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: picker,
+        textRecognitionService: ocr,
+        rotationService: rotation,
+        speechService: FakeSpeechService(),
+        previewImageBuilder: (_) => _image,
+      ),
+    );
+    await _tap(tester, find.text('Fotoğraf çek'));
+    await _tap(tester, find.text('Sağa döndür'));
+    await _tap(tester, find.text('Metni çıkar'));
+    await _tap(tester, find.text('Satırları birleştir'));
+    await tester.enterText(_field, 'Elle düzeltme');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    tester.widget<TextField>(_field).controller!.selection =
+        const TextSelection(baseOffset: 2, extentOffset: 6);
+    await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+    await _tap(tester, find.text('Fotoğraf çek').last);
+    expect(_draft(0), findsOneWidget);
+    expect(_draft(1), findsOneWidget);
+    expect(picker.recoveryTargets, [true, false]);
+    await _open(tester, 0);
+    expect(tester.widget<TextField>(_field).controller!.text, 'Elle düzeltme');
+    expect(
+      tester.widget<TextField>(_field).controller!.selection,
+      const TextSelection(baseOffset: 2, extentOffset: 6),
+    );
+    expect(find.textContaining('90° döndürüldü'), findsOneWidget);
+    expect(
+      tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+      false,
+    );
+    await _tap(tester, find.text('Satırları birleştir'));
+    await _tap(tester, find.text('Metni sil ve uygula'));
+    expect(tester.widget<TextField>(_field).controller!.text, 'a bir iki');
+    await _back(tester);
+    await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
+    expect(ocr.paths, ['/tmp/rotated_1.jpg', 'b']);
+    await _back(tester);
+    expect(
+      find.text(
+        'Eklenen sayfa taslakları kaybolacak; ilk sayfanın taslağı korunacak.',
+      ),
+      findsOneWidget,
+    );
+    await _tap(tester, find.text('Kaydetmeden çık'));
+    expect(find.byType(MultiPageScreen), findsNothing);
+    expect(tester.widget<TextField>(_field).controller!.text, 'a bir iki');
+  });
+
+  testWidgets(
+    'gallery selections respect capacity and removal opens it again',
+    (tester) async {
+      final picker = _SequencePicker()
+        ..selections.addAll([
+          [for (var i = 0; i < 21; i++) XFile('$i')],
+          [for (var i = 0; i < 20; i++) XFile('$i')],
+          [XFile('extra'), XFile('overflow')],
+          [XFile('extra')],
+        ]);
+      await _show(
+        tester,
+        ImageImportScreen(
+          pickerService: picker,
+          textRecognitionService: FakeTextRecognitionService(
+            (path) async => path,
+          ),
+          rotationService: FakeImageRotationService(),
+          speechService: FakeSpeechService(),
+          previewImageBuilder: (_) => _image,
+        ),
+      );
+      await _tap(tester, find.text('Galeriden görsel seç'));
+      expect(
+        find.text('Tek seferde en fazla 20 sayfa ekleyebilirsin.'),
+        findsOneWidget,
+      );
+      expect(find.byType(MultiPageScreen), findsNothing);
+      await _tap(tester, find.text('Galeriden görsel seç'));
+      expect(find.text('20 sayfa sınırına ulaştın.'), findsOneWidget);
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const ValueKey('add-draft-pages')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.scrollUntilVisible(_action(19, 'Kaldır'), 300);
+      await _tap(tester, _action(19, 'Kaldır'));
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('add-draft-pages')),
+        -300,
+      );
+      await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+      await _tap(tester, find.text('Galeriden seç'));
+      expect(
+        find.text('Bu taslağa en fazla 1 sayfa daha ekleyebilirsin.'),
+        findsOneWidget,
+      );
+      expect(_draft(20), findsNothing);
+      await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+      await _tap(tester, find.text('Galeriden seç'));
+      expect(find.text('20 sayfa sınırına ulaştın.'), findsOneWidget);
+      expect(picker.limits, [20, 20, 1, 1]);
+    },
+  );
+
+  testWidgets('oversized recovered batch is rejected', (tester) async {
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: FakeImagePickerService(
+          canRecoverLostImage: true,
+          onRetrieveLost: () async => throw LostMultipleImagesException([
+            for (var i = 0; i < 21; i++) XFile('$i'),
+          ]),
+        ),
+        speechService: FakeSpeechService(),
+        previewImageBuilder: (_) => _image,
+      ),
+    );
+    expect(find.byType(MultiPageScreen), findsNothing);
+    expect(
+      find.text('Tek seferde en fazla 20 sayfa ekleyebilirsin.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a recovered single gallery result opens the single editor', (
+    tester,
+  ) async {
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: FakeImagePickerService(
+          canRecoverLostImage: true,
+          onRetrieveLost: () async =>
+              throw LostMultipleImagesException([XFile('a')]),
+        ),
+        speechService: FakeSpeechService(),
+        previewImageBuilder: (_) => _image,
+      ),
+    );
+    expect(find.byType(MultiPageScreen), findsNothing);
+    expect(find.text('Görseli değiştir'), findsOneWidget);
+  });
+
   testWidgets('lost multi-selection opens all recovered drafts', (
     tester,
   ) async {
@@ -135,7 +481,12 @@ void main() {
           speechService: FakeSpeechService(),
         ),
       );
-      await tester.ensureVisible(_action(1, 'Yukarı'));
+      await _tap(tester, find.byKey(const ValueKey('add-draft-pages')));
+      expect(find.text('Galeriden seç').hitTestable(), findsOneWidget);
+      expect(find.text('Fotoğraf çek').hitTestable(), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(_action(1, 'Yukarı'), 200);
       await tester.pumpAndSettle();
       expect(_action(1, 'Yukarı').hitTestable(), findsOneWidget);
       await _tap(tester, _action(1, 'Yukarı'));
@@ -212,7 +563,7 @@ void main() {
       tester,
       ImageImportScreen(
         pickerService: FakeImagePickerService(
-          onPickMultiple: () async => [XFile('a')],
+          onPickMultiple: () async => [XFile('a'), XFile('b')],
         ),
         textRecognitionService: FakeTextRecognitionService(
           (path) async => 'Bir',
@@ -227,10 +578,10 @@ void main() {
     await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
     await _tap(tester, find.byKey(const ValueKey('save-batch')));
     await tester.enterText(find.byType(TextFormField).first, 'Belge');
-    await _tap(tester, find.text('1 sayfayı ekle').last);
+    await _tap(tester, find.text('2 sayfayı ekle').last);
     expect(store.title, 'Belge');
     expect(store.category, DocumentCategory.note);
-    expect(store.texts, ['Bir']);
+    expect(store.texts, ['Bir', 'Bir']);
     expect(find.byType(MultiPageScreen), findsNothing);
   });
 
@@ -377,7 +728,7 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
     await _tap(tester, find.byKey(const ValueKey('pick-multiple')));
-    expect(find.text('Mevcut sayfa taslağı kapatılsın mı?'), findsOneWidget);
+    expect(find.text('Düzenlediğin metin silinsin mi?'), findsOneWidget);
     await _tap(tester, find.text('Vazgeç'));
     expect(tester.widget<TextField>(field).controller!.text, 'Taslağım');
     expect(find.byType(MultiPageScreen), findsNothing);

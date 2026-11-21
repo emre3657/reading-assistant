@@ -19,7 +19,13 @@ class _Picker extends ImagePickerService {
   @override
   bool get canRecoverLostImage => false;
   @override
-  Future<XFile?> pickFromGallery() async => XFile('page.png');
+  Future<XFile?> pickFromGallery({bool recoverToHome = true}) async =>
+      XFile('page.png');
+  @override
+  Future<List<XFile>> pickMultipleFromGallery({
+    required bool recoverToHome,
+    int? limit,
+  }) async => [XFile('page.png')];
   @override
   Future<XFile?> takePhoto({required bool recoverToHome}) async {
     expect(recoverToHome, isFalse);

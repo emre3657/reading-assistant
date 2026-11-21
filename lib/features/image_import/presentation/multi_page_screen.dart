@@ -11,6 +11,7 @@ import '../services/image_rotation_service.dart';
 import '../services/text_recognition_service.dart';
 import 'image_import_controller.dart';
 import 'image_import_screen.dart';
+import 'widgets/add_page_source.dart';
 
 class MultiPageScreen extends StatefulWidget {
   const MultiPageScreen({
@@ -24,6 +25,7 @@ class MultiPageScreen extends StatefulWidget {
     this.store,
     this.onSavePages,
     this.documentTitle,
+    this.initialController,
   });
 
   final List<XFile> files;
@@ -35,20 +37,23 @@ class MultiPageScreen extends StatefulWidget {
   final DocumentStore? store;
   final Future<void> Function(List<String>)? onSavePages;
   final String? documentTitle;
+  final ImageImportController? initialController;
 
   @override
   State<MultiPageScreen> createState() => _MultiPageScreenState();
 }
 
 class _PageDraft {
-  _PageDraft(this.id, this.controller);
+  _PageDraft(this.id, this.controller, {this.borrowed = false});
   final int id;
   final ImageImportController controller;
+  final bool borrowed;
 }
 
 class _MultiPageScreenState extends State<MultiPageScreen> {
   late final List<_PageDraft> _pages;
   bool _processing = false;
+  bool _picking = false;
   bool _saving = false;
   bool _allowPop = false;
   bool _confirmingExit = false;
@@ -56,25 +61,80 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
   int _total = 0;
   String? _error;
   Set<int> _emptyIds = {};
+  int _nextId = 0;
   bool get _busy =>
-      _processing || _saving || _pages.any((p) => p.controller.isBusy);
+      _processing ||
+      _saving ||
+      _picking ||
+      _pages.any((p) => p.controller.isBusy);
 
   @override
   void initState() {
     super.initState();
-    _pages = [
-      for (var i = 0; i < widget.files.length; i++)
-        _PageDraft(
-          i,
-          ImageImportController(
-            pickerService: widget.pickerService,
-            textRecognitionService: widget.textRecognitionService,
-            rotationService: widget.rotationService,
-            previewImageBuilder: widget.previewImageBuilder,
-            initialFile: widget.files[i],
-          )..addListener(_changed),
-        ),
-    ];
+    _pages = [];
+    if (widget.initialController case final controller?) {
+      _pages.add(_PageDraft(_nextId++, controller, borrowed: true));
+      controller.addListener(_changed);
+    }
+    _appendFiles(widget.files);
+  }
+
+  void _appendFiles(List<XFile> files) {
+    for (final file in files) {
+      final controller = ImageImportController(
+        pickerService: widget.pickerService,
+        textRecognitionService: widget.textRecognitionService,
+        rotationService: widget.rotationService,
+        previewImageBuilder: widget.previewImageBuilder,
+        initialFile: file,
+      )..addListener(_changed);
+      _pages.add(_PageDraft(_nextId++, controller));
+    }
+  }
+
+  Future<void> _addPages() async {
+    final remaining = maxImagesPerSession - _pages.length;
+    if (_busy || remaining <= 0) return;
+    setState(() {
+      _picking = true;
+      _error = null;
+    });
+    try {
+      final source = await chooseAddPageSource(context);
+      if (!mounted || source == null) return;
+      final List<XFile> files;
+      try {
+        if (source == AddPageSource.camera) {
+          final file = await widget.pickerService.takePhoto(
+            recoverToHome: false,
+          );
+          files = [?file];
+        } else {
+          files = await widget.pickerService.pickMultipleFromGallery(
+            recoverToHome: false,
+            limit: remaining,
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(
+            () => _error = 'Görseller eklenemedi. Tekrar deneyebilirsin.',
+          );
+        }
+        return;
+      }
+      if (!mounted || files.isEmpty) return;
+      if (files.length > remaining) {
+        setState(
+          () => _error =
+              'Bu taslağa en fazla $remaining sayfa daha ekleyebilirsin.',
+        );
+        return;
+      }
+      setState(() => _appendFiles(files));
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
   }
 
   void _changed() {
@@ -105,7 +165,7 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
   void dispose() {
     for (final page in _pages) {
       page.controller.removeListener(_changed);
-      page.controller.dispose();
+      if (!page.borrowed) page.controller.dispose();
     }
     super.dispose();
   }
@@ -132,13 +192,15 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
       false;
 
   Future<void> _exit() async {
-    if (_saving || _confirmingExit) return;
+    if (_saving || _picking || _confirmingExit) return;
     _confirmingExit = true;
     final confirm =
         _pages.isEmpty ||
         await _confirm(
           'Taslaklardan çıkılsın mı?',
-          'Kaydedilmemiş sayfa taslakları kaybolacak.',
+          _pages.any((page) => page.borrowed)
+              ? 'Eklenen sayfa taslakları kaybolacak; ilk sayfanın taslağı korunacak.'
+              : 'Kaydedilmemiş sayfa taslakları kaybolacak.',
           'Kaydetmeden çık',
         );
     if (!mounted) return;
@@ -166,7 +228,11 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
       _refreshEmptyPages();
     });
     page.controller.removeListener(_changed);
-    page.controller.dispose();
+    if (page.borrowed) {
+      page.controller.removeImage(expectedRevision: page.controller.revision);
+    } else {
+      page.controller.dispose();
+    }
   }
 
   Future<void> _open(_PageDraft page) async {
@@ -299,6 +365,23 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
               Text(
                 widget.documentTitle!,
                 style: Theme.of(context).textTheme.titleMedium,
+              ),
+            OutlinedButton.icon(
+              key: const ValueKey('add-draft-pages'),
+              onPressed: _busy || _pages.length >= maxImagesPerSession
+                  ? null
+                  : _addPages,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: const Text('Sayfa ekle'),
+            ),
+            if (_pages.length >= maxImagesPerSession)
+              Text('$maxImagesPerSession sayfa sınırına ulaştın.'),
+            if (_pages.isEmpty)
+              const Text('Henüz sayfa yok. Sayfa ekleyebilirsin.'),
+            if (_picking)
+              Semantics(
+                liveRegion: true,
+                child: const Text('Görsel seçimi bekleniyor…'),
               ),
             FilledButton.icon(
               onPressed: _busy || _pages.isEmpty ? null : _recognizeAll,

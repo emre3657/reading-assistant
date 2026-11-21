@@ -178,18 +178,25 @@ class ImageImportController extends ChangeNotifier {
       recovered = await pickerService.retrieveLostImage();
     } on LostMultipleImagesException catch (lost) {
       if (revision == _revision && !hasEditedText && _selection == null) {
-        _recoveredBatch = lost.files;
+        if (lost.files.length > maxImagesPerSession) {
+          error =
+              'Tek seferde en fazla $maxImagesPerSession sayfa ekleyebilirsin.';
+        } else if (lost.files.length == 1) {
+          recovered = lost.files.single;
+        } else {
+          _recoveredBatch = lost.files;
+        }
       } else {
         error = 'Önceki görseller mevcut taslağı korumak için açılmadı. Lütfen yeniden seçin.';
       }
     } on LostMultiplePageException {
       error =
-          'Önceki görseller sayfa ekleme ekranına aitti. '
-          'İlgili içeriği açıp görselleri yeniden seçin.';
+          'Önceki görseller bir taslağa aitti. '
+          'İlgili taslağı yeniden oluşturup görselleri seçin.';
     } on LostCameraPageException {
       error =
-          'Önceki fotoğraf sayfa ekleme ekranına aitti. '
-          'İlgili içeriği açıp fotoğrafı yeniden çekin.';
+          'Önceki görsel bir taslağa aitti. '
+          'İlgili taslağı yeniden oluşturup görseli seçin.';
     } catch (_) {
       error = 'Önceki fotoğraf seçimi kurtarılamadı. Lütfen tekrar seçin.';
     }
@@ -230,7 +237,7 @@ class ImageImportController extends ChangeNotifier {
     try {
       picked = camera
           ? await pickerService.takePhoto(recoverToHome: recoverToHome)
-          : await pickerService.pickFromGallery();
+          : await pickerService.pickFromGallery(recoverToHome: recoverToHome);
     } catch (_) {
       error = camera
           ? 'Fotoğraf çekilemedi. Kamera iznini ve kameranın kullanılabilirliğini kontrol edip tekrar deneyin.'
@@ -265,6 +272,16 @@ class ImageImportController extends ChangeNotifier {
     _errorMessage = null;
     _notify();
     return true;
+  }
+
+  void applySelectedFile(XFile file) {
+    if (_disposed || isBusy) return;
+    _replaceSelection(
+      ImageSelection(++_lastSelectionId, file, previewImageBuilder(file)),
+    );
+    _errorMessage = null;
+    _infoMessage = null;
+    _notify();
   }
 
   /// Drops a candidate (declined confirmation or closed screen). The current

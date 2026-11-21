@@ -22,6 +22,7 @@ import '../services/text_recognition_service.dart';
 
 import 'image_import_controller.dart';
 import 'multi_page_screen.dart';
+import 'widgets/add_page_source.dart';
 import 'widgets/image_preview.dart';
 
 export 'image_import_controller.dart'
@@ -97,6 +98,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   bool _saveDialogOpen = false;
   bool _openingBackup = false;
   bool _pickingBatch = false;
+  bool _pickerActive = false;
   bool _manualEntry = false;
   bool _pageSaving = false;
   bool _pageExitInProgress = false;
@@ -299,7 +301,12 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     final candidate = await _controller.pickImage(
       camera: camera,
-      recoverToHome: !_addingPage && !widget.returnText,
+      recoverToHome:
+          !_addingPage &&
+          !widget.returnText &&
+          widget.batchController == null &&
+          !_controller.hasImage &&
+          _controller.textController.text.isEmpty,
     );
     if (candidate == null) return;
 
@@ -335,29 +342,60 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         _pageLocked) {
       return;
     }
-    setState(() => _pickingBatch = true);
+    setState(() {
+      _pickingBatch = true;
+      _pickerActive = true;
+    });
     List<XFile> files;
     try {
       files = await widget.pickerService.pickMultipleFromGallery(
-        recoverToHome: !_addingPage,
+        recoverToHome: !_addingPage && _controller.textController.text.isEmpty,
+        limit: maxImagesPerSession,
       );
     } catch (_) {
       if (mounted) {
-        setState(() => _pickingBatch = false);
+        setState(() {
+          _pickingBatch = false;
+          _pickerActive = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Görseller seçilemedi. Tekrar deneyebilirsin.'),
+            content: Text('Görsel seçilemedi. Lütfen tekrar deneyin.'),
           ),
         );
       }
       return;
     }
     if (!mounted) return;
+    setState(() => _pickerActive = false);
     if (files.isEmpty) {
       setState(() => _pickingBatch = false);
       return;
     }
     try {
+      if (files.length > maxImagesPerSession) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Tek seferde en fazla $maxImagesPerSession sayfa ekleyebilirsin.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (files.length == 1) {
+        if (_controller.hasEditedText) {
+          final confirmed = await _confirm(
+            title: 'Düzenlediğin metin silinsin mi?',
+            content: 'Yeni görsel seçilirse düzenlediğin metin silinecek. Metin henüz kaydedilmedi.',
+            confirmLabel: 'Metni sil ve değiştir',
+          );
+          if (!mounted || !confirmed) return;
+        }
+        _controller.applySelectedFile(files.single);
+        setState(() => _manualEntry = false);
+        return;
+      }
       if (_addingPage &&
           (_controller.hasImage ||
               _controller.textController.text.isNotEmpty)) {
@@ -376,7 +414,69 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     }
   }
 
-  Future<void> _openBatch(List<XFile> files) async {
+  Future<void> _addPages() async {
+    if (_pickingBatch ||
+        _controller.isBusy ||
+        _listening.isActive ||
+        _pageLocked) {
+      return;
+    }
+    setState(() => _pickingBatch = true);
+    try {
+      final source = await chooseAddPageSource(context);
+      if (!mounted || source == null) return;
+      setState(() => _pickerActive = true);
+      final List<XFile> files;
+      try {
+        if (source == AddPageSource.camera) {
+          final file = await widget.pickerService.takePhoto(
+            recoverToHome: false,
+          );
+          files = [?file];
+        } else {
+          files = await widget.pickerService.pickMultipleFromGallery(
+            recoverToHome: false,
+            limit: maxImagesPerSession - 1,
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Görseller eklenemedi. Tekrar deneyebilirsin.'),
+            ),
+          );
+        }
+        return;
+      }
+      if (!mounted || files.isEmpty) return;
+      setState(() => _pickerActive = false);
+      final remaining = maxImagesPerSession - 1;
+      if (files.length > remaining) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Bu taslağa en fazla $remaining sayfa daha ekleyebilirsin.',
+            ),
+          ),
+        );
+        return;
+      }
+      await _openBatch(files, initialController: _controller);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pickingBatch = false;
+          _pickerActive = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openBatch(
+    List<XFile> files, {
+    ImageImportController? initialController,
+  }) async {
     final savedCount = await Navigator.of(context).push<int>(
       MaterialPageRoute(
         builder: (_) => MultiPageScreen(
@@ -389,9 +489,13 @@ class _ImageImportScreenState extends State<ImageImportScreen>
           store: widget.store,
           onSavePages: widget.onSavePages,
           documentTitle: widget.pageDocumentTitle,
+          initialController: initialController,
         ),
       ),
     );
+    if (initialController != null && mounted) {
+      _controller.textController.attachListening(_listening);
+    }
     if (!mounted || savedCount == null) return;
     if (_addingPage) {
       await _closePage(savedCount);
@@ -990,7 +1094,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                     Semantics(liveRegion: true, child: Text(infoMessage)),
                   ],
                   const SizedBox(height: 16),
-                  if (controller.isBusy)
+                  if (controller.isBusy || _pickerActive)
                     Center(
                       child: Column(
                         children: [
@@ -1045,7 +1149,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                         icon: const Icon(Icons.text_snippet),
                         label: const Text('Metni çıkar'),
                       ),
-                      if (widget.batchController == null) ...[
+                      ...[
                         const SizedBox(height: 8),
                         OutlinedButton.icon(
                           onPressed: listeningActive
@@ -1054,34 +1158,39 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                           icon: const Icon(Icons.photo_library),
                           label: const Text('Görseli değiştir'),
                         ),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: listeningActive ? null : _removeImage,
-                          icon: const Icon(Icons.delete_outline),
-                          label: const Text('Görseli kaldır'),
-                        ),
+                        if (widget.batchController == null) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: listeningActive ? null : _removeImage,
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Görseli kaldır'),
+                          ),
+                        ],
                       ],
                     ] else
                       FilledButton.icon(
+                        key: const ValueKey('pick-multiple'),
                         onPressed: listeningActive
                             ? null
-                            : () => _selectImage(),
+                            : (widget.returnText ||
+                                      widget.batchController != null
+                                  ? () => _selectImage()
+                                  : _selectMultipleImages),
                         icon: const Icon(Icons.photo_library),
                         label: const Text('Galeriden görsel seç'),
                       ),
                     if (widget.batchController == null) ...[
-                      if (!widget.returnText &&
+                      if (hasImage &&
+                          !widget.returnText &&
                           (!_addingPage || widget.onSavePages != null)) ...[
                         const SizedBox(height: 8),
                         OutlinedButton.icon(
-                          key: const ValueKey('pick-multiple'),
+                          key: const ValueKey('add-draft-pages'),
                           onPressed: listeningActive || _pickingBatch
                               ? null
-                              : _selectMultipleImages,
-                          icon: const Icon(Icons.collections_outlined),
-                          label: const Text(
-                            'Galeriden birden fazla görsel seç',
-                          ),
+                              : _addPages,
+                          icon: const Icon(Icons.add_photo_alternate_outlined),
+                          label: const Text('Sayfa ekle'),
                         ),
                       ],
                       const SizedBox(height: 8),

@@ -88,12 +88,18 @@ class FakeImagePickerService extends ImagePickerService {
   final bool canRecoverLostImage;
 
   @override
-  Future<XFile?> pickFromGallery() async => onPick?.call();
+  Future<XFile?> pickFromGallery({bool recoverToHome = true}) async =>
+      onPick?.call();
 
   @override
   Future<List<XFile>> pickMultipleFromGallery({
     required bool recoverToHome,
-  }) async => await onPickMultiple?.call() ?? [];
+    int? limit,
+  }) async {
+    if (onPickMultiple != null) return onPickMultiple!();
+    final file = await onPick?.call();
+    return [?file];
+  }
 
   @override
   Future<XFile?> takePhoto({required bool recoverToHome}) async =>
