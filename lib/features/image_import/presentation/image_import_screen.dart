@@ -44,7 +44,7 @@ class ImageImportScreen extends StatefulWidget {
     this.onSavePages,
     this.batchController,
     this.batchPageNumber,
-    this.batchEmptyTextError = false,
+    this.batchTextValidated = false,
     this.backupFileService = const BackupFileService(),
   });
 
@@ -66,7 +66,7 @@ class ImageImportScreen extends StatefulWidget {
   final Future<void> Function(List<String> texts)? onSavePages;
   final ImageImportController? batchController;
   final int? batchPageNumber;
-  final bool batchEmptyTextError;
+  final bool batchTextValidated;
   final BackupFileService backupFileService;
 
   @override
@@ -104,7 +104,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   bool _pageExitInProgress = false;
   bool _allowPagePop = false;
   String? _pageError;
-  bool _batchEmptyTextError = false;
+  bool get _batchEmptyTextError =>
+      widget.batchController != null &&
+      (widget.batchTextValidated || _controller.hasEncounteredEmptyOcr) &&
+      _controller.textController.text.trim().isEmpty;
 
   bool get _addingPage => widget.onSavePage != null;
   bool get _pageLocked =>
@@ -124,8 +127,6 @@ class _ImageImportScreenState extends State<ImageImportScreen>
         );
     if (widget.batchController != null) {
       _manualEntry = true;
-      _batchEmptyTextError = widget.batchEmptyTextError;
-      _controller.textController.addListener(_clearBatchTextError);
       if (_batchEmptyTextError) _scheduleScrollToText();
     }
     if (!_addingPage && !widget.returnText && widget.batchController == null) {
@@ -197,9 +198,6 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     _scrollToken++;
 
     _controller.removeListener(_onImportChanged);
-    if (widget.batchController != null) {
-      _controller.textController.removeListener(_clearBatchTextError);
-    }
     if (widget.batchController == null) {
       _controller.dispose();
     } else {
@@ -658,13 +656,6 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     _lastRecognitionId = id;
     _scheduleScrollToText();
-  }
-
-  void _clearBatchTextError() {
-    if (_batchEmptyTextError &&
-        _controller.textController.text.trim().isNotEmpty) {
-      setState(() => _batchEmptyTextError = false);
-    }
   }
 
   /// Scrolls to formatting options without requesting input focus.

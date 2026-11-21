@@ -60,7 +60,7 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
   int _current = 0;
   int _total = 0;
   String? _error;
-  Set<int> _emptyIds = {};
+  bool _validationStarted = false;
   int _nextId = 0;
   bool get _busy =>
       _processing ||
@@ -73,7 +73,9 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
     super.initState();
     _pages = [];
     if (widget.initialController case final controller?) {
-      _pages.add(_PageDraft(_nextId++, controller, borrowed: true));
+      final page = _PageDraft(_nextId++, controller, borrowed: true);
+      _pages.add(page);
+      _validationStarted = controller.hasEncounteredEmptyOcr;
       controller.addListener(_changed);
     }
     _appendFiles(widget.files);
@@ -144,22 +146,17 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
   }
 
   void _refreshEmptyPages() {
-    _emptyIds.removeWhere(
-      (id) => !_pages.any(
-        (page) =>
-            page.id == id && page.controller.textController.text.trim().isEmpty,
-      ),
-    );
-    if (_error?.startsWith('Boş sayfalar:') ?? false) {
-      final numbers = [
-        for (var i = 0; i < _pages.length; i++)
-          if (_emptyIds.contains(_pages[i].id)) i + 1,
-      ];
-      _error = numbers.isEmpty
-          ? null
-          : 'Boş sayfalar: ${numbers.join(', ')}. Metin ekleyin.';
+    if (_pages.any((page) => page.controller.hasEncounteredEmptyOcr)) {
+      _validationStarted = true;
     }
   }
+
+  Set<int> get _emptyIds => _validationStarted
+      ? {
+          for (final page in _pages)
+            if (page.controller.textController.text.trim().isEmpty) page.id,
+        }
+      : {};
 
   @override
   void dispose() {
@@ -224,7 +221,6 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
     if (!mounted || _busy) return;
     setState(() {
       _pages.remove(page);
-      _emptyIds.remove(page.id);
       _refreshEmptyPages();
     });
     page.controller.removeListener(_changed);
@@ -242,7 +238,7 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
         builder: (_) => ImageImportScreen(
           batchController: page.controller,
           batchPageNumber: _pages.indexOf(page) + 1,
-          batchEmptyTextError: _emptyIds.contains(page.id),
+          batchTextValidated: _validationStarted,
           pickerService: widget.pickerService,
           textRecognitionService: widget.textRecognitionService,
           rotationService: widget.rotationService,
@@ -300,9 +296,8 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
         .toList();
     if (empty.isNotEmpty) {
       setState(() {
-        _emptyIds = empty.map((p) => p.id).toSet();
-        _error =
-            'Boş sayfalar: ${empty.map((p) => _pages.indexOf(p) + 1).join(', ')}. Metin ekleyin.';
+        _validationStarted = true;
+        _error = null;
       });
       await _open(empty.first);
       return;
@@ -311,7 +306,6 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
     setState(() {
       _saving = true;
       _error = null;
-      _emptyIds.clear();
     });
     try {
       if (widget.onSavePages case final save?) {
@@ -392,6 +386,15 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
               Semantics(
                 liveRegion: true,
                 child: Text('$_current / $_total işleniyor'),
+              ),
+            if (_emptyIds.isNotEmpty)
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  'Boş sayfalar: ${[for (var i = 0; i < _pages.length; i++)
+                    if (_emptyIds.contains(_pages[i].id)) i + 1].join(', ')}. Metin ekleyin.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
             if (_error != null)
               Semantics(

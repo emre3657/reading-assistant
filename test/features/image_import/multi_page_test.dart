@@ -125,6 +125,150 @@ Future<void> _back(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('empty OCR notice follows the edited page text', (tester) async {
+    final ocr = FakeTextRecognitionService((_) async => '');
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a'), XFile('b')],
+        pickerService: FakeImagePickerService(),
+        textRecognitionService: ocr,
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    final firstNotice = find.descendant(
+      of: _draft(0),
+      matching: find.textContaining('Görselde metin bulunamadı'),
+    );
+    final secondNotice = find.descendant(
+      of: _draft(1),
+      matching: find.textContaining('Görselde metin bulunamadı'),
+    );
+    await _tap(tester, find.text('Tüm sayfalardan metin çıkar'));
+    expect(firstNotice, findsOneWidget);
+    expect(secondNotice, findsOneWidget);
+    expect(find.text('Boş sayfalar: 1, 2. Metin ekleyin.'), findsOneWidget);
+    expect(_action(0, 'Sayfa metni boş.'), findsOneWidget);
+    expect(_action(1, 'Sayfa metni boş.'), findsOneWidget);
+
+    await _open(tester, 0);
+    final previewError = find.text(
+      'Bu sayfanın metni boş. Metni çıkarın veya yazın.',
+    );
+    expect(previewError, findsOneWidget);
+    await tester.enterText(_field, '   ');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Görselde metin bulunamadı'), findsOneWidget);
+    expect(previewError, findsOneWidget);
+    await tester.enterText(_field, 'Elle yazılan metin');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Görselde metin bulunamadı'), findsNothing);
+    expect(previewError, findsNothing);
+    await _back(tester);
+    expect(firstNotice, findsNothing);
+    expect(secondNotice, findsOneWidget);
+    expect(find.text('Boş sayfalar: 2. Metin ekleyin.'), findsOneWidget);
+    expect(_action(0, 'Sayfa metni boş.'), findsNothing);
+    expect(_action(1, 'Sayfa metni boş.'), findsOneWidget);
+    expect(_action(0, 'Yeniden dene'), findsNothing);
+
+    await _open(tester, 0);
+    await tester.enterText(_field, '   ');
+    await tester.pumpAndSettle();
+    expect(previewError, findsOneWidget);
+    expect(find.textContaining('Görselde metin bulunamadı'), findsNothing);
+    await _back(tester);
+    expect(find.text('Boş sayfalar: 1, 2. Metin ekleyin.'), findsOneWidget);
+    expect(_action(0, 'Sayfa metni boş.'), findsOneWidget);
+    expect(firstNotice, findsNothing);
+    expect(secondNotice, findsOneWidget);
+
+    await _open(tester, 0);
+    await _tap(tester, find.text('Metni çıkar'));
+    await _tap(tester, find.text('Üzerine yaz'));
+    expect(previewError, findsOneWidget);
+    expect(find.textContaining('Görselde metin bulunamadı'), findsOneWidget);
+    await _back(tester);
+    expect(firstNotice, findsOneWidget);
+    expect(secondNotice, findsOneWidget);
+    expect(find.text('Boş sayfalar: 1, 2. Metin ekleyin.'), findsOneWidget);
+    expect(ocr.paths, ['a', 'b', 'a']);
+  });
+
+  testWidgets('OCR in an unvalidated page activates blank validation', (
+    tester,
+  ) async {
+    final ocr = FakeTextRecognitionService((_) async => '');
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a'), XFile('b')],
+        pickerService: FakeImagePickerService(),
+        textRecognitionService: ocr,
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _open(tester, 0);
+    final previewError = find.text(
+      'Bu sayfanın metni boş. Metni çıkarın veya yazın.',
+    );
+    expect(previewError, findsNothing);
+    await _tap(tester, find.text('Metni çıkar'));
+    expect(previewError, findsOneWidget);
+    expect(find.textContaining('Görselde metin bulunamadı'), findsOneWidget);
+    await tester.enterText(_field, 'Metin');
+    await tester.pumpAndSettle();
+    expect(previewError, findsNothing);
+    await tester.enterText(_field, '');
+    await tester.pumpAndSettle();
+    expect(previewError, findsOneWidget);
+    expect(find.textContaining('Görselde metin bulunamadı'), findsNothing);
+    await _back(tester);
+    expect(find.text('Boş sayfalar: 1, 2. Metin ekleyin.'), findsOneWidget);
+    expect(_action(0, 'Sayfa metni boş.'), findsOneWidget);
+    expect(_action(1, 'Sayfa metni boş.'), findsOneWidget);
+  });
+
+  testWidgets('empty retry validates retained text without discarding it', (
+    tester,
+  ) async {
+    var calls = 0;
+    await _show(
+      tester,
+      MultiPageScreen(
+        files: [XFile('a'), XFile('b')],
+        pickerService: FakeImagePickerService(),
+        textRecognitionService: FakeTextRecognitionService(
+          (_) async => calls++ == 0 ? 'Korunan metin' : '',
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+        speechService: FakeSpeechService(),
+      ),
+    );
+    await _open(tester, 0);
+    await _tap(tester, find.text('Metni çıkar'));
+    await _back(tester);
+    expect(find.textContaining('Boş sayfalar:'), findsNothing);
+    await _open(tester, 0);
+    await _tap(tester, find.text('Metni çıkar'));
+    await _tap(tester, find.text('Üzerine yaz'));
+    expect(tester.widget<TextField>(_field).controller!.text, 'Korunan metin');
+    expect(find.textContaining('Görselde metin bulunamadı'), findsOneWidget);
+    expect(
+      find.text('Bu sayfanın metni boş. Metni çıkarın veya yazın.'),
+      findsNothing,
+    );
+    await _back(tester);
+    expect(find.text('Boş sayfalar: 2. Metin ekleyin.'), findsOneWidget);
+    expect(_action(0, 'Sayfa metni boş.'), findsNothing);
+    expect(_action(1, 'Sayfa metni boş.'), findsOneWidget);
+  });
+
   testWidgets('closing during a gallery addition ignores the late result', (
     tester,
   ) async {

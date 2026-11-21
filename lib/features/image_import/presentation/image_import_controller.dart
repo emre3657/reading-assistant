@@ -84,6 +84,7 @@ class ImageImportController extends ChangeNotifier {
   int _recognitionId = 0;
   bool _isPicking = false;
   bool _isRecognizing = false;
+  bool _hasEncounteredEmptyOcr = false;
   bool _disposed = false;
 
   /// Text last placed in the field by the app (OCR or joined text); null when
@@ -98,6 +99,7 @@ class ImageImportController extends ChangeNotifier {
   String? _infoMessage;
   bool _lastHasEditedText = false;
   bool _lastHasText = false;
+  String _lastText = '';
   List<XFile>? _recoveredBatch;
 
   ImageSelection? get selection => _selection;
@@ -108,6 +110,7 @@ class ImageImportController extends ChangeNotifier {
   int get quarterTurns => _quarterTurns;
   bool get isPicking => _isPicking;
   bool get isRecognizing => _isRecognizing;
+  bool get hasEncounteredEmptyOcr => _hasEncounteredEmptyOcr;
   bool get isBusy => _isPicking || _isRecognizing;
   bool get hasRecognizedText => _generatedText != null;
   bool get hasOcrResult => _ocrResult != null;
@@ -143,13 +146,18 @@ class ImageImportController extends ChangeNotifier {
   void _onTextChanged() {
     if (_disposed) return;
 
+    final text = textController.text;
     final edited = hasEditedText;
-    final hasText = textController.text.trim().isNotEmpty;
+    final hasText = text.trim().isNotEmpty;
+    final clearInfo = hasText && text != _lastText && _infoMessage != null;
 
-    final changed = edited != _lastHasEditedText || hasText != _lastHasText;
+    final changed =
+        edited != _lastHasEditedText || hasText != _lastHasText || clearInfo;
 
+    _lastText = text;
     _lastHasEditedText = edited;
     _lastHasText = hasText;
+    if (clearInfo) _infoMessage = null;
 
     if (changed) _notify();
   }
@@ -425,6 +433,7 @@ class ImageImportController extends ChangeNotifier {
     _errorMessage = error;
     if (ocr != null) {
       if (ocr.text.trim().isEmpty) {
+        _hasEncounteredEmptyOcr = true;
         _infoMessage =
             'Görselde metin bulunamadı. Daha net veya daha yakın bir '
             'fotoğrafla "Metni çıkar" düğmesine tekrar basabilirsin.';

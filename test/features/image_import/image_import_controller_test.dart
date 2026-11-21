@@ -100,6 +100,31 @@ void main() {
     expect(notified, 2);
   });
 
+  test(
+    'empty OCR notice clears on text changes, not selection changes',
+    () async {
+      ocr = FakeTextRecognitionService((_) async => '');
+      final c = await withImage();
+      addTearDown(c.dispose);
+      c.textController.text = 'El yazısı';
+      await c.extractText(expectedRevision: c.revision);
+      expect(c.infoMessage, contains('Görselde metin bulunamadı'));
+
+      c.textController.selection = const TextSelection.collapsed(offset: 2);
+      expect(c.infoMessage, isNotNull);
+      var notified = 0;
+      c.addListener(() => notified++);
+      c.textController.text = 'El yazısı!';
+      expect(c.infoMessage, isNull);
+      expect(notified, 1);
+      c.textController.clear();
+      expect(c.infoMessage, isNull);
+
+      await c.extractText(expectedRevision: c.revision);
+      expect(c.infoMessage, contains('Görselde metin bulunamadı'));
+    },
+  );
+
   test('joining lines does not count as an edit', () async {
     ocr = FakeTextRecognitionService((_) async => 'a\nb');
     final c = await withImage();
