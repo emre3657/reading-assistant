@@ -37,6 +37,11 @@ void main() {
   testWidgets('shows empty state with select button', (tester) async {
     await _pumpApp(tester, FakeImagePickerService());
 
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
+      'Okuma Asistanı',
+    );
+    expect(find.text('Okuma Asistanı'), findsOneWidget);
     expect(find.text(_selectLabel), findsOneWidget);
     expect(find.byType(ImagePreview), findsNothing);
     expect(find.text(_removeLabel), findsNothing);
