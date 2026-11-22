@@ -252,6 +252,38 @@ class DocumentStore {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  Future<Set<String>> completedGuides() async {
+    final database = await _database;
+    final rows = await database.query(
+      'installation_settings',
+      columns: ['key'],
+      where: 'key IN (?, ?, ?, ?) AND value = 1',
+      whereArgs: ['guide_home', 'guide_text', 'guide_resume', 'guide_bookmark'],
+    );
+    return rows.map((row) => row['key'] as String).toSet();
+  }
+
+  Future<void> completeGuides(Set<String> keys) async {
+    final database = await _database;
+    await database.transaction((txn) async {
+      for (final key in keys) {
+        await txn.insert('installation_settings', {
+          'key': key,
+          'value': 1,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  Future<void> resetGuides() async {
+    final database = await _database;
+    await database.delete(
+      'installation_settings',
+      where: 'key IN (?, ?, ?, ?)',
+      whereArgs: ['guide_home', 'guide_text', 'guide_resume', 'guide_bookmark'],
+    );
+  }
+
   Future<void> saveReadingPreferences({
     required String speed,
     required bool autoNextPage,

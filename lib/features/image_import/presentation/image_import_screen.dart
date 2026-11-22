@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../theme/theme_settings_dialog.dart';
+import '../../guide/guide_host.dart';
+import '../../guide/guide_manager.dart';
 
 import 'package:image_picker/image_picker.dart';
 
@@ -91,6 +93,12 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   final _followKey = GlobalKey<SentenceFollowState>();
   final _followTextKey = GlobalKey();
   final _contentScrollController = ScrollController();
+  final _guideGallery = GlobalKey();
+  final _guideCamera = GlobalKey();
+  final _guideManual = GlobalKey();
+  final _guideText = GlobalKey();
+  final _guideListen = GlobalKey();
+  final _guideSave = GlobalKey();
 
   int _lastRecognitionId = 0;
   int _scrollToken = 0;
@@ -980,10 +988,72 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_controller, _listening]),
+      listenable: Listenable.merge([
+        _controller,
+        _controller.textController,
+        _listening,
+      ]),
       builder: (context, _) {
         final screen = _buildScreen(context);
-        if (!_addingPage) return screen;
+        if (!_addingPage) {
+          if (widget.returnText || widget.batchController != null) {
+            return screen;
+          }
+          final available =
+              !_controller.isBusy &&
+              !_pickerActive &&
+              !_pageLocked &&
+              !_saveDialogOpen &&
+              !_pickingBatch &&
+              !_listening.isActive &&
+              (!_controller.textController.selection.isValid ||
+                  _controller.textController.selection.isCollapsed) &&
+              (_preferences?.ready ?? false);
+          return GuideHost(
+            offers: [
+              GuideOffer(
+                group: GuideGroup.home,
+                enabled:
+                    available &&
+                    _controller.selection == null &&
+                    !_manualEntry &&
+                    !_controller.hasRecognizedText,
+                steps: [
+                  GuideStep(
+                    _guideGallery,
+                    'Bir veya birden fazla sayfa fotoğrafı seçebilirsin.',
+                  ),
+                  GuideStep(
+                    _guideCamera,
+                    'Sayfanın fotoğrafını çekerek başlayabilirsin.',
+                  ),
+                  GuideStep(
+                    _guideManual,
+                    'Metni kendin yazabilir veya yapıştırabilirsin.',
+                  ),
+                ],
+              ),
+              GuideOffer(
+                group: GuideGroup.text,
+                enabled:
+                    available &&
+                    _controller.textController.text.trim().isNotEmpty,
+                steps: [
+                  GuideStep(
+                    _guideText,
+                    'Metni kontrol edip gerektiğinde düzeltebilirsin.',
+                  ),
+                  GuideStep(_guideListen, 'Metni dinleyebilirsin.'),
+                  GuideStep(
+                    _guideSave,
+                    'İstersen daha sonra devam etmek için kaydedebilirsin.',
+                  ),
+                ],
+              ),
+            ],
+            child: screen,
+          );
+        }
         return PopScope(
           canPop: _allowPagePop,
           onPopInvokedWithResult: (didPop, _) {
@@ -1009,6 +1079,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       child: ListeningSurface(
         child: ListeningControls(
           key: const ValueKey('listening-panel'),
+          startButtonKey: _guideListen,
           listening: _listening,
           canStart:
               !_listening.isActive &&
@@ -1084,6 +1155,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             )
           else
             IconButton(
+              key: _guideSave,
               tooltip: 'Metni kaydet',
               icon: const Icon(Icons.save_outlined),
               onPressed:
@@ -1116,10 +1188,24 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                   unawaited(_openThemeSettings());
                 } else if (value == 'backup') {
                   unawaited(_openBackup());
+                } else if (value == 'guide') {
+                  GuideScope.maybeOf(context)?.restart();
+                  if (_controller.selection != null ||
+                      _manualEntry ||
+                      _controller.hasRecognizedText) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Ana ekran rehberi başlangıç seçenekleri görünür olduğunda başlayacak.',
+                        ),
+                      ),
+                    );
+                  }
                 }
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'theme', child: Text('Tema')),
+                PopupMenuItem(value: 'guide', child: Text('Kullanım rehberi')),
                 PopupMenuItem(
                   value: 'backup',
                   child: Text('Yedekle ve geri yükle'),
@@ -1285,16 +1371,19 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                           ],
                         ],
                       ] else
-                        FilledButton.icon(
-                          key: const ValueKey('pick-multiple'),
-                          onPressed: listeningActive
-                              ? null
-                              : (widget.returnText ||
-                                        widget.batchController != null
-                                    ? () => _selectImage()
-                                    : _selectMultipleImages),
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('Galeriden görsel seç'),
+                        KeyedSubtree(
+                          key: _guideGallery,
+                          child: FilledButton.icon(
+                            key: const ValueKey('pick-multiple'),
+                            onPressed: listeningActive
+                                ? null
+                                : (widget.returnText ||
+                                          widget.batchController != null
+                                      ? () => _selectImage()
+                                      : _selectMultipleImages),
+                            icon: const Icon(Icons.photo_library),
+                            label: const Text('Galeriden görsel seç'),
+                          ),
                         ),
                       if (widget.batchController == null) ...[
                         if (hasImage &&
@@ -1314,6 +1403,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                         ],
                         const SizedBox(height: 8),
                         OutlinedButton.icon(
+                          key: _guideCamera,
                           onPressed: listeningActive
                               ? null
                               : () => _selectImage(camera: true),
@@ -1327,16 +1417,19 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                         !controller.hasRecognizedText &&
                         !_manualEntry) ...[
                       const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        key: const ValueKey('create-text'),
-                        onPressed: controller.isBusy || listeningActive
-                            ? null
-                            : () {
-                                setState(() => _manualEntry = true);
-                                _scheduleScrollToText();
-                              },
-                        icon: const Icon(Icons.edit_note),
-                        label: const Text('Metin yaz veya yapıştır'),
+                      KeyedSubtree(
+                        key: _guideManual,
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('create-text'),
+                          onPressed: controller.isBusy || listeningActive
+                              ? null
+                              : () {
+                                  setState(() => _manualEntry = true);
+                                  _scheduleScrollToText();
+                                },
+                          icon: const Icon(Icons.edit_note),
+                          label: const Text('Metin yaz veya yapıştır'),
+                        ),
                       ),
                     ],
                     if (hasImage) ...[
@@ -1424,37 +1517,42 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                             behavior: HitTestBehavior.translucent,
                             onTap: listeningActive ? _showEditLockNotice : null,
                             child: KeyedSubtree(
-                              key: _followTextKey,
-                              child: TextField(
-                                key: ValueKey(
-                                  _addingPage ? 'new-page-text' : 'import-text',
-                                ),
-                                controller: controller.textController,
-                                style: readingInputTextStyle(
-                                  context,
-                                  _preferences!.textSize,
-                                  _preferences!.lineSpacing,
-                                ),
-                                textAlign:
-                                    _preferences!.textAlignment.textAlign,
-                                readOnly:
-                                    controller.isRecognizing ||
-                                    listeningActive ||
-                                    _pageLocked,
-                                canRequestFocus: !listeningActive,
-                                enableInteractiveSelection: !listeningActive,
-                                // While locked, the parent handles taps.
-                                ignorePointers: listeningActive,
-                                minLines: 6,
-                                maxLines: null,
-                                keyboardType: TextInputType.multiline,
-                                textInputAction: TextInputAction.newline,
-                                decoration: InputDecoration(
-                                  hintText: controller.hasRecognizedText
-                                      ? null
-                                      : 'Metnini yaz veya buraya yapıştır.',
-                                  alignLabelWithHint: true,
-                                  border: const OutlineInputBorder(),
+                              key: _guideText,
+                              child: KeyedSubtree(
+                                key: _followTextKey,
+                                child: TextField(
+                                  key: ValueKey(
+                                    _addingPage
+                                        ? 'new-page-text'
+                                        : 'import-text',
+                                  ),
+                                  controller: controller.textController,
+                                  style: readingInputTextStyle(
+                                    context,
+                                    _preferences!.textSize,
+                                    _preferences!.lineSpacing,
+                                  ),
+                                  textAlign:
+                                      _preferences!.textAlignment.textAlign,
+                                  readOnly:
+                                      controller.isRecognizing ||
+                                      listeningActive ||
+                                      _pageLocked,
+                                  canRequestFocus: !listeningActive,
+                                  enableInteractiveSelection: !listeningActive,
+                                  // While locked, the parent handles taps.
+                                  ignorePointers: listeningActive,
+                                  minLines: 6,
+                                  maxLines: null,
+                                  keyboardType: TextInputType.multiline,
+                                  textInputAction: TextInputAction.newline,
+                                  decoration: InputDecoration(
+                                    hintText: controller.hasRecognizedText
+                                        ? null
+                                        : 'Metnini yaz veya buraya yapıştır.',
+                                    alignLabelWithHint: true,
+                                    border: const OutlineInputBorder(),
+                                  ),
                                 ),
                               ),
                             ),

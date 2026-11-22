@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../guide/guide_host.dart';
+import '../../guide/guide_manager.dart';
+
 import '../../image_import/services/image_picker_service.dart';
 import '../../image_import/presentation/image_import_controller.dart';
 import '../../image_import/services/image_rotation_service.dart';
@@ -57,6 +60,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   ReadingPosition? _bookmark;
   bool _selecting = false;
   final Set<int> _selectedPageIds = {};
+  final _guideResume = GlobalKey();
 
   DocumentStore get _store =>
       widget.store ??
@@ -520,52 +524,65 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_selecting && _deletingPageId == null && !_reordering,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _selecting && !_busy) _exitSelection();
-      },
-      child: Scaffold(
-        appBar: _selecting
-            ? selectionAppBar(
-                count: _selectedPageIds.length,
-                busy: _busy,
-                onClose: _exitSelection,
-                onSelectAll: () => setState(() {
-                  _selectedPageIds.addAll(_pages.map((page) => page.id));
-                }),
-                onDelete: _deleteSelected,
-              )
-            : AppBar(
-                title: Text(_document.title),
-                actions: [
-                  if (MediaQuery.sizeOf(context).width < 400 &&
-                      MediaQuery.textScalerOf(context).scale(14) > 20)
-                    IconButton(
-                      key: const ValueKey('add-page'),
-                      tooltip: 'Sayfa ekle',
-                      onPressed: _busy || _error != null ? null : _addPage,
-                      icon: const Icon(Icons.add),
-                    )
-                  else
-                    TextButton.icon(
-                      key: const ValueKey('add-page'),
-                      onPressed: _busy || _error != null ? null : _addPage,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Sayfa ekle'),
+    return GuideHost(
+      offers: [
+        GuideOffer(
+          group: GuideGroup.resume,
+          enabled:
+              !_busy &&
+              !_selecting &&
+              _error == null &&
+              _readingPosition != null,
+          steps: [GuideStep(_guideResume, 'Son okuduğun konuma dönebilirsin.')],
+        ),
+      ],
+      child: PopScope(
+        canPop: !_selecting && _deletingPageId == null && !_reordering,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && _selecting && !_busy) _exitSelection();
+        },
+        child: Scaffold(
+          appBar: _selecting
+              ? selectionAppBar(
+                  count: _selectedPageIds.length,
+                  busy: _busy,
+                  onClose: _exitSelection,
+                  onSelectAll: () => setState(() {
+                    _selectedPageIds.addAll(_pages.map((page) => page.id));
+                  }),
+                  onDelete: _deleteSelected,
+                )
+              : AppBar(
+                  title: Text(_document.title),
+                  actions: [
+                    if (MediaQuery.sizeOf(context).width < 400 &&
+                        MediaQuery.textScalerOf(context).scale(14) > 20)
+                      IconButton(
+                        key: const ValueKey('add-page'),
+                        tooltip: 'Sayfa ekle',
+                        onPressed: _busy || _error != null ? null : _addPage,
+                        icon: const Icon(Icons.add),
+                      )
+                    else
+                      TextButton.icon(
+                        key: const ValueKey('add-page'),
+                        onPressed: _busy || _error != null ? null : _addPage,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Sayfa ekle'),
+                      ),
+                    PopupMenuButton<String>(
+                      key: const ValueKey('content-options'),
+                      tooltip: 'İçerik seçenekleri',
+                      enabled: !_busy && _error == null,
+                      onSelected: (_) => _editDetails(),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                      ],
                     ),
-                  PopupMenuButton<String>(
-                    key: const ValueKey('content-options'),
-                    tooltip: 'İçerik seçenekleri',
-                    enabled: !_busy && _error == null,
-                    onSelected: (_) => _editDetails(),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'edit', child: Text('Düzenle')),
-                    ],
-                  ),
-                ],
-              ),
-        body: SafeArea(child: _buildBody(context)),
+                  ],
+                ),
+          body: SafeArea(child: _buildBody(context)),
+        ),
       ),
     );
   }
@@ -615,6 +632,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                   children: [
                     if (_readingPosition case final position?)
                       ListTile(
+                        key: _guideResume,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 8,

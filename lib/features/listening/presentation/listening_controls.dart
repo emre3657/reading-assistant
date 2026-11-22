@@ -14,6 +14,7 @@ class ListeningControls extends StatelessWidget {
     this.onCancelNextPage,
     this.startPending = false,
     this.onCancelStart,
+    this.startButtonKey,
   });
 
   final ListeningController listening;
@@ -25,6 +26,7 @@ class ListeningControls extends StatelessWidget {
   final VoidCallback? onCancelNextPage;
   final bool startPending;
   final VoidCallback? onCancelStart;
+  final Key? startButtonKey;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +104,7 @@ class ListeningControls extends StatelessWidget {
                       )
                     else
                       FilledButton.icon(
+                        key: startButtonKey,
                         onPressed: canStart ? onStart : null,
                         icon: const Icon(Icons.volume_up),
                         label: const Text('Sesli oku'),

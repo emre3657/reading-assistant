@@ -9,12 +9,38 @@ class FakePreferencesStore extends DocumentStore {
   Completer<void>? introReadGate;
   Completer<void>? introWriteGate;
   int introWriteCalls = 0;
+  final Set<String> guides = {
+    'guide_home',
+    'guide_text',
+    'guide_resume',
+    'guide_bookmark',
+  };
+  Object? guideReadError;
+  Object? guideWriteError;
   Map<String, Object?>? values;
   Object? loadError;
   Object? saveError;
   Completer<void>? loadGate;
   Completer<void>? saveGate;
   int saveCalls = 0;
+
+  @override
+  Future<Set<String>> completedGuides() async {
+    if (guideReadError != null) throw guideReadError!;
+    return Set.of(guides);
+  }
+
+  @override
+  Future<void> completeGuides(Set<String> keys) async {
+    if (guideWriteError != null) throw guideWriteError!;
+    guides.addAll(keys);
+  }
+
+  @override
+  Future<void> resetGuides() async {
+    if (guideWriteError != null) throw guideWriteError!;
+    guides.clear();
+  }
 
   @override
   Future<bool> hasCompletedIntro() async {

@@ -4,6 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../guide/guide_host.dart';
+import '../../guide/guide_manager.dart';
+
 import '../../../theme/app_theme.dart';
 
 import 'package:flutter/rendering.dart';
@@ -176,6 +179,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   final _followTextKey = GlobalKey();
   final _readerBodyKey = GlobalKey();
   final _pageCaptureKey = GlobalKey();
+  final _guideBookmark = GlobalKey();
   final _sentenceTapGroup = Object();
   late final _pageAnimation = AnimationController(vsync: this);
   late final _bookmarkAnimation = AnimationController(
@@ -1556,14 +1560,44 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     return ListenableBuilder(
       listenable: Listenable.merge([_listening, _textController]),
       builder: (context, _) {
-        return PopScope(
-          canPop: _allowPop,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) unawaited(_requestExit());
-          },
-          child: _editing
-              ? _buildEditScreen(context)
-              : _buildReadScreen(context),
+        return GuideHost(
+          offers: [
+            GuideOffer(
+              group: GuideGroup.bookmark,
+              enabled:
+                  _pageId != null &&
+                  !_editing &&
+                  !_saving &&
+                  !_transitioning &&
+                  !_capturePending &&
+                  !_bookmarkBusy &&
+                  !_pageDialogOpen &&
+                  !_exitInProgress &&
+                  !_selectionStartPending &&
+                  _selectedSentence == null &&
+                  !_autoPending &&
+                  !_listening.isActive &&
+                  _foreground,
+              steps: [
+                GuideStep(
+                  _guideBookmark,
+                  'İşaretlediğin konumu saklamak için ayraç koyabilirsin. Okumaya devam etsen de ayraç yerinde kalır.',
+                ),
+              ],
+            ),
+          ],
+          child: PopScope(
+            canPop: _allowPop,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop &&
+                  GuideScope.maybeOf(context)?.active != GuideGroup.bookmark) {
+                unawaited(_requestExit());
+              }
+            },
+            child: _editing
+                ? _buildEditScreen(context)
+                : _buildReadScreen(context),
+          ),
         );
       },
     );
@@ -1592,6 +1626,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           ),
           if (_pageId != null)
             PopupMenuButton<String>(
+              key: _guideBookmark,
               tooltip: 'Ayraç seçenekleri',
               enabled:
                   !_bookmarkBusy &&

@@ -132,6 +132,22 @@ void main() {
     expect(backup.tables.containsKey('installation_settings'), isFalse);
   });
 
+  test(
+    'backup restore and guide reset preserve installation state separately',
+    () async {
+      await source.completeGuides({'guide_home'});
+      final backup = await populated();
+      await target.completeIntro();
+      await target.completeGuides({'guide_text'});
+      await target.restoreBackup(backup);
+      expect(await target.completedGuides(), {'guide_text'});
+      await target.resetGuides();
+      expect(await target.completedGuides(), isEmpty);
+      expect(await target.hasCompletedIntro(), isTrue);
+      expect(backup.tables.containsKey('installation_settings'), isFalse);
+    },
+  );
+
   test('legacy and unknown page view restore with plain default', () async {
     final backup = await populated();
     Map<String, dynamic> fresh() =>
