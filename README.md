@@ -91,6 +91,8 @@ flutter test
 flutter run
 ```
 
+Uygulama ikonlarını `assets/branding/app_icon.png` kaynağından yeniden üretmek için `dart run tool/generate_app_icons.dart` çalıştırın. Android adaptive ikonunun arka plan rengi `android/app/src/main/res/values/ic_launcher_background.xml` dosyasındadır.
+
 Android release APK:
 
 ```bash
