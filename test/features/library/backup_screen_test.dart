@@ -7,12 +7,12 @@ import 'package:reading_assistant/app.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/data/backup_data.dart';
-import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/presentation/backup_screen.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 import 'package:reading_assistant/theme/app_theme.dart';
 
 import '../listening/fake_speech_service.dart';
+import '../listening/fake_preferences_store.dart';
 
 final _backup = BackupData.fromTables({
   'categories': [
@@ -53,7 +53,7 @@ final _backup = BackupData.fromTables({
   ],
 });
 
-class _Store extends DocumentStore {
+class _Store extends FakePreferencesStore {
   int restores = 0;
   Object? error;
 

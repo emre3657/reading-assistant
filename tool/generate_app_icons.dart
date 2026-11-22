@@ -67,6 +67,19 @@ void main() {
     );
   }
 
+  for (final scale in [1, 2, 3]) {
+    final size = 168 * scale;
+    final layer = image.Image(width: size, height: size, numChannels: 4);
+    final art = _resize(foreground, (size * adaptiveScale).round());
+    final offset = (size - art.width) ~/ 2;
+    image.compositeImage(layer, art, dstX: offset, dstY: offset);
+    final suffix = scale == 1 ? '' : '@${scale}x';
+    _write(
+      'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage$suffix.png',
+      layer,
+    );
+  }
+
   final catalog = jsonDecode(
     File('$iosPath/Contents.json').readAsStringSync(),
   ) as Map<String, dynamic>;

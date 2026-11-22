@@ -3,7 +3,14 @@ import 'package:sqflite/sqflite.dart';
 import 'saved_document.dart';
 import 'turkish_text.dart';
 
-const documentDatabaseVersion = 14;
+const documentDatabaseVersion = 15;
+
+const createInstallationSettingsSql = '''
+CREATE TABLE IF NOT EXISTS installation_settings (
+  key TEXT PRIMARY KEY,
+  value INTEGER NOT NULL
+)
+''';
 
 String normalizeCategoryName(String name) => normalizeTurkishCase(name.trim());
 
@@ -186,6 +193,7 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(addThemePaletteSql);
   await database.execute(createBookmarksSql);
   await database.execute(resetBookmarkOnEditSql);
+  await database.execute(createInstallationSettingsSql);
 }
 
 const addFollowSentenceSql =
@@ -270,5 +278,8 @@ Future<void> upgradeDocumentSchema(
   if (oldVersion < 14 && newVersion >= 14) {
     await database.execute(addThemeModeSql);
     await database.execute(addThemePaletteSql);
+  }
+  if (oldVersion < 15 && newVersion >= 15) {
+    await database.execute(createInstallationSettingsSql);
   }
 }

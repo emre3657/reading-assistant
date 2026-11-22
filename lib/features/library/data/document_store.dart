@@ -233,6 +233,25 @@ class DocumentStore {
     return rows.isEmpty ? null : rows.single;
   }
 
+  Future<bool> hasCompletedIntro() async {
+    final database = await _database;
+    final rows = await database.query(
+      'installation_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['intro_completed'],
+    );
+    return rows.isNotEmpty && rows.single['value'] == 1;
+  }
+
+  Future<void> completeIntro() async {
+    final database = await _database;
+    await database.insert('installation_settings', {
+      'key': 'intro_completed',
+      'value': 1,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<void> saveReadingPreferences({
     required String speed,
     required bool autoNextPage,

@@ -10,6 +10,7 @@ import 'features/library/data/document_store.dart';
 import 'features/library/presentation/backup_screen.dart';
 import 'features/listening/services/speech_service.dart';
 import 'features/listening/presentation/reading_preferences.dart';
+import 'features/startup/intro_screen.dart';
 import 'theme/app_theme.dart';
 
 class ReadingAssistantApp extends StatefulWidget {
@@ -23,6 +24,7 @@ class ReadingAssistantApp extends StatefulWidget {
     this.readingPreferences,
     this.store,
     this.backupFileService = const BackupFileService(),
+    this.deferStartupFrame = false,
   });
 
   final ImagePickerService pickerService;
@@ -33,6 +35,7 @@ class ReadingAssistantApp extends StatefulWidget {
   final ReadingPreferences? readingPreferences;
   final DocumentStore? store;
   final BackupFileService backupFileService;
+  final bool deferStartupFrame;
 
   @override
   State<ReadingAssistantApp> createState() => _ReadingAssistantAppState();
@@ -45,10 +48,17 @@ class _ReadingAssistantAppState extends State<ReadingAssistantApp> {
   late bool _ready;
   late ThemeMode _themeMode;
   late AppPalette _palette;
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  bool _startupReady = false;
+  bool _showIntro = false;
+  bool _frameDeferred = false;
+  int _startupGeneration = 0;
+  String? _startupError;
 
   @override
   void initState() {
     super.initState();
+    _frameDeferred = widget.deferStartupFrame;
     _configure();
   }
 
@@ -70,7 +80,81 @@ class _ReadingAssistantAppState extends State<ReadingAssistantApp> {
     _themeMode = _preferences.themeMode;
     _palette = _preferences.themePalette;
     _preferences.addListener(_onPreferencesChanged);
-    unawaited(_preferences.load());
+    _startupReady = false;
+    _showIntro = false;
+    _startupError = null;
+    unawaited(_loadStartup(++_startupGeneration, _preferences, _store));
+  }
+
+  Future<void> _loadStartup(
+    int generation,
+    ReadingPreferences preferences,
+    DocumentStore store,
+  ) async {
+    final preferencesLoad = preferences.load();
+    bool completed;
+    try {
+      completed = await store.hasCompletedIntro();
+    } catch (error, stack) {
+      debugPrint('Açılış tercihi okunamadı: $error\n$stack');
+      completed = true;
+      if (mounted && generation == _startupGeneration) {
+        _startupError = 'Açılış tercihi okunamadı. Uygulamayı kullanabilirsin.';
+      }
+    }
+    await preferencesLoad;
+    if (!mounted || generation != _startupGeneration) return;
+    setState(() {
+      _showIntro = !completed;
+      _startupReady = true;
+    });
+    if (_showIntro &&
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .accessibilityFeatures
+            .disableAnimations) {
+      _completeIntro();
+    }
+    _releaseFirstFrame();
+    if (!_showIntro) _showStartupError();
+  }
+
+  void _releaseFirstFrame() {
+    if (!_frameDeferred) return;
+    _frameDeferred = false;
+    WidgetsBinding.instance.allowFirstFrame();
+  }
+
+  void _showStartupError() {
+    if (_startupError == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _startupError == null) return;
+      _messengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text(_startupError!)),
+      );
+      _startupError = null;
+    });
+  }
+
+  void _completeIntro() {
+    if (!_showIntro) return;
+    final store = _store;
+    final generation = _startupGeneration;
+    setState(() => _showIntro = false);
+    unawaited(_saveIntro(store, generation));
+  }
+
+  Future<void> _saveIntro(DocumentStore store, int generation) async {
+    try {
+      await store.completeIntro();
+    } catch (error, stack) {
+      debugPrint('Açılış tercihi kaydedilemedi: $error\n$stack');
+      if (!mounted || generation != _startupGeneration) return;
+      _startupError =
+          'Açılış tercihi kaydedilemedi. Animasyon yeniden gösterilebilir.';
+      _showStartupError();
+    }
   }
 
   void _onPreferencesChanged() {
@@ -103,6 +187,8 @@ class _ReadingAssistantAppState extends State<ReadingAssistantApp> {
 
   @override
   void dispose() {
+    _startupGeneration++;
+    _releaseFirstFrame();
     _preferences.removeListener(_onPreferencesChanged);
     if (_ownsPreferences) _preferences.dispose();
     super.dispose();
@@ -116,11 +202,14 @@ class _ReadingAssistantAppState extends State<ReadingAssistantApp> {
         key: ObjectKey(_preferences),
         title: 'Okuma Asistanı',
         debugShowCheckedModeBanner: false,
+        scaffoldMessengerKey: _messengerKey,
         theme: appTheme(_palette, Brightness.light),
         darkTheme: appTheme(_palette, Brightness.dark),
         themeMode: _themeMode,
-        home: !_ready
-            ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+        home: !_startupReady
+            ? const Scaffold(backgroundColor: startupBackground)
+            : _showIntro
+            ? IntroScreen(onComplete: _completeIntro)
             : ImageImportScreen(
                 pickerService: widget.pickerService,
                 textRecognitionService: widget.textRecognitionService,

@@ -6,6 +6,8 @@ Android ve iOS hedeflenir. Geliştirme ve manuel kontroller Android Pixel 5 emü
 
 ## Özellikler
 
+Uygulama açılırken platform açılış ekranı gösterilir. İlk açılışta kısa, sessiz kitap animasyonu bir kez oynatılır; “Atla” veya sistemin hareket azaltma tercihiyle geçilebilir. Bu kurulum bilgisi yedeğe dahil edilmez.
+
 ### Metin oluşturma ve OCR
 
 - Galeriden görsel seçme, önizleme, değiştirme ve kaldırma.

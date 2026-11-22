@@ -3,12 +3,33 @@ import 'dart:async';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 
 class FakePreferencesStore extends DocumentStore {
+  bool introCompleted = true;
+  Object? introReadError;
+  Object? introWriteError;
+  Completer<void>? introReadGate;
+  Completer<void>? introWriteGate;
+  int introWriteCalls = 0;
   Map<String, Object?>? values;
   Object? loadError;
   Object? saveError;
   Completer<void>? loadGate;
   Completer<void>? saveGate;
   int saveCalls = 0;
+
+  @override
+  Future<bool> hasCompletedIntro() async {
+    await introReadGate?.future;
+    if (introReadError != null) throw introReadError!;
+    return introCompleted;
+  }
+
+  @override
+  Future<void> completeIntro() async {
+    introWriteCalls++;
+    await introWriteGate?.future;
+    if (introWriteError != null) throw introWriteError!;
+    introCompleted = true;
+  }
 
   @override
   Future<Map<String, Object?>?> loadReadingPreferences() async {

@@ -271,6 +271,52 @@ void main() {
     },
   );
 
+  test(
+    'v14 migration preserves preferences and defaults intro to incomplete',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('intro-migration-');
+      final path = '${dir.path}${Platform.pathSeparator}test.db';
+      try {
+        final old = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 14,
+            singleInstance: false,
+            onConfigure: configureDocumentDatabase,
+            onCreate: (db, version) async {
+              await createDocumentSchema(db, version);
+              await db.execute('DROP TABLE installation_settings');
+            },
+          ),
+        );
+        await old.insert('reading_preferences', {
+          'id': 1,
+          'speed': 'fast',
+          'auto_next_page': 1,
+          'theme_mode': 'dark',
+        });
+        await old.close();
+        final upgraded = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: documentDatabaseVersion,
+            singleInstance: false,
+            onConfigure: configureDocumentDatabase,
+            onUpgrade: upgradeDocumentSchema,
+          ),
+        );
+        final store = DocumentStore(databaseOpener: () async => upgraded);
+        expect(await store.hasCompletedIntro(), isFalse);
+        expect((await store.loadReadingPreferences())?['theme_mode'], 'dark');
+        await store.completeIntro();
+        expect(await store.hasCompletedIntro(), isTrue);
+        await upgraded.close();
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    },
+  );
+
   test('v10 migration preserves contents, locations and preferences', () async {
     final dir = await Directory.systemTemp.createTemp('page-view-migration-');
     final path = '${dir.path}${Platform.pathSeparator}test.db';

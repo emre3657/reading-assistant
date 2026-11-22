@@ -3,5 +3,6 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 
 void main() {
-  runApp(const ReadingAssistantApp());
+  WidgetsFlutterBinding.ensureInitialized().deferFirstFrame();
+  runApp(const ReadingAssistantApp(deferStartupFrame: true));
 }

@@ -246,7 +246,7 @@ void main() {
       ..loadError = StateError('failed');
     await tester.pumpWidget(ReadingAssistantApp(store: store));
     await tester.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('Galeriden görsel seç'), findsNothing);
     store.loadGate!.complete();
     await tester.pumpAndSettle();

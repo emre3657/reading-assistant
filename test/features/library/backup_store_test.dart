@@ -19,6 +19,7 @@ void main() {
     inMemoryDatabasePath,
     options: OpenDatabaseOptions(
       version: documentDatabaseVersion,
+      singleInstance: false,
       onConfigure: configureDocumentDatabase,
       onCreate: createDocumentSchema,
       onUpgrade: upgradeDocumentSchema,
@@ -80,12 +81,15 @@ void main() {
 
   test('round trip replaces existing data and preserves all tables', () async {
     final backup = await populated();
+    await target.completeIntro();
     await target.save(
       title: 'Eski',
       category: DocumentCategory.note,
       text: 'Eski metin.',
     );
     await target.restoreBackup(BackupData.decode(backup.encode()));
+    expect(await target.hasCompletedIntro(), isTrue);
+    expect(backup.tables.containsKey('installation_settings'), isFalse);
     final restored = await target.backupSnapshot();
     expect(restored.tables, backup.tables);
     expect(restored.documentCount, 1);
@@ -117,6 +121,15 @@ void main() {
     expect((await target.loadReadingPreferences())?['bookmark_color'], 'teal');
     expect((await target.loadReadingPreferences())?['theme_mode'], 'dark');
     expect((await target.loadReadingPreferences())?['theme_palette'], 'blue');
+  });
+
+  test('backup restore preserves an incomplete installation intro', () async {
+    await source.completeIntro();
+    final backup = await populated();
+    expect(await target.hasCompletedIntro(), isFalse);
+    await target.restoreBackup(backup);
+    expect(await target.hasCompletedIntro(), isFalse);
+    expect(backup.tables.containsKey('installation_settings'), isFalse);
   });
 
   test('legacy and unknown page view restore with plain default', () async {
