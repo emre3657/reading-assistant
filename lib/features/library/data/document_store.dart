@@ -257,8 +257,14 @@ class DocumentStore {
     final rows = await database.query(
       'installation_settings',
       columns: ['key'],
-      where: 'key IN (?, ?, ?, ?) AND value = 1',
-      whereArgs: ['guide_home', 'guide_text', 'guide_resume', 'guide_bookmark'],
+      where: 'key IN (?, ?, ?, ?, ?) AND value = 1',
+      whereArgs: [
+        'guide_home',
+        'guide_text',
+        'guide_resume',
+        'guide_read_from',
+        'guide_bookmark',
+      ],
     );
     return rows.map((row) => row['key'] as String).toSet();
   }
@@ -279,8 +285,14 @@ class DocumentStore {
     final database = await _database;
     await database.delete(
       'installation_settings',
-      where: 'key IN (?, ?, ?, ?)',
-      whereArgs: ['guide_home', 'guide_text', 'guide_resume', 'guide_bookmark'],
+      where: 'key IN (?, ?, ?, ?, ?)',
+      whereArgs: [
+        'guide_home',
+        'guide_text',
+        'guide_resume',
+        'guide_read_from',
+        'guide_bookmark',
+      ],
     );
   }
 

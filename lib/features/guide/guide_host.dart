@@ -6,9 +6,10 @@ import 'package:flutter/material.dart';
 import 'guide_manager.dart';
 
 class GuideStep {
-  const GuideStep(this.target, this.message);
+  const GuideStep(this.target, this.message, {this.title});
   final GlobalKey target;
   final String message;
+  final String? title;
 }
 
 class GuideOffer {
@@ -16,10 +17,14 @@ class GuideOffer {
     required this.group,
     required this.enabled,
     required this.steps,
+    this.nextGroup,
+    this.previousGroup,
   });
   final GuideGroup group;
   final bool enabled;
   final List<GuideStep> steps;
+  final GuideGroup? nextGroup;
+  final GuideGroup? previousGroup;
 }
 
 class GuideHost extends StatefulWidget {
@@ -128,6 +133,14 @@ class _GuideHostState extends State<GuideHost>
       for (final offer in widget.offers) {
         if (!offer.enabled || manager.completed(offer.group)) continue;
         if (offer.group == GuideGroup.text && manager.restartHomePending) {
+          continue;
+        }
+        final previous = offer.previousGroup;
+        if (previous != null &&
+            !manager.completed(previous) &&
+            widget.offers.any(
+              (item) => item.group == previous && item.enabled,
+            )) {
           continue;
         }
         final index = manager.progress(offer.group);
@@ -240,6 +253,21 @@ class _GuideHostState extends State<GuideHost>
     final engaged = offer != null && manager?.active == _group;
     final active = engaged && target != null;
     final index = active ? manager!.progress(offer.group) : 0;
+    final previous =
+        active &&
+        offer.previousGroup != null &&
+        manager!.completed(offer.previousGroup!);
+    final next =
+        active &&
+        offer.nextGroup != null &&
+        !manager!.completed(offer.nextGroup!) &&
+        widget.offers.any(
+          (item) => item.group == offer.nextGroup && item.enabled,
+        );
+    final stepNumber = index + 1 + (previous ? 1 : 0);
+    final stepCount =
+        (offer?.steps.length ?? 0) + (previous ? 1 : 0) + (next ? 1 : 0);
+    final title = active ? offer.steps[index].title : null;
     return PopScope(
       canPop: !engaged,
       onPopInvokedWithResult: (didPop, _) {
@@ -275,7 +303,7 @@ class _GuideHostState extends State<GuideHost>
                 container: true,
                 liveRegion: true,
                 label:
-                    'Adım ${index + 1}/${offer.steps.length}. ${offer.steps[index].message}',
+                    'Adım $stepNumber/$stepCount. ${title == null ? '' : '$title. '}${offer.steps[index].message}',
                 child: Material(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(16),
@@ -288,10 +316,17 @@ class _GuideHostState extends State<GuideHost>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ExcludeSemantics(
-                            child: Text(
-                              'Adım ${index + 1}/${offer.steps.length}',
-                            ),
+                            child: Text('Adım $stepNumber/$stepCount'),
                           ),
+                          if (title != null) ...[
+                            const SizedBox(height: 8),
+                            ExcludeSemantics(
+                              child: Text(
+                                title,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           ExcludeSemantics(
                             child: Text(offer.steps[index].message),
@@ -307,7 +342,7 @@ class _GuideHostState extends State<GuideHost>
                               FilledButton(
                                 onPressed: _next,
                                 child: Text(
-                                  index + 1 == offer.steps.length
+                                  index + 1 == offer.steps.length && !next
                                       ? 'Tamam'
                                       : 'İleri',
                                 ),

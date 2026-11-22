@@ -8,6 +8,7 @@ enum GuideGroup {
   home('guide_home'),
   text('guide_text'),
   resume('guide_resume'),
+  readFrom('guide_read_from'),
   bookmark('guide_bookmark');
 
   const GuideGroup(this.key);
@@ -77,8 +78,11 @@ class GuideManager extends ChangeNotifier {
     _active = null;
     if (group == GuideGroup.home) _restartHomePending = false;
     final groups =
-        skip && (group == GuideGroup.resume || group == GuideGroup.bookmark)
-        ? {GuideGroup.resume, GuideGroup.bookmark}
+        skip &&
+            (group == GuideGroup.resume ||
+                group == GuideGroup.readFrom ||
+                group == GuideGroup.bookmark)
+        ? {GuideGroup.resume, GuideGroup.readFrom, GuideGroup.bookmark}
         : {group};
     for (final item in groups) {
       _progress.remove(item);

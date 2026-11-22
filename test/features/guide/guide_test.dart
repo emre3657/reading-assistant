@@ -18,18 +18,21 @@ import '../listening/fake_speech_service.dart';
 import '../library/fake_reading_positions.dart';
 
 class _DocumentStore extends FakePreferencesStore with FakeReadingPositions {
-  final document = SavedDocument(
+  _DocumentStore({this.text = 'Bir cümle.'});
+
+  final String text;
+  late final document = SavedDocument(
     id: 1,
     title: 'Belge',
     category: DocumentCategory.note,
-    text: 'Bir cümle.',
+    text: text,
     createdAt: DateTime(2026),
   );
-  final page = const DocumentPage(
+  late final page = DocumentPage(
     id: 10,
     documentId: 1,
     position: 0,
-    text: 'Bir cümle.',
+    text: text,
   );
 
   @override
@@ -62,15 +65,39 @@ Future<void> openApp(
   WidgetTester tester,
   FakePreferencesStore store, {
   FakeImagePickerService? picker,
+  FakeSpeechService? speech,
 }) async {
   await tester.pumpWidget(
     ReadingAssistantApp(
       store: store,
       pickerService: picker ?? FakeImagePickerService(),
-      speechService: FakeSpeechService(),
+      speechService: speech ?? FakeSpeechService(),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+Future<void> openReader(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Kayıtlarım'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('document-1')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('page-10')));
+  await tester.pumpAndSettle();
+}
+
+Offset characterPosition(WidgetTester tester) {
+  final field = find.byKey(const ValueKey('saved-reading-text'));
+  final editable = find.descendant(
+    of: field,
+    matching: find.byType(EditableText),
+  );
+  final render = tester.state<EditableTextState>(editable).renderEditable;
+  final box = render
+      .getBoxesForSelection(const TextSelection(baseOffset: 0, extentOffset: 1))
+      .first
+      .toRect();
+  return render.localToGlobal(box.center);
 }
 
 void main() {
@@ -391,6 +418,221 @@ void main() {
       expect(store.guides, contains('guide_resume'));
     },
   );
+
+  testWidgets('new reader sees ordered guides and can read from one tap', (
+    tester,
+  ) async {
+    final store = _DocumentStore()
+      ..guides.remove('guide_read_from')
+      ..guides.remove('guide_bookmark');
+    final speech = FakeSpeechService();
+    await openApp(tester, store, speech: speech);
+    await openReader(tester);
+    const description =
+        'Bir cümleye dokun, ardından ‘Buradan oku’yu seçerek o konumdan dinlemeye başla.';
+    expect(find.text('Buradan oku'), findsOneWidget);
+    expect(find.text(description), findsOneWidget);
+    final semantics = tester.ensureSemantics();
+    expect(
+      find.bySemanticsLabel('Adım 1/2. Buradan oku. $description'),
+      findsOneWidget,
+    );
+    semantics.dispose();
+    await tester.tapAt(characterPosition(tester));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('read-from-sentence')), findsNothing);
+    expect(speech.spoken, isEmpty);
+    await tester.tap(find.text('İleri'));
+    await tester.pumpAndSettle();
+    expect(store.guides, contains('guide_read_from'));
+    expect(find.text('Adım 2/2'), findsOneWidget);
+    expect(
+      find.text(
+        'İşaretlediğin konumu saklamak için ayraç koyabilirsin. Okumaya devam etsen de ayraç yerinde kalır.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Tamam'));
+    await tester.pumpAndSettle();
+    expect(store.guides, contains('guide_bookmark'));
+    await tester.tapAt(characterPosition(tester));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('read-from-sentence')));
+    await tester.pumpAndSettle();
+    expect(speech.spoken, ['Bir cümle.']);
+    expect(store.positions[1]?.sentenceIndex, 0);
+  });
+
+  testWidgets('existing bookmark completion shows only the new step once', (
+    tester,
+  ) async {
+    final store = _DocumentStore()..guides.remove('guide_read_from');
+    await openApp(tester, store);
+    await openReader(tester);
+    expect(find.text('Buradan oku'), findsOneWidget);
+    expect(find.text('Adım 1/1'), findsOneWidget);
+    expect(find.text('İleri'), findsNothing);
+    await tester.tap(find.text('Tamam'));
+    await tester.pumpAndSettle();
+    expect(store.guides, containsAll(['guide_read_from', 'guide_bookmark']));
+    expect(
+      find.textContaining(
+        'İşaretlediğin konumu saklamak için ayraç koyabilirsin.',
+      ),
+      findsNothing,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await openApp(tester, store);
+    await openReader(tester);
+    expect(find.text('Buradan oku'), findsNothing);
+  });
+
+  testWidgets('restarting guides includes the new reading step', (
+    tester,
+  ) async {
+    final store = _DocumentStore();
+    await openApp(tester, store);
+    await tester.tap(find.byTooltip('Diğer seçenekler'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kullanım rehberi'));
+    await tester.pumpAndSettle();
+    expect(store.guides, isNot(contains('guide_read_from')));
+    await tester.tap(find.text('Atla'));
+    await tester.pumpAndSettle();
+    await openReader(tester);
+    expect(find.text('Buradan oku'), findsOneWidget);
+    expect(find.text('İleri'), findsOneWidget);
+  });
+
+  testWidgets('back skips new reading and bookmark guides without exiting', (
+    tester,
+  ) async {
+    final store = _DocumentStore()
+      ..guides.remove('guide_read_from')
+      ..guides.remove('guide_bookmark');
+    await openApp(tester, store);
+    await openReader(tester);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Ayraç seçenekleri'), findsOneWidget);
+    expect(
+      store.guides,
+      containsAll(['guide_resume', 'guide_read_from', 'guide_bookmark']),
+    );
+  });
+
+  testWidgets(
+    'blank page defers read-from guide without hiding bookmark guide',
+    (tester) async {
+      final store = _DocumentStore(text: '   ')
+        ..guides.remove('guide_read_from')
+        ..guides.remove('guide_bookmark');
+      await openApp(tester, store);
+      await openReader(tester);
+      expect(find.text('Buradan oku'), findsNothing);
+      expect(
+        find.textContaining(
+          'İşaretlediğin konumu saklamak için ayraç koyabilirsin.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Tamam'));
+      await tester.pumpAndSettle();
+      expect(store.guides, contains('guide_bookmark'));
+      expect(store.guides, isNot(contains('guide_read_from')));
+    },
+  );
+
+  testWidgets('reader text selection defers the new guide', (tester) async {
+    final store = _DocumentStore();
+    await openApp(tester, store);
+    await openReader(tester);
+    await tester.longPressAt(characterPosition(tester));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey('saved-reading-text')),
+    );
+    expect(field.controller!.selection.isCollapsed, isFalse);
+    final manager = tester.widget<GuideScope>(find.byType(GuideScope)).manager;
+    manager.restart();
+    expect(manager.begin(GuideGroup.home), isTrue);
+    manager.complete(GuideGroup.home);
+    await tester.pumpAndSettle();
+    expect(find.text('Buradan oku'), findsNothing);
+    final editable = tester.state<EditableTextState>(
+      find.descendant(
+        of: find.byKey(const ValueKey('saved-reading-text')),
+        matching: find.byType(EditableText),
+      ),
+    );
+    editable.hideToolbar();
+    field.controller!.selection = const TextSelection.collapsed(offset: 0);
+    await tester.pumpAndSettle();
+    expect(find.text('Buradan oku'), findsOneWidget);
+  });
+
+  testWidgets('reader guidance waits for listening to stop', (tester) async {
+    final store = _DocumentStore();
+    final speech = FakeSpeechService();
+    await openApp(tester, store, speech: speech);
+    await openReader(tester);
+    await tester.tap(find.text('Sesli oku'));
+    await tester.pumpAndSettle();
+    expect(speech.isSpeaking, isTrue);
+    final manager = tester.widget<GuideScope>(find.byType(GuideScope)).manager;
+    manager.restart();
+    expect(manager.begin(GuideGroup.home), isTrue);
+    manager.complete(GuideGroup.home);
+    await tester.pumpAndSettle();
+    expect(find.text('Buradan oku'), findsNothing);
+    await tester.tap(find.text('Durdur'));
+    await tester.pumpAndSettle();
+    expect(find.text('Buradan oku'), findsOneWidget);
+  });
+
+  testWidgets('reader guidance waits until editing ends', (tester) async {
+    final store = _DocumentStore();
+    await openApp(tester, store);
+    await openReader(tester);
+    await tester.tap(find.byTooltip('Düzenle'));
+    await tester.pumpAndSettle();
+    final manager = tester.widget<GuideScope>(find.byType(GuideScope)).manager;
+    manager.restart();
+    expect(manager.begin(GuideGroup.home), isTrue);
+    manager.complete(GuideGroup.home);
+    await tester.pumpAndSettle();
+    expect(find.text('Buradan oku'), findsNothing);
+    await tester.ensureVisible(find.text('Düzenlemekten vazgeç'));
+    await tester.tap(find.text('Düzenlemekten vazgeç'));
+    await tester.pumpAndSettle();
+    expect(find.text('Buradan oku'), findsOneWidget);
+  });
+
+  testWidgets('new reader guide is usable with large text on a narrow screen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(640, 1280);
+    tester.view.devicePixelRatio = 2;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final store = _DocumentStore()
+      ..guides.remove('guide_read_from')
+      ..guides.remove('guide_bookmark');
+    await openApp(tester, store);
+    await openReader(tester);
+    expect(find.text('Buradan oku'), findsOneWidget);
+    await tester.ensureVisible(find.text('İleri'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('İleri'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Tamam'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tamam'));
+    await tester.pumpAndSettle();
+    expect(store.guides, containsAll(['guide_read_from', 'guide_bookmark']));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('back skips the recorded-document group without leaving reader', (
     tester,

@@ -13,6 +13,7 @@ class FakePreferencesStore extends DocumentStore {
     'guide_home',
     'guide_text',
     'guide_resume',
+    'guide_read_from',
     'guide_bookmark',
   };
   Object? guideReadError;

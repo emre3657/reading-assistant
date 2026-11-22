@@ -191,6 +191,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       .drive(Tween<Offset>(begin: Offset.zero, end: const Offset(0, -1)));
   bool _bookmarkRetracting = false;
   bool _selectionStartPending = false;
+  bool _readerHasSelection = false;
   Widget? _previousPage;
   ui.Image? _pageSnapshot;
   bool _capturePending = false;
@@ -288,6 +289,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       onSentenceStarted: _saveListeningPosition,
     );
     _readController.attachListening(_listening);
+    _readController.addListener(_onReaderSelectionChanged);
     _listening.addListener(_onListeningChanged);
     _scrollController.addListener(_scheduleAnchorUpdate);
 
@@ -328,6 +330,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     if (preferences.ready && _listening.speed != preferences.speed) {
       unawaited(_listening.setSpeed(preferences.speed));
     }
+
     if (!preferences.autoNextPage && _autoPending) _cancelAutoAdvance();
     _scheduleAnchorUpdate();
     if (mounted) setState(() {});
@@ -337,6 +340,14 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         _showPreferencesError();
       });
     }
+  }
+
+  void _onReaderSelectionChanged() {
+    final selection = _readController.selection;
+    final selected = selection.isValid && !selection.isCollapsed;
+    if (_readerHasSelection == selected) return;
+    _readerHasSelection = selected;
+    if (mounted) setState(() {});
   }
 
   void _showPreferencesError() {
@@ -375,6 +386,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     _listening.removeListener(_onListeningChanged);
     _preferences?.removeListener(_onPreferencesChanged);
     _ownedPreferences?.dispose();
+    _readController.removeListener(_onReaderSelectionChanged);
     _readController.dispose();
     _listening.dispose();
     _ownedSpeechService?.dispose();
@@ -1560,24 +1572,39 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     return ListenableBuilder(
       listenable: Listenable.merge([_listening, _textController]),
       builder: (context, _) {
+        final guideReady =
+            !_editing &&
+            !_saving &&
+            !_transitioning &&
+            !_capturePending &&
+            !_bookmarkBusy &&
+            !_pageDialogOpen &&
+            !_exitInProgress &&
+            !_selectionStartPending &&
+            !_readerHasSelection &&
+            _selectedSentence == null &&
+            !_autoPending &&
+            !_listening.isActive &&
+            _previousPage == null &&
+            _foreground;
         return GuideHost(
           offers: [
             GuideOffer(
+              group: GuideGroup.readFrom,
+              enabled: guideReady && _saved.text.trim().isNotEmpty,
+              nextGroup: GuideGroup.bookmark,
+              steps: [
+                GuideStep(
+                  _followTextKey,
+                  'Bir cümleye dokun, ardından ‘Buradan oku’yu seçerek o konumdan dinlemeye başla.',
+                  title: 'Buradan oku',
+                ),
+              ],
+            ),
+            GuideOffer(
               group: GuideGroup.bookmark,
-              enabled:
-                  _pageId != null &&
-                  !_editing &&
-                  !_saving &&
-                  !_transitioning &&
-                  !_capturePending &&
-                  !_bookmarkBusy &&
-                  !_pageDialogOpen &&
-                  !_exitInProgress &&
-                  !_selectionStartPending &&
-                  _selectedSentence == null &&
-                  !_autoPending &&
-                  !_listening.isActive &&
-                  _foreground,
+              enabled: _pageId != null && guideReady,
+              previousGroup: GuideGroup.readFrom,
               steps: [
                 GuideStep(
                   _guideBookmark,
@@ -1589,8 +1616,10 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           child: PopScope(
             canPop: _allowPop,
             onPopInvokedWithResult: (didPop, _) {
+              final activeGuide = GuideScope.maybeOf(context)?.active;
               if (!didPop &&
-                  GuideScope.maybeOf(context)?.active != GuideGroup.bookmark) {
+                  activeGuide != GuideGroup.readFrom &&
+                  activeGuide != GuideGroup.bookmark) {
                 unawaited(_requestExit());
               }
             },

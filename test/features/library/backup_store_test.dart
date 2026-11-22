@@ -138,9 +138,9 @@ void main() {
       await source.completeGuides({'guide_home'});
       final backup = await populated();
       await target.completeIntro();
-      await target.completeGuides({'guide_text'});
+      await target.completeGuides({'guide_text', 'guide_read_from'});
       await target.restoreBackup(backup);
-      expect(await target.completedGuides(), {'guide_text'});
+      expect(await target.completedGuides(), {'guide_text', 'guide_read_from'});
       await target.resetGuides();
       expect(await target.completedGuides(), isEmpty);
       expect(await target.hasCompletedIntro(), isTrue);
