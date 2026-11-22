@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../listening/presentation/reading_preferences.dart';
 import '../data/backup_data.dart';
 import '../data/document_store.dart';
+import '../data/encrypted_backup.dart';
 
 class BackupCleanupException implements Exception {
   const BackupCleanupException();
@@ -92,6 +93,27 @@ class BackupScreen extends StatefulWidget {
 class _BackupScreenState extends State<BackupScreen> {
   bool _busy = false;
   String _status = '';
+  bool _encrypt = false;
+  bool _understood = false;
+  bool _showPassword = false;
+  bool _showRepeat = false;
+  final _password = TextEditingController();
+  final _repeat = TextEditingController();
+
+  bool get _validPassword =>
+      _password.text.characters.length >= 12 &&
+      _password.text.trim().isNotEmpty &&
+      _password.text == _repeat.text &&
+      _understood;
+
+  @override
+  void dispose() {
+    _password.clear();
+    _repeat.clear();
+    _password.dispose();
+    _repeat.dispose();
+    super.dispose();
+  }
 
   void _message(String text) {
     ScaffoldMessenger.of(context)
@@ -100,7 +122,10 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _create() async {
-    if (_busy) return;
+    if (_busy || (_encrypt && !_validPassword)) return;
+    final encrypt = _encrypt;
+    String? password = encrypt ? _password.text : null;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _busy = true;
       _status = 'Yedek hazırlanıyor…';
@@ -109,7 +134,25 @@ class _BackupScreenState extends State<BackupScreen> {
       await widget.preferences.load();
       await widget.preferences.pendingWrites;
       final backup = await widget.store.backupSnapshot();
-      final bytes = await Isolate.run(backup.encode);
+      final plaintext = await Isolate.run(backup.encode);
+      Uint8List bytes;
+      if (encrypt) {
+        try {
+          bytes = await encryptBackup(plaintext, password!);
+        } finally {
+          plaintext.fillRange(0, plaintext.length, 0);
+          password = null;
+          if (mounted) {
+            _password.clear();
+            _repeat.clear();
+            _understood = false;
+            _showPassword = false;
+            _showRepeat = false;
+          }
+        }
+      } else {
+        bytes = plaintext;
+      }
       if (!mounted) return;
       setState(() => _status = 'Yedek kaydediliyor…');
       final now = DateTime.now();
@@ -127,12 +170,22 @@ class _BackupScreenState extends State<BackupScreen> {
     } catch (_) {
       if (mounted) _message('Yedek oluşturulamadı. Tekrar deneyebilirsin.');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        if (encrypt) {
+          _password.clear();
+          _repeat.clear();
+          _understood = false;
+          _showPassword = false;
+          _showRepeat = false;
+        }
+        setState(() => _busy = false);
+      }
     }
   }
 
   Future<void> _restore() async {
     if (_busy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     var committed = false;
     setState(() {
       _busy = true;
@@ -142,7 +195,26 @@ class _BackupScreenState extends State<BackupScreen> {
       final bytes = await widget.files.pick();
       if (!mounted || bytes == null) return;
       setState(() => _status = 'Yedek doğrulanıyor…');
-      final backup = await decodeBackup(bytes);
+      final encrypted = await inspectEncryptedBackup(bytes);
+      if (!mounted) return;
+      BackupData backup;
+      if (encrypted != null) {
+        final password = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const _RestorePasswordDialog(),
+        );
+        if (!mounted || password == null) return;
+        setState(() => _status = 'Yedek çözülüyor…');
+        final plaintext = await decryptBackup(encrypted, password);
+        try {
+          backup = await decodeBackup(plaintext);
+        } finally {
+          plaintext.fillRange(0, plaintext.length, 0);
+        }
+      } else {
+        backup = await decodeBackup(bytes);
+      }
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
@@ -176,6 +248,8 @@ class _BackupScreenState extends State<BackupScreen> {
         backup.tables['reading_preferences']!.firstOrNull,
       );
       if (mounted) Navigator.of(context).pop(true);
+    } on BackupAuthenticationException {
+      if (mounted) _message('Parola yanlış veya yedek dosyası bozulmuş.');
     } on BackupCleanupException {
       if (mounted) {
         _message(
@@ -210,6 +284,22 @@ class _BackupScreenState extends State<BackupScreen> {
             children: [
               const Text('Yedek, kayıtlarını ve genel ayarlarını içerir.'),
               const SizedBox(height: 8),
+              SwitchListTile(
+                title: const Text('Yedeği parolayla şifrele'),
+                value: _encrypt,
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() {
+                        _encrypt = value;
+                        if (!value) {
+                          _password.clear();
+                          _repeat.clear();
+                          _understood = false;
+                          _showPassword = false;
+                          _showRepeat = false;
+                        }
+                      }),
+              ),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -231,8 +321,10 @@ class _BackupScreenState extends State<BackupScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Yedek dosyası şifrelenmez. Dosyaya erişen kişiler '
-                        'içindeki metinleri okuyabilir.',
+                        _encrypt
+                            ? 'Bu parola yalnızca bu yedek dosyasını açmak için kullanılır. Parolanı unutursan bu dosyadaki verileri geri yükleyemezsin. Parola sıfırlama veya kurtarma seçeneği yoktur.'
+                            : 'Yedek dosyası şifrelenmez. Dosyaya erişen kişiler '
+                                  'içindeki metinleri okuyabilir.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context)
                               .colorScheme
@@ -243,9 +335,80 @@ class _BackupScreenState extends State<BackupScreen> {
                   ],
                 ),
               ),
+              if (_encrypt) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  key: const ValueKey('backup-password'),
+                  controller: _password,
+                  enabled: !_busy,
+                  obscureText: !_showPassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Parola',
+                    helperText: 'En az 12 karakter',
+                    suffixIcon: IconButton(
+                      tooltip: _showPassword
+                          ? 'Parolayı gizle'
+                          : 'Parolayı göster',
+                      onPressed: _busy
+                          ? null
+                          : () =>
+                                setState(() => _showPassword = !_showPassword),
+                      icon: Icon(
+                        _showPassword ? Icons.visibility_off : Icons.visibility,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('backup-password-repeat'),
+                  controller: _repeat,
+                  enabled: !_busy,
+                  obscureText: !_showRepeat,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Parolayı tekrar gir',
+                    errorText:
+                        _repeat.text.isNotEmpty &&
+                            _repeat.text != _password.text
+                        ? 'Parolalar eşleşmiyor.'
+                        : null,
+                    suffixIcon: IconButton(
+                      tooltip: _showRepeat
+                          ? 'Tekrar parolasını gizle'
+                          : 'Tekrar parolasını göster',
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() => _showRepeat = !_showRepeat),
+                      icon: Icon(
+                        _showRepeat ? Icons.visibility_off : Icons.visibility,
+                      ),
+                    ),
+                  ),
+                ),
+                CheckboxListTile(
+                  value: _understood,
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _understood = value == true),
+                  title: const Text(
+                    'Parolamı unutursam bu yedeği açamayacağımı anladım.',
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ],
               const SizedBox(height: 16),
               FilledButton.icon(
-                onPressed: _busy ? null : _create,
+                onPressed: _busy || (_encrypt && !_validPassword)
+                    ? null
+                    : _create,
                 icon: const Icon(Icons.save_alt),
                 label: const Text('Yedek oluştur'),
               ),
@@ -266,5 +429,56 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       ),
     ),
+  );
+}
+
+class _RestorePasswordDialog extends StatefulWidget {
+  const _RestorePasswordDialog();
+
+  @override
+  State<_RestorePasswordDialog> createState() => _RestorePasswordDialogState();
+}
+
+class _RestorePasswordDialogState extends State<_RestorePasswordDialog> {
+  final _password = TextEditingController();
+  bool _visible = false;
+
+  @override
+  void dispose() {
+    _password.clear();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: const Text('Yedek parolası'),
+    content: TextField(
+      key: const ValueKey('restore-password'),
+      controller: _password,
+      obscureText: !_visible,
+      autocorrect: false,
+      enableSuggestions: false,
+      enableIMEPersonalizedLearning: false,
+      decoration: InputDecoration(
+        labelText: 'Parola',
+        suffixIcon: IconButton(
+          tooltip: _visible ? 'Parolayı gizle' : 'Parolayı göster',
+          onPressed: () => setState(() => _visible = !_visible),
+          icon: Icon(_visible ? Icons.visibility_off : Icons.visibility),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Vazgeç'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _password.text),
+        child: const Text('Yedeği aç'),
+      ),
+    ],
   );
 }

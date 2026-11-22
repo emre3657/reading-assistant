@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -97,7 +98,7 @@ class _Picker extends ImagePickerService {
 }
 
 Future<void> _waitFor(WidgetTester tester, Finder finder) async {
-  for (var i = 0; i < 50 && finder.evaluate().isEmpty; i++) {
+  for (var i = 0; i < 1000 && finder.evaluate().isEmpty; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
@@ -137,6 +138,182 @@ Future<void> _show(
 }
 
 void main() {
+  testWidgets('password controls and dialog fit large text in both themes', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    for (final (brightness, size) in [
+      (Brightness.light, const Size(320, 560)),
+      (Brightness.dark, const Size(560, 320)),
+    ]) {
+      tester.view.physicalSize = size;
+      final store = _Store();
+      final preferences = ReadingPreferences(store: store);
+      final files = _Files()
+        ..picked = Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'format': 'reading-assistant-encrypted',
+              'version': 1,
+              'cipher': 'AES-256-GCM',
+              'kdf': 'PBKDF2-HMAC-SHA256',
+              'iterations': 600000,
+              'salt': 'AAECAwQFBgcICQoLDA0ODw==',
+              'nonce': 'AAECAwQFBgcICQoL',
+              'ciphertext': 'bR+3GObSQ4AO5JPyovcMYg==',
+              'tag': '2quc6A+0MzYz/QSLumh40g==',
+            }),
+          ),
+        );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: brightness),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: BackupScreen(
+            store: store,
+            preferences: preferences,
+            files: files,
+          ),
+        ),
+      );
+      await tester.tap(find.text('Yedeği parolayla şifrele'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('backup-password-repeat')),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text('Yedekten geri yükle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Yedekten geri yükle'));
+      await _waitFor(tester, find.byKey(const ValueKey('restore-password')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Yedeği aç'), findsOneWidget);
+      expect(find.text('Vazgeç'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('restore-password')), findsNothing);
+      expect(store.restores, 0);
+      await tester.pumpWidget(const SizedBox());
+      preferences.dispose();
+    }
+  });
+
+  testWidgets('password requirements, encrypted export and restore', (
+    tester,
+  ) async {
+    final store = _Store();
+    final files = _Files();
+    final preferences = ReadingPreferences(store: store);
+    await _show(tester, store, files, preferences);
+    await tester.tap(find.text('Yedeği parolayla şifrele'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Bu parola yalnızca bu yedek dosyasını açmak için kullanılır. Parolanı unutursan bu dosyadaki verileri geri yükleyemezsin. Parola sıfırlama veya kurtarma seçeneği yoktur.',
+      ),
+      findsOneWidget,
+    );
+    final pass = find.byKey(const ValueKey('backup-password'));
+    final repeat = find.byKey(const ValueKey('backup-password-repeat'));
+    final create = find.widgetWithText(FilledButton, 'Yedek oluştur');
+    bool enabled() => tester.widget<FilledButton>(create).onPressed != null;
+    await tester.enterText(pass, '            ');
+    await tester.enterText(repeat, '            ');
+    await tester.ensureVisible(find.byType(CheckboxListTile));
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
+    expect(enabled(), isFalse);
+    await tester.enterText(pass, 'kısa');
+    await tester.enterText(repeat, 'kısa');
+    await tester.pump();
+    expect(enabled(), isFalse);
+    const password = '  Türkçe şifre 123  ';
+    await tester.enterText(pass, password);
+    await tester.enterText(repeat, 'yanlış parola');
+    await tester.pump();
+    expect(find.text('Parolalar eşleşmiyor.'), findsOneWidget);
+    expect(enabled(), isFalse);
+    await tester.enterText(repeat, password);
+    await tester.pump();
+    expect(enabled(), isTrue);
+    await tester.ensureVisible(find.byType(CheckboxListTile));
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
+    expect(enabled(), isFalse);
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
+    await tester.ensureVisible(find.byTooltip('Parolayı göster'));
+    await tester.tap(find.byTooltip('Parolayı göster'));
+    await tester.pump();
+    expect(tester.widget<TextField>(pass).obscureText, isFalse);
+    await tester.ensureVisible(find.byTooltip('Tekrar parolasını göster'));
+    await tester.tap(find.byTooltip('Tekrar parolasını göster'));
+    await tester.pump();
+    expect(tester.widget<TextField>(repeat).obscureText, isFalse);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.ensureVisible(create);
+    await tester.tap(create);
+    await _waitFor(tester, find.text('Yedek oluşturuldu.'));
+    expect(files.saves, 1);
+    expect(String.fromCharCodes(files.saved!), isNot(contains('Bir. İki.')));
+    expect(tester.widget<TextField>(pass).controller!.text, isEmpty);
+
+    files.picked = files.saved;
+    Future<void> startRestore() async {
+      ScaffoldMessenger.of(tester.element(find.byType(BackupScreen)))
+          .hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Yedekten geri yükle'));
+      await tester.tap(find.text('Yedekten geri yükle'));
+      await _waitFor(tester, find.byKey(const ValueKey('restore-password')));
+    }
+
+    await startRestore();
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+    expect(store.restores, 0);
+    await startRestore();
+    await tester.enterText(
+      find.byKey(const ValueKey('restore-password')),
+      'yanlış parola',
+    );
+    await tester.tap(find.text('Yedeği aç'));
+    await _waitFor(
+      tester,
+      find.text('Parola yanlış veya yedek dosyası bozulmuş.'),
+    );
+    expect(store.restores, 0);
+    await startRestore();
+    await tester.enterText(
+      find.byKey(const ValueKey('restore-password')),
+      password,
+    );
+    await tester.tap(find.text('Yedeği aç'));
+    await _waitFor(tester, find.text('Yedek geri yüklensin mi?'));
+    expect(store.restores, 0);
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+    expect(store.restores, 0);
+    await startRestore();
+    await tester.enterText(
+      find.byKey(const ValueKey('restore-password')),
+      password,
+    );
+    await tester.tap(find.text('Yedeği aç'));
+    await _waitFor(tester, find.text('Yedek geri yüklensin mi?'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Geri yükle'));
+    await tester.pumpAndSettle();
+    expect(store.restores, 1);
+    expect(preferences.themeMode, ThemeMode.dark);
+  });
+
   testWidgets('restoring a backup updates the running app theme', (
     tester,
   ) async {

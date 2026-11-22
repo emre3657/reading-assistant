@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/backup_data.dart';
 import 'package:reading_assistant/features/library/data/document_schema.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
+import 'package:reading_assistant/features/library/data/encrypted_backup.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -121,6 +122,20 @@ void main() {
     expect((await target.loadReadingPreferences())?['bookmark_color'], 'teal');
     expect((await target.loadReadingPreferences())?['theme_mode'], 'dark');
     expect((await target.loadReadingPreferences())?['theme_palette'], 'blue');
+  });
+
+  test('encrypted snapshot restores every table to SQLite', () async {
+    final backup = await populated();
+    await target.save(
+      title: 'Önceki',
+      category: DocumentCategory.note,
+      text: 'Önceki metin',
+    );
+    final encrypted = await encryptBackup(backup.encode(), '  güvenli şifre  ');
+    final envelope = (await inspectEncryptedBackup(encrypted))!;
+    final plaintext = await decryptBackup(envelope, '  güvenli şifre  ');
+    await target.restoreBackup(BackupData.decode(plaintext));
+    expect((await target.backupSnapshot()).tables, backup.tables);
   });
 
   test('backup restore preserves an incomplete installation intro', () async {
