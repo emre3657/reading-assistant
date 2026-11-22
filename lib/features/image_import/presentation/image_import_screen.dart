@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../../theme/theme_settings_dialog.dart';
+
 import 'package:image_picker/image_picker.dart';
 
 import '../../listening/presentation/listening_controller.dart';
@@ -170,6 +173,11 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     preferences.addListener(_onPreferencesChanged);
     if (preferences.ready) {
       unawaited(_listening.setSpeed(preferences.speed));
+      if (preferences.errorRevision > 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _showPreferencesError(),
+        );
+      }
     } else {
       unawaited(preferences.load());
     }
@@ -203,6 +211,11 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
   Future<void> _openReadingSettings() async {
     await showReadingSettings(context, preferences: _preferences!);
+    if (mounted) _showPreferencesError();
+  }
+
+  Future<void> _openThemeSettings() async {
+    await showThemeSettings(context, _preferences!);
     if (mounted) _showPreferencesError();
   }
 
@@ -1098,8 +1111,15 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               tooltip: 'Diğer seçenekler',
               enabled:
                   !_openingBackup && !controller.isBusy && !_saveDialogOpen,
-              onSelected: (_) => _openBackup(),
+              onSelected: (value) {
+                if (value == 'theme') {
+                  unawaited(_openThemeSettings());
+                } else if (value == 'backup') {
+                  unawaited(_openBackup());
+                }
+              },
               itemBuilder: (_) => const [
+                PopupMenuItem(value: 'theme', child: Text('Tema')),
                 PopupMenuItem(
                   value: 'backup',
                   child: Text('Yedekle ve geri yükle'),

@@ -3,7 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'saved_document.dart';
 import 'turkish_text.dart';
 
-const documentDatabaseVersion = 13;
+const documentDatabaseVersion = 14;
 
 String normalizeCategoryName(String name) => normalizeTurkishCase(name.trim());
 
@@ -182,6 +182,8 @@ Future<void> createDocumentSchema(Database database, int version) async {
   await database.execute(addPageAnimationEffectSql);
   await database.execute(addBookmarkShapeSql);
   await database.execute(addBookmarkColorSql);
+  await database.execute(addThemeModeSql);
+  await database.execute(addThemePaletteSql);
   await database.execute(createBookmarksSql);
   await database.execute(resetBookmarkOnEditSql);
 }
@@ -209,6 +211,10 @@ const addBookmarkShapeSql =
     "ALTER TABLE reading_preferences ADD COLUMN bookmark_shape TEXT NOT NULL DEFAULT 'ribbon'";
 const addBookmarkColorSql =
     "ALTER TABLE reading_preferences ADD COLUMN bookmark_color TEXT NOT NULL DEFAULT 'red'";
+const addThemeModeSql =
+    "ALTER TABLE reading_preferences ADD COLUMN theme_mode TEXT NOT NULL DEFAULT 'system'";
+const addThemePaletteSql =
+    "ALTER TABLE reading_preferences ADD COLUMN theme_palette TEXT NOT NULL DEFAULT 'turquoise'";
 
 Future<void> upgradeDocumentSchema(
   Database database,
@@ -260,5 +266,9 @@ Future<void> upgradeDocumentSchema(
   if (oldVersion < 13 && newVersion >= 13) {
     await database.execute(addBookmarkShapeSql);
     await database.execute(addBookmarkColorSql);
+  }
+  if (oldVersion < 14 && newVersion >= 14) {
+    await database.execute(addThemeModeSql);
+    await database.execute(addThemePaletteSql);
   }
 }

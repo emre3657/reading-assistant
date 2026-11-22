@@ -3,12 +3,14 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reading_assistant/app.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/data/backup_data.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/presentation/backup_screen.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
+import 'package:reading_assistant/theme/app_theme.dart';
 
 import '../listening/fake_speech_service.dart';
 
@@ -45,6 +47,8 @@ final _backup = BackupData.fromTables({
       'page_animation_effect': 'slide',
       'bookmark_shape': 'corner',
       'bookmark_color': 'purple',
+      'theme_mode': 'dark',
+      'theme_palette': 'green',
     },
   ],
 });
@@ -133,6 +137,36 @@ Future<void> _show(
 }
 
 void main() {
+  testWidgets('restoring a backup updates the running app theme', (
+    tester,
+  ) async {
+    final store = _Store();
+    final files = _Files()..picked = _backup.encode();
+    await tester.pumpWidget(
+      ReadingAssistantApp(
+        store: store,
+        pickerService: _Picker(),
+        backupFileService: files,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Diğer seçenekler'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yedekle ve geri yükle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yedekten geri yükle'));
+    await _waitFor(tester, find.text('Yedek geri yüklensin mi?'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Geri yükle'));
+    await tester.pumpAndSettle();
+    expect(store.restores, 1);
+    final context = tester.element(find.byType(ImageImportScreen));
+    expect(Theme.of(context).brightness, Brightness.dark);
+    expect(
+      Theme.of(context).colorScheme.primary,
+      appTheme(AppPalette.green, Brightness.dark).colorScheme.primary,
+    );
+  });
+
   testWidgets(
     'cleanup failure is reported rather than treated as cancellation',
     (tester) async {
@@ -315,6 +349,8 @@ void main() {
       expect(preferences.pageAnimationEffect, PageAnimationEffect.slide);
       expect(preferences.bookmarkShape, BookmarkShape.corner);
       expect(preferences.bookmarkColor, BookmarkColor.purple);
+      expect(preferences.themeMode, ThemeMode.dark);
+      expect(preferences.themePalette, AppPalette.green);
       expect(find.byType(BackupScreen), findsNothing);
     },
   );

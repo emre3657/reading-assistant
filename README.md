@@ -47,6 +47,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Açık sayfayı dinleme ve yalnızca o sayfanın metnini düzenleme.
 - Sayfa düzenleme taslağını onayla temizleme; kayıt ayrıca kaydedilene kadar değişmez.
 - Genel görünüm ayarındaki “Sayfa görünümü” Sade veya kâğıt tonlu Kitap olarak tüm ana metinlere uygulanır ve cihazda saklanır.
+- Ana menüdeki “Tema” ile Sistem/Açık/Koyu görünümü ve Turkuaz, Mavi, Mor veya Yeşil paleti seçilebilir; seçimler cihazda ve yedekte saklanır.
 - Kayıtlı sayfa okuma ayarlarında isteğe bağlı Yumuşak belirme, Dikey kayma veya kıvrımlı Sayfa çevirme geçişi ve önizlemesi bulunur; sistemin hareket azaltma tercihi uygulanır.
 - Son dinlenen sayfa ve cümle cihazda saklanır; içerik sayfalarında “Kaldığın yerden devam et” ile açılıp Sesli oku'ya basıldığında cümlenin başından okunur. Sayfa metni değiştirilirse konum geçersiz olur; son sayfa tamamlanınca temizlenir.
 - Her içeriğe bir manuel ayraç konabilir; okumaya devam etmek ayracı taşımaz. “Ayraca git” okumayı başlatmadan işaretli cümleyi açar. İşaretli sayfanın metni değişirse ayraç sayfanın başına döner.

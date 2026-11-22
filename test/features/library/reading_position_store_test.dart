@@ -173,6 +173,12 @@ void main() {
         await old.execute(
           'ALTER TABLE reading_preferences DROP COLUMN bookmark_color',
         );
+        await old.execute(
+          'ALTER TABLE reading_preferences DROP COLUMN theme_mode',
+        );
+        await old.execute(
+          'ALTER TABLE reading_preferences DROP COLUMN theme_palette',
+        );
         final preferences = await oldStore.loadReadingPreferences();
         await old.close();
         await expectLater(
@@ -223,6 +229,8 @@ void main() {
           'page_animation_effect': 'fade',
           'bookmark_shape': 'ribbon',
           'bookmark_color': 'red',
+          'theme_mode': 'system',
+          'theme_palette': 'turquoise',
         });
         expect(await writer.bookmark(id), isNull);
         await writer.saveBookmark(

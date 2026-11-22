@@ -3,6 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
+import '../../../theme/app_theme.dart';
+
 import 'package:flutter/rendering.dart';
 
 import '../../listening/presentation/listening_controller.dart';
@@ -700,6 +703,9 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       view: _preferences!.pageView,
       alignment: _preferences!.textAlignment.textAlign,
       style: baseStyle?.copyWith(
+        color: _preferences!.pageView == ReadingPageView.book
+            ? ReadingColors.of(context).bookText
+            : null,
         fontSize:
             (baseStyle.fontSize ?? 16) * _preferences!.textSize.multiplier,
         height: readingLineHeight(baseStyle, _preferences!.lineSpacing),
@@ -1715,6 +1721,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                                                 .textTheme
                                                 .bodyLarge
                                                 ?.copyWith(
+                                                  color:
+                                                      _preferences!.pageView ==
+                                                          ReadingPageView.book
+                                                      ? ReadingColors.of(
+                                                          context,
+                                                        ).bookText
+                                                      : null,
                                                   fontSize:
                                                       (Theme.of(context)
                                                               .textTheme

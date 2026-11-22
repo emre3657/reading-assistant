@@ -7,6 +7,7 @@ import 'package:reading_assistant/app.dart';
 import 'package:reading_assistant/features/image_import/presentation/widgets/image_preview.dart';
 
 import 'test_doubles.dart';
+import '../listening/fake_preferences_store.dart';
 
 const _selectLabel = 'Galeriden görsel seç';
 const _changeLabel = 'Görseli değiştir';
@@ -20,6 +21,7 @@ Future<void> _pumpApp(
 }) async {
   await tester.pumpWidget(
     ReadingAssistantApp(
+      store: FakePreferencesStore(),
       pickerService: picker,
       previewImageBuilder: (file) {
         final provider = ControlledImageProvider();
@@ -141,6 +143,7 @@ void main() {
         onRetrieveLost: () async => XFile('/tmp/lost.png'),
       ),
     );
+    await tester.pump();
 
     expect(find.byType(ImagePreview), findsOneWidget);
     expect(find.text(_removeLabel), findsOneWidget);

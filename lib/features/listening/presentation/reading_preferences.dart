@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../theme/app_theme.dart';
 import '../../library/data/document_store.dart';
 import 'listening_controller.dart';
 
@@ -125,6 +126,8 @@ class ReadingPreferences extends ChangeNotifier {
   PageAnimationEffect _pageAnimationEffect = PageAnimationEffect.fade;
   BookmarkShape _bookmarkShape = BookmarkShape.ribbon;
   BookmarkColor _bookmarkColor = BookmarkColor.red;
+  ThemeMode _themeMode = ThemeMode.system;
+  AppPalette _themePalette = AppPalette.turquoise;
   bool _saveFailureReported = false;
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
@@ -143,6 +146,8 @@ class ReadingPreferences extends ChangeNotifier {
   PageAnimationEffect get pageAnimationEffect => _pageAnimationEffect;
   BookmarkShape get bookmarkShape => _bookmarkShape;
   BookmarkColor get bookmarkColor => _bookmarkColor;
+  ThemeMode get themeMode => _themeMode;
+  AppPalette get themePalette => _themePalette;
   Future<void> get pendingWrites => _writeTail;
   int get errorRevision => _errorRevision;
   String? get errorMessage => _errorMessage;
@@ -206,6 +211,16 @@ class ReadingPreferences extends ChangeNotifier {
             .where((v) => v.name == row?['bookmark_color'])
             .firstOrNull ??
         BookmarkColor.red;
+    _themeMode =
+        ThemeMode.values
+            .where((v) => v.name == row?['theme_mode'])
+            .firstOrNull ??
+        ThemeMode.system;
+    _themePalette =
+        AppPalette.values
+            .where((v) => v.name == row?['theme_palette'])
+            .firstOrNull ??
+        AppPalette.turquoise;
   }
 
   /// Call only after pending writes have completed and the restore commits.
@@ -295,6 +310,20 @@ class ReadingPreferences extends ChangeNotifier {
     _save();
   }
 
+  void setThemeMode(ThemeMode value) {
+    if (!_ready || _themeMode == value) return;
+    _themeMode = value;
+    notifyListeners();
+    _save();
+  }
+
+  void setThemePalette(AppPalette value) {
+    if (!_ready || _themePalette == value) return;
+    _themePalette = value;
+    notifyListeners();
+    _save();
+  }
+
   void _save() {
     final speed = _speed.name;
     final auto = _autoNextPage;
@@ -307,6 +336,8 @@ class ReadingPreferences extends ChangeNotifier {
     final pageAnimationEffect = _pageAnimationEffect.name;
     final bookmarkShape = _bookmarkShape.name;
     final bookmarkColor = _bookmarkColor.name;
+    final themeMode = _themeMode.name;
+    final themePalette = _themePalette.name;
     _writeTail = _writeTail.then((_) async {
       try {
         await _store.saveReadingPreferences(
@@ -321,6 +352,8 @@ class ReadingPreferences extends ChangeNotifier {
           pageAnimationEffect: pageAnimationEffect,
           bookmarkShape: bookmarkShape,
           bookmarkColor: bookmarkColor,
+          themeMode: themeMode,
+          themePalette: themePalette,
         );
         _saveFailureReported = false;
       } catch (_) {

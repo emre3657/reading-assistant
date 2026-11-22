@@ -6,6 +6,8 @@ import 'package:reading_assistant/features/library/data/document_schema.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
+import 'package:reading_assistant/theme/app_theme.dart';
+import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'fake_preferences_store.dart';
@@ -28,6 +30,8 @@ void main() {
     expect(preferences.pageAnimationEffect, PageAnimationEffect.fade);
     expect(preferences.bookmarkShape, BookmarkShape.ribbon);
     expect(preferences.bookmarkColor, BookmarkColor.red);
+    expect(preferences.themeMode, ThemeMode.system);
+    expect(preferences.themePalette, AppPalette.turquoise);
     expect(store.saveCalls, 0);
 
     store.values = {
@@ -42,6 +46,8 @@ void main() {
       'page_animation_effect': 'unknown',
       'bookmark_shape': 'unknown',
       'bookmark_color': 'unknown',
+      'theme_mode': 'unknown',
+      'theme_palette': 'unknown',
     };
     final invalid = ReadingPreferences(store: store);
     await invalid.load();
@@ -55,6 +61,8 @@ void main() {
     expect(invalid.pageAnimationEffect, PageAnimationEffect.fade);
     expect(invalid.bookmarkShape, BookmarkShape.ribbon);
     expect(invalid.bookmarkColor, BookmarkColor.red);
+    expect(invalid.themeMode, ThemeMode.system);
+    expect(invalid.themePalette, AppPalette.turquoise);
   });
 
   test(
@@ -111,6 +119,8 @@ void main() {
         'page_animation_effect': 'turn',
         'bookmark_shape': 'corner',
         'bookmark_color': 'teal',
+        'theme_mode': 'system',
+        'theme_palette': 'turquoise',
       });
       expect(store.saveCalls, 19);
     },
@@ -180,6 +190,8 @@ void main() {
       preferences.setPageAnimationEffect(PageAnimationEffect.slide);
       preferences.setBookmarkShape(BookmarkShape.strip);
       preferences.setBookmarkColor(BookmarkColor.purple);
+      preferences.setThemeMode(ThemeMode.dark);
+      preferences.setThemePalette(AppPalette.green);
       await preferences.pendingWrites;
       await database.close();
       final reopened = await databaseFactoryFfi.openDatabase(
@@ -201,11 +213,63 @@ void main() {
       expect(restored.pageAnimationEffect, PageAnimationEffect.slide);
       expect(restored.bookmarkShape, BookmarkShape.strip);
       expect(restored.bookmarkColor, BookmarkColor.purple);
+      expect(restored.themeMode, ThemeMode.dark);
+      expect(restored.themePalette, AppPalette.green);
       await reopened.close();
     } finally {
       await dir.delete(recursive: true);
     }
   });
+
+  test(
+    'v13 migration adds theme defaults without changing preferences',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('theme-migration-');
+      final path = '${dir.path}${Platform.pathSeparator}test.db';
+      try {
+        final old = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 13,
+            singleInstance: false,
+            onConfigure: configureDocumentDatabase,
+            onCreate: (db, version) async {
+              await createDocumentSchema(db, version);
+              await db.execute(
+                'ALTER TABLE reading_preferences DROP COLUMN theme_mode',
+              );
+              await db.execute(
+                'ALTER TABLE reading_preferences DROP COLUMN theme_palette',
+              );
+            },
+          ),
+        );
+        await old.insert('reading_preferences', {
+          'id': 1,
+          'speed': 'fast',
+          'auto_next_page': 1,
+        });
+        await old.close();
+        final upgraded = await databaseFactoryFfi.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: documentDatabaseVersion,
+            singleInstance: false,
+            onConfigure: configureDocumentDatabase,
+            onUpgrade: upgradeDocumentSchema,
+          ),
+        );
+        final row = (await upgraded.query('reading_preferences')).single;
+        expect(row['speed'], 'fast');
+        expect(row['auto_next_page'], 1);
+        expect(row['theme_mode'], 'system');
+        expect(row['theme_palette'], 'turquoise');
+        await upgraded.close();
+      } finally {
+        await dir.delete(recursive: true);
+      }
+    },
+  );
 
   test('v10 migration preserves contents, locations and preferences', () async {
     final dir = await Directory.systemTemp.createTemp('page-view-migration-');
@@ -219,6 +283,12 @@ void main() {
           onConfigure: configureDocumentDatabase,
           onCreate: (db, version) async {
             await createDocumentSchema(db, version);
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN theme_mode',
+            );
+            await db.execute(
+              'ALTER TABLE reading_preferences DROP COLUMN theme_palette',
+            );
             await db.execute(
               'ALTER TABLE reading_preferences DROP COLUMN bookmark_shape',
             );
@@ -311,6 +381,12 @@ void main() {
               onConfigure: configureDocumentDatabase,
               onCreate: (db, version) async {
                 await createDocumentSchema(db, version);
+                await db.execute(
+                  'ALTER TABLE reading_preferences DROP COLUMN theme_mode',
+                );
+                await db.execute(
+                  'ALTER TABLE reading_preferences DROP COLUMN theme_palette',
+                );
                 await db.execute(
                   'ALTER TABLE reading_preferences DROP COLUMN bookmark_shape',
                 );
@@ -491,6 +567,8 @@ void main() {
             'page_animation_effect': 'fade',
             'bookmark_shape': 'ribbon',
             'bookmark_color': 'red',
+            'theme_mode': 'system',
+            'theme_palette': 'turquoise',
           });
           await upgraded.close();
         } finally {
@@ -573,6 +651,8 @@ void main() {
         'page_animation_effect': 'fade',
         'bookmark_shape': 'ribbon',
         'bookmark_color': 'red',
+        'theme_mode': 'system',
+        'theme_palette': 'turquoise',
       });
       await upgraded.close();
     } finally {

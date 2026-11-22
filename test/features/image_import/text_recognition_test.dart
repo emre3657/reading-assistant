@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/app.dart';
 
 import 'test_doubles.dart';
+import '../listening/fake_preferences_store.dart';
 
 const _extractLabel = 'Metni çıkar';
 const _selectLabel = 'Galeriden görsel seç';
@@ -33,6 +34,7 @@ class _Harness {
   late final recognizer = FakeTextRecognitionService(onRecognize);
 
   Widget get app => ReadingAssistantApp(
+    store: FakePreferencesStore(),
     pickerService: picker,
     textRecognitionService: recognizer,
     previewImageBuilder: (file) {

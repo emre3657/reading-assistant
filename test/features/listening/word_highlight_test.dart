@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:reading_assistant/theme/app_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
@@ -209,7 +210,7 @@ void main() {
         );
         expect(pieces[1].text, 'aynı');
         final yellow = pieces[1].style!.backgroundColor!;
-        expect(yellow, Colors.amber.withValues(alpha: 0.24));
+        expect(yellow, ReadingColors.of(context).wordHighlight);
         final foreground = Theme.of(context).textTheme.bodyLarge!.color!;
         final background = Color.alphaBlend(
           yellow,

@@ -7,6 +7,7 @@ import 'package:reading_assistant/app.dart';
 import 'package:reading_assistant/features/image_import/services/ocr_result.dart';
 
 import 'test_doubles.dart';
+import '../listening/fake_preferences_store.dart';
 
 const _extractLabel = 'Metni çıkar';
 const _selectLabel = 'Galeriden görsel seç';
@@ -27,6 +28,7 @@ bool _isOn(WidgetTester tester) => tester.widget<SwitchListTile>(_switch).value;
 Future<void> _start(WidgetTester tester, {String raw = _raw}) async {
   await tester.pumpWidget(
     ReadingAssistantApp(
+      store: FakePreferencesStore(),
       pickerService: FakeImagePickerService(
         onPick: () async => XFile('/tmp/a.jpg'),
       ),
@@ -212,6 +214,7 @@ void main() {
     final gate = Completer<String>();
     await tester.pumpWidget(
       ReadingAssistantApp(
+        store: FakePreferencesStore(),
         pickerService: FakeImagePickerService(
           onPick: () async => XFile('/tmp/a.jpg'),
         ),
@@ -240,6 +243,7 @@ void main() {
       var calls = 0;
       await tester.pumpWidget(
         ReadingAssistantApp(
+          store: FakePreferencesStore(),
           pickerService: FakeImagePickerService(
             onPick: () async => XFile('/tmp/a.jpg'),
           ),
@@ -306,6 +310,7 @@ void main() {
     Future<void> startWithLayout(WidgetTester tester) async {
       await tester.pumpWidget(
         ReadingAssistantApp(
+          store: FakePreferencesStore(),
           pickerService: FakeImagePickerService(
             onPick: () async => XFile('/tmp/a.jpg'),
           ),

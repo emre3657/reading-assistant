@@ -72,6 +72,8 @@ void main() {
       pageAnimationEffect: 'turn',
       bookmarkShape: 'corner',
       bookmarkColor: 'teal',
+      themeMode: 'dark',
+      themePalette: 'blue',
     );
     return source.backupSnapshot();
   }
@@ -113,6 +115,8 @@ void main() {
       'corner',
     );
     expect((await target.loadReadingPreferences())?['bookmark_color'], 'teal');
+    expect((await target.loadReadingPreferences())?['theme_mode'], 'dark');
+    expect((await target.loadReadingPreferences())?['theme_palette'], 'blue');
   });
 
   test('legacy and unknown page view restore with plain default', () async {
@@ -129,11 +133,15 @@ void main() {
         row.remove('page_animation_effect');
         row.remove('bookmark_shape');
         row.remove('bookmark_color');
+        row.remove('theme_mode');
+        row.remove('theme_palette');
       } else {
         row['page_view'] = 'future';
         row['page_animation_effect'] = 'future';
         row['bookmark_shape'] = 'future';
         row['bookmark_color'] = 'future';
+        row['theme_mode'] = 'future';
+        row['theme_palette'] = 'future';
       }
       final parsed = BackupData.decode(
         Uint8List.fromList(utf8.encode(jsonEncode(data))),
@@ -149,6 +157,11 @@ void main() {
         'ribbon',
       );
       expect((await target.loadReadingPreferences())?['bookmark_color'], 'red');
+      expect((await target.loadReadingPreferences())?['theme_mode'], 'system');
+      expect(
+        (await target.loadReadingPreferences())?['theme_palette'],
+        'turquoise',
+      );
       expect(
         (await target.loadReadingPreferences())?['page_animation_enabled'],
         legacy ? 0 : 1,

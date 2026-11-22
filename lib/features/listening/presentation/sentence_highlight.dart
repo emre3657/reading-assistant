@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/app_theme.dart';
 import '../services/sentence_splitter.dart';
 import 'listening_controller.dart';
 
@@ -32,11 +33,12 @@ TextSpan sentenceHighlightSpan({
   if (highlight == null && selected == null) {
     return TextSpan(text: text, style: style);
   }
-  final scheme = Theme.of(context).colorScheme;
-  final readingColor = (neutralReading ? scheme.onSurface : scheme.primary)
-      .withValues(alpha: 0.12);
-  final selectionColor = scheme.primary.withValues(alpha: 0.18);
-  final wordColor = Colors.amber.withValues(alpha: 0.24);
+  final colors = ReadingColors.of(context);
+  final readingColor = neutralReading
+      ? colors.neutralHighlight
+      : colors.sentenceHighlight;
+  final selectionColor = colors.selectedSentence;
+  final wordColor = colors.wordHighlight;
   final boundaries = <int>{
     0,
     text.length,

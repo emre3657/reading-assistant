@@ -7,6 +7,7 @@ import 'package:reading_assistant/app.dart';
 import 'package:reading_assistant/features/image_import/presentation/widgets/image_preview.dart';
 
 import 'test_doubles.dart';
+import '../listening/fake_preferences_store.dart';
 
 const _extractLabel = 'Metni çıkar';
 const _selectLabel = 'Galeriden görsel seç';
@@ -47,6 +48,7 @@ class _Harness {
   final FakeImageRotationService rotation;
 
   Widget get app => ReadingAssistantApp(
+    store: FakePreferencesStore(),
     pickerService: picker,
     textRecognitionService: recognizer,
     rotationService: rotation,

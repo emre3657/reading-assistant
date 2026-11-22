@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/app_theme.dart';
 import 'reading_preferences.dart';
 
 Color readingPagePaperColor(BuildContext context, ReadingPageView view) {
   final theme = Theme.of(context);
   if (view == ReadingPageView.plain) return theme.scaffoldBackgroundColor;
-  return theme.brightness == Brightness.dark
-      ? const Color(0xff302b25)
-      : const Color(0xfffff9ec);
+  return ReadingColors.of(context).bookPaper;
 }
 
 class ReadingPageSurface extends StatelessWidget {
@@ -24,6 +23,7 @@ class ReadingPageSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final book = view == ReadingPageView.book;
     final theme = Theme.of(context);
+    final colors = ReadingColors.of(context);
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -37,7 +37,20 @@ class ReadingPageSurface extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 )
               : null,
-          child: child,
+          child: book
+              ? Theme(
+                  data: theme.copyWith(
+                    colorScheme: theme.colorScheme.copyWith(
+                      onSurface: colors.bookText,
+                    ),
+                    textTheme: theme.textTheme.apply(
+                      bodyColor: colors.bookText,
+                      displayColor: colors.bookText,
+                    ),
+                  ),
+                  child: child,
+                )
+              : child,
         ),
       ),
     );

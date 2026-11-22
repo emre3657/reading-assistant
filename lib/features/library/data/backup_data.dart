@@ -48,6 +48,8 @@ const backupColumns = <String, Map<String, Type>>{
     'page_animation_effect': String,
     'bookmark_shape': String,
     'bookmark_color': String,
+    'theme_mode': String,
+    'theme_palette': String,
   },
 };
 
@@ -102,6 +104,8 @@ class BackupData {
           'page_animation_effect': 'fade',
           'bookmark_shape': 'ribbon',
           'bookmark_color': 'red',
+          'theme_mode': 'system',
+          'theme_palette': 'turquoise',
         };
         final missing = entry.key == 'reading_preferences'
             ? optionalDefaults.keys
@@ -144,6 +148,19 @@ class BackupData {
               'purple',
             }.contains(row['bookmark_color'])) {
           row['bookmark_color'] = 'red';
+        }
+        if (entry.key == 'reading_preferences' &&
+            !{'system', 'light', 'dark'}.contains(row['theme_mode'])) {
+          row['theme_mode'] = 'system';
+        }
+        if (entry.key == 'reading_preferences' &&
+            !{
+              'turquoise',
+              'blue',
+              'purple',
+              'green',
+            }.contains(row['theme_palette'])) {
+          row['theme_palette'] = 'turquoise';
         }
         rows.add(row);
       }
