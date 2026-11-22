@@ -148,6 +148,34 @@ Future<void> _back(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('batch drafts share the originating speech service', (
+    tester,
+  ) async {
+    await _show(
+      tester,
+      ImageImportScreen(
+        pickerService: FakeImagePickerService(
+          onPickMultiple: () async => [XFile('a'), XFile('b')],
+        ),
+        textRecognitionService: FakeTextRecognitionService(
+          (_) async => 'metin',
+        ),
+        rotationService: FakeImageRotationService(),
+        previewImageBuilder: (_) => _image,
+      ),
+    );
+    await _tap(tester, find.text('Galeriden görsel seç'));
+    final service = tester
+        .widget<MultiPageScreen>(find.byType(MultiPageScreen))
+        .speechService;
+    expect(service, isNotNull);
+    await _open(tester, 0);
+    final editor = tester.widget<ImageImportScreen>(
+      find.byType(ImageImportScreen),
+    );
+    expect(editor.speechService, same(service));
+  });
+
   for (final saveFirst in [false, true]) {
     testWidgets(
       'first ${saveFirst ? 'save' : 'page open'} reveals error after image layout',

@@ -10,6 +10,7 @@ import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
 import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
+import 'package:reading_assistant/theme/app_theme.dart';
 
 import '../listening/fake_preferences_store.dart';
 import '../listening/fake_speech_service.dart';
@@ -135,6 +136,24 @@ List<(int, int, TextStyle?)> _segments(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets('word progress starts at the selected sentence', (tester) async {
+    const text = 'İlk cümle. Şimdi, güzel sözler!';
+    final speech = FakeSpeechService();
+    await _show(tester, _Store(firstText: text), speech);
+    await tester.tapAt(_character(tester, text.indexOf('Şimdi')));
+    await tester.pumpAndSettle();
+    await _tap(tester, _readFrom);
+    expect(speech.spoken.last, 'Şimdi, güzel sözler!');
+    speech.progress(7, 12);
+    await tester.pump();
+    final word = _segments(tester)
+        .singleWhere((segment) => segment.$1 == text.indexOf('güzel'));
+    expect(text.substring(word.$1, word.$2), 'güzel');
+    final field = tester.element(find.byType(EditableText));
+    expect(word.$3!.backgroundColor, ReadingColors.of(field).wordHighlight);
+    expect(word.$3!.decoration, isNull);
+  });
+
   testWidgets(
     'reading from selected sentence retracts bookmark without jumping to it',
     (tester) async {

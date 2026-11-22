@@ -528,7 +528,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             textRecognitionService: widget.textRecognitionService,
             rotationService: widget.rotationService,
             previewImageBuilder: widget.previewImageBuilder,
-            speechService: widget.speechService,
+            speechService: _listening.speechService,
             store: _store,
             onSavePages: widget.onSavePages,
             documentTitle: widget.pageDocumentTitle,

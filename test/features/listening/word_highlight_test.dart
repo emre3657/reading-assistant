@@ -10,6 +10,7 @@ import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/saved_document_screen.dart';
 import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
+import 'package:reading_assistant/features/listening/presentation/reading_page_surface.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 import 'package:reading_assistant/features/listening/presentation/sentence_highlight.dart';
 import 'package:reading_assistant/features/listening/services/sentence_splitter.dart';
@@ -22,9 +23,11 @@ import 'fake_speech_service.dart';
 
 class _Tts extends FlutterTts {
   final List<Completer<dynamic>> calls = [];
+  final List<String> spoken = [];
 
   @override
   Future<dynamic> speak(String text, {bool focus = false}) {
+    spoken.add(text);
     final result = Completer<dynamic>();
     calls.add(result);
     return result.future;
@@ -35,6 +38,17 @@ class _Tts extends FlutterTts {
 
   void emit(String text, int start, int end, String word) =>
       progressHandler?.call(text, start, end, word);
+}
+
+class _ReadySpeechService extends SpeechService {
+  _ReadySpeechService(_Tts tts) : super(tts: tts);
+
+  @override
+  Future<SpeechSetup> prepare() async =>
+      const SpeechSetup(SpeechAvailability.ready);
+
+  @override
+  Future<void> setSpeechRate(double multiplier) async {}
 }
 
 class _PageStore extends DocumentStore with FakeReadingPositions {
@@ -124,7 +138,7 @@ void main() {
   );
 
   testWidgets(
-    'real plugin callback rejects stale identical utterances and invalid events',
+    'plugin callback accepts repeated utterances and rejects unrelated or invalid events',
     (tester) async {
       final tts = _Tts();
       final service = SpeechService(tts: tts);
@@ -146,7 +160,7 @@ void main() {
         onProgress: (a, b) => progress.add((a, b)),
       );
       tts.emit('Benzersiz-test kelime', 15, 21, 'kelime');
-      expect(progress.length, 3);
+      expect(progress.last, (15, 21));
       tts.calls.last.complete(1);
       expect(await second, SpeechOutcome.completed);
       final third = service.speak(
@@ -156,7 +170,7 @@ void main() {
       tts.emit('Benzersiz-test kelime', 0, 14, 'Benzersiz-test');
       tts.emit('Başka-benzersiz kelime', 0, 15, 'Başka-benzersiz');
       expect(progress.last, (0, 15));
-      expect(progress.length, 4);
+      expect(progress.length, 5);
       tts.calls.last.complete(1);
       await third;
       final otherTts = _Tts();
@@ -167,11 +181,49 @@ void main() {
         onProgress: (a, b) => progress.add((a, b)),
       );
       otherTts.emit('Başka-benzersiz kelime', 0, 15, 'Başka-benzersiz');
-      expect(progress.length, 4);
+      expect(progress.length, 6);
+      expect(progress.last, (0, 15));
       otherTts.calls.last.complete(1);
       await repeated;
     },
   );
+
+  testWidgets('plugin progress follows Turkish text after resume and restart', (
+    tester,
+  ) async {
+    final tts = _Tts();
+    final service = _ReadySpeechService(tts);
+    final listening = ListeningController(speechService: service);
+    addTearDown(service.dispose);
+    addTearDown(listening.dispose);
+    const text = 'İstanbul, güzel! İstanbul, güzel!';
+    await _start(tester, listening, text);
+    var utterance = tts.spoken.last;
+    tts.emit(utterance, 0, 8, 'İstanbul');
+    expect(listening.wordForText(text), const SentenceSpan(0, 8));
+    tts.emit(utterance, 10, 15, 'güzel');
+    expect(listening.wordForText(text), const SentenceSpan(10, 15));
+    await listening.pause();
+    await listening.resume();
+    await tester.pump();
+    utterance = tts.spoken.last;
+    tts.emit(utterance, 0, 8, 'İstanbul');
+    expect(listening.wordForText(text), const SentenceSpan(0, 8));
+    tts.emit(utterance, 10, 15, 'güzel');
+    expect(listening.wordForText(text), const SentenceSpan(10, 15));
+    tts.calls.last.complete(1);
+    await tester.pump();
+    utterance = tts.spoken.last;
+    tts.emit(utterance, 0, 8, 'İstanbul');
+    expect(listening.wordForText(text), const SentenceSpan(17, 25));
+    await listening.stop();
+    unawaited(listening.start(text, initialSentence: 1));
+    await tester.pump();
+    await tester.pump();
+    utterance = tts.spoken.last;
+    tts.emit(utterance, 10, 15, 'güzel');
+    expect(listening.wordForText(text), const SentenceSpan(27, 32));
+  });
 
   for (final brightness in Brightness.values) {
     testWidgets(
@@ -229,6 +281,76 @@ void main() {
       },
     );
   }
+
+  testWidgets('word is distinguishable and readable on every reading surface', (
+    tester,
+  ) async {
+    for (final palette in AppPalette.values) {
+      for (final brightness in Brightness.values) {
+        for (final view in ReadingPageView.values) {
+          for (final neutral in [false, true]) {
+            final speech = FakeSpeechService();
+            final listening = ListeningController(speechService: speech);
+            final controller =
+                HighlightingTextEditingController(neutralReading: neutral)
+                  ..text = 'İstanbul, güzel!'
+                  ..attachListening(listening);
+            final theme = appTheme(palette, brightness);
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: theme,
+                home: Scaffold(
+                  body: ReadingPageSurface(
+                    view: view,
+                    child: TextField(controller: controller),
+                  ),
+                ),
+              ),
+            );
+            await _start(tester, listening, controller.text);
+            speech.progress(10, 15);
+            await tester.pump();
+            final field = tester.element(find.byType(TextField));
+            final span = controller.buildTextSpan(
+              context: field,
+              style: Theme.of(field).textTheme.bodyLarge,
+              withComposing: false,
+            );
+            final segments = span.children!.cast<TextSpan>();
+            final word = segments.singleWhere((s) => s.text == 'güzel');
+            final sentence = segments.firstWhere((s) => s.text == 'İstanbul, ');
+            final colors = ReadingColors.of(field);
+            expect(word.style!.backgroundColor, colors.wordHighlight);
+            expect(word.style!.decoration, isNull);
+            expect(sentence.style!.decoration, isNull);
+            final surface = view == ReadingPageView.book
+                ? colors.bookPaper
+                : theme.scaffoldBackgroundColor;
+            final foreground = view == ReadingPageView.book
+                ? colors.bookText
+                : theme.colorScheme.onSurface;
+            for (final background in [
+              word.style!.backgroundColor!,
+              sentence.style!.backgroundColor!,
+            ]) {
+              final a = foreground.computeLuminance() + .05;
+              final b =
+                  Color.alphaBlend(background, surface).computeLuminance() +
+                  .05;
+              expect(
+                a > b ? a / b : b / a,
+                greaterThanOrEqualTo(4.5),
+                reason: '$palette $brightness $view $neutral',
+              );
+            }
+            await tester.pumpWidget(const SizedBox());
+            controller.dispose();
+            listening.dispose();
+          }
+        }
+      }
+    }
+  });
 
   for (final newPage in [false, true]) {
     testWidgets(

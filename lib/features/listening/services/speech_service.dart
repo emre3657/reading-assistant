@@ -61,9 +61,6 @@ class SpeechService {
   }
 
   static const turkishLocale = 'tr-TR';
-  // The plugin omits utterance IDs. A repeated hash is ambiguous even after
-  // stop or across service instances; collisions only suppress highlighting.
-  static final Set<int> _spokenTextHashes = {};
 
   final FlutterTts _tts;
   Completer<SpeechOutcome>? _pending;
@@ -111,9 +108,8 @@ class SpeechService {
   Future<SpeechOutcome> speak(String text, {SpeechProgress? onProgress}) {
     final signal = Completer<SpeechOutcome>();
     _pending = signal;
-    final unique = _spokenTextHashes.add(text.hashCode);
-    _progressText = unique ? text : null;
-    _progress = unique ? onProgress : null;
+    _progressText = text;
+    _progress = onProgress;
     _tts
         .speak(text)
         .then(
@@ -156,6 +152,8 @@ class SpeechService {
   }
 
   void _onProgress(String text, int start, int end, String word) {
+    // The plugin omits utterance IDs, so late events for identical text
+    // cannot be distinguished from the current utterance.
     if (_progressText != text || _pending == null || _pending!.isCompleted) {
       return;
     }

@@ -31,7 +31,7 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 - Başlatma, duraklatma, devam etme ve durdurma.
 - Önceki/sonraki cümle ve başa dönme.
 - Okunan cümleyi metinde vurgulama.
-- Ses motoru desteklediğinde okunan kelimeyi ayrıca vurgulama; aynı parça uygulama oturumunda tekrar okunduğunda güvenlik için kelime vurgusu gösterilmez.
+- Ses motoru kelime ilerlemesi bildirdiğinde okunan kelimeyi ayrıca arka plan ve alt çizgiyle vurgulama.
 - Kayıtlı sayfada bir cümleye dokunup “Buradan oku” ile okumaya o cümleden başlama.
 - İsteğe bağlı olarak okunan cümleyi otomatik takip etme; elle kaydırınca takip duraklatılır.
 - 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
@@ -115,6 +115,7 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - Satır birleştirme ve cümle bölme sezgiseldir; şiir ve şarkı sözlerinde satır birleştirme kapalı bırakılabilir.
 - Otomatik sayfa geçişi yalnızca çok sayfalı kayıtlı içerik okuma ekranındadır.
 - Arka planda/ekran kilitliyken dinleme desteklenmez.
+- TTS eklentisi ilerleme olaylarında konuşma kimliği bildirmediğinden, aynı metin hemen yeniden okunurken gecikmiş bir olay kelime vurgusunu geçici olarak şaşırtabilir.
 - Metin sürüm geçmişi ve bulut senkronizasyonu yoktur.
 - Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın oluşturduğu kırpma kopyaları artık kullanılmadığında, döndürme kopyaları OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
 - Android, sayfa eklerken kamera açıkken uygulamayı sonlandırırsa fotoğraf yanlış içeriğe uygulanmaz; ilgili sayfada yeniden çekmek gerekir.

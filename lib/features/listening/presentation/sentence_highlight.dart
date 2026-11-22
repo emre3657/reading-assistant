@@ -54,6 +54,13 @@ TextSpan sentenceHighlightSpan({
     boundaries.add(composing.end);
   }
   final points = boundaries.toList()..sort();
+  bool isSpokenWord(int start, int end) =>
+      spokenWord != null &&
+      highlight != null &&
+      start >= spokenWord.$1 &&
+      end <= spokenWord.$2 &&
+      start >= highlight.$1 &&
+      end <= highlight.$2;
   return TextSpan(
     style: style,
     children: [
@@ -61,13 +68,7 @@ TextSpan sentenceHighlightSpan({
         TextSpan(
           text: text.substring(points[i], points[i + 1]),
           style: TextStyle(
-            backgroundColor:
-                spokenWord != null &&
-                    highlight != null &&
-                    points[i] >= spokenWord.$1 &&
-                    points[i + 1] <= spokenWord.$2 &&
-                    points[i] >= highlight.$1 &&
-                    points[i + 1] <= highlight.$2
+            backgroundColor: isSpokenWord(points[i], points[i + 1])
                 ? wordColor
                 : highlight != null &&
                       points[i] >= highlight.$1 &&
