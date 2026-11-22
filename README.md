@@ -15,6 +15,7 @@ Uygulama açılırken platform açılış ekranı gösterilir. İlk açılışta
 - Galeriden görsel seçme, önizleme, değiştirme ve kaldırma.
 - Kamerayla fotoğraf çekip aynı önizleme ve metin çıkarma akışında kullanma.
 - Görseli sola veya sağa 90° döndürme.
+- Görseli OCR öncesinde serbestçe kırpma; mevcut metin varsa uygulamadan önce onay isteme.
 - Latin karakter modeliyle cihaz üzerinde metin çıkarma.
 - Görsel kullanmadan metin yazma veya yapıştırma.
 - Metni onayla temizleme; yazma alanını temizleyerek kapatma.
@@ -115,7 +116,7 @@ Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölme
 - Otomatik sayfa geçişi yalnızca çok sayfalı kayıtlı içerik okuma ekranındadır.
 - Arka planda/ekran kilitliyken dinleme desteklenmez.
 - Metin sürüm geçmişi ve bulut senkronizasyonu yoktur.
-- Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın döndürme için oluşturduğu kopyalar OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
+- Görsel seçici/kamera eklentisinin geçici dosyaları için genel temizlik henüz yoktur. Uygulamanın oluşturduğu kırpma kopyaları artık kullanılmadığında, döndürme kopyaları OCR tamamlanınca temizlenir; işlem sırasında uygulama sonlandırılırsa dosya kalabilir.
 - Android, sayfa eklerken kamera açıkken uygulamayı sonlandırırsa fotoğraf yanlış içeriğe uygulanmaz; ilgili sayfada yeniden çekmek gerekir.
 - Android, mevcut içeriğe çoklu görsel seçilirken uygulamayı sonlandırırsa görseller yanlış içeriğe eklenmez; seçim ilgili içerikten tekrarlanmalıdır.
 - Android, mevcut taslağa görsel ekleme veya taslaktaki görseli değiştirme sırasında uygulamayı sonlandırırsa kaydedilmemiş taslak kurtarılamaz; işlem yeniden yapılmalıdır.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -5,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../listening/presentation/sentence_highlight.dart';
 import '../services/image_picker_service.dart';
+import '../services/image_crop_service.dart';
 import '../services/image_rotation_service.dart';
 import '../services/ocr_result.dart';
 import '../services/ocr_text_formatter.dart';
@@ -52,6 +54,7 @@ class ImageImportController extends ChangeNotifier {
     required this.textRecognitionService,
     required this.rotationService,
     required this.previewImageBuilder,
+    this.cropService = const ImageCropService(),
     XFile? initialFile,
   }) {
     textController.addListener(_onTextChanged);
@@ -70,6 +73,7 @@ class ImageImportController extends ChangeNotifier {
   final TextRecognitionService textRecognitionService;
   final ImageRotationService rotationService;
   final PreviewImageBuilder previewImageBuilder;
+  final ImageCropService cropService;
 
   /// The text shown in the editable field. Owned and disposed here.
   final HighlightingTextEditingController textController =
@@ -84,8 +88,10 @@ class ImageImportController extends ChangeNotifier {
   int _recognitionId = 0;
   bool _isPicking = false;
   bool _isRecognizing = false;
+  bool _isCropping = false;
   bool _hasEncounteredEmptyOcr = false;
   bool _disposed = false;
+  OwnedCrop? _ownedCrop;
 
   /// Text last placed in the field by the app (OCR or joined text); null when
   /// there is no OCR result. Used to tell whether the user edited the text.
@@ -104,6 +110,7 @@ class ImageImportController extends ChangeNotifier {
 
   ImageSelection? get selection => _selection;
   bool get hasImage => _selection != null;
+  OwnedCrop? retainOwnedImage() => _ownedCrop?.retain();
 
   /// Clockwise quarter turns (0-3) applied to the preview and to OCR input.
   /// Reset for every new selection.
@@ -111,7 +118,7 @@ class ImageImportController extends ChangeNotifier {
   bool get isPicking => _isPicking;
   bool get isRecognizing => _isRecognizing;
   bool get hasEncounteredEmptyOcr => _hasEncounteredEmptyOcr;
-  bool get isBusy => _isPicking || _isRecognizing;
+  bool get isBusy => _isPicking || _isRecognizing || _isCropping;
   bool get hasRecognizedText => _generatedText != null;
   bool get hasOcrResult => _ocrResult != null;
   bool get joinLines => _joinLines;
@@ -150,6 +157,7 @@ class ImageImportController extends ChangeNotifier {
             textRecognitionService: textRecognitionService,
             rotationService: rotationService,
             previewImageBuilder: previewImageBuilder,
+            cropService: cropService,
           )
           .._selection = _selection
           .._quarterTurns = _quarterTurns
@@ -165,6 +173,7 @@ class ImageImportController extends ChangeNotifier {
                   lines: List.unmodifiable(_ocrResult!.lines),
                 )
           .._joinLines = _joinLines;
+    copy._ownedCrop = _ownedCrop?.retain();
     copy.textController.value = textController.value;
     copy
       .._errorMessage = _errorMessage
@@ -198,6 +207,8 @@ class ImageImportController extends ChangeNotifier {
   /// Replaces the image and drops everything tied to the old one: rotation,
   /// OCR result, join option and text. Must not be called while disposed.
   void _replaceSelection(ImageSelection? selection) {
+    final oldCrop = _ownedCrop;
+    _ownedCrop = null;
     _selection = selection;
     _quarterTurns = 0;
     _generatedText = null;
@@ -205,6 +216,112 @@ class ImageImportController extends ChangeNotifier {
     _joinLines = true;
     textController.clear();
     _revision++;
+    _releaseAfterFrame(oldCrop);
+  }
+
+  void _releaseAfterFrame(OwnedCrop? crop) {
+    if (crop == null) return;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(crop.release()),
+    );
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  Future<void> _validateCropPreview(ImageProvider image) async {
+    final stream = ResizeImage(
+      image,
+      width: 1200,
+      height: 1200,
+      policy: ResizeImagePolicy.fit,
+    ).resolve(ImageConfiguration.empty);
+    final completer = Completer<void>();
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (info, _) {
+        info.dispose();
+        if (!completer.isCompleted) completer.complete();
+      },
+      onError: (Object error, StackTrace? stack) {
+        if (!completer.isCompleted) completer.completeError(error, stack);
+      },
+    );
+    stream.addListener(listener);
+    try {
+      await completer.future;
+    } finally {
+      stream.removeListener(listener);
+    }
+  }
+
+  Future<bool> applyCrop(
+    Rect bounds, {
+    required int expectedRevision,
+    required String expectedText,
+  }) async {
+    final selection = _selection;
+    if (_disposed ||
+        selection == null ||
+        isBusy ||
+        expectedRevision != _revision ||
+        textController.text != expectedText) {
+      return false;
+    }
+    _isCropping = true;
+    _errorMessage = null;
+    final source = _ownedCrop?.retain();
+    _notify();
+    OwnedCrop? result;
+    try {
+      result = await cropService.createCrop(
+        selection.file.path,
+        _quarterTurns,
+        bounds,
+      );
+      if (_disposed ||
+          _selection?.id != selection.id ||
+          _revision != expectedRevision ||
+          textController.text != expectedText) {
+        await result.release();
+        return false;
+      }
+      final file = XFile(result.path);
+      final image = previewImageBuilder(file);
+      await _validateCropPreview(image);
+      if (_disposed ||
+          _selection?.id != selection.id ||
+          _revision != expectedRevision ||
+          textController.text != expectedText) {
+        await result.release();
+        result = null;
+        return false;
+      }
+      final oldCrop = _ownedCrop;
+      _ownedCrop = result;
+      result = null;
+      _selection = ImageSelection(++_lastSelectionId, file, image);
+      _quarterTurns = 0;
+      _generatedText = null;
+      _ocrResult = null;
+      _hasEncounteredEmptyOcr = false;
+      _infoMessage = null;
+      _revision++;
+      textController.clear();
+      _releaseAfterFrame(oldCrop);
+      return true;
+    } catch (error, stack) {
+      debugPrint('Görsel kırpılamadı: $error\n$stack');
+      if (result != null) await result.release();
+      if (!_disposed) {
+        _errorMessage = 'Görsel kırpılamadı. Lütfen tekrar deneyin.';
+      }
+      return false;
+    } finally {
+      if (source != null) await source.release();
+      if (!_disposed) {
+        _isCropping = false;
+        _notify();
+      }
+    }
   }
 
   /// Applies an image left by an Android activity restart. Needs no
@@ -334,8 +451,7 @@ class ImageImportController extends ChangeNotifier {
     _notify();
   }
 
-  /// Only drops the reference. File ownership and cleanup are not managed yet,
-  /// so nothing is deleted.
+  /// Drops the selection and releases any app-owned crop.
   void removeImage({required int expectedRevision}) {
     if (_disposed || isBusy || expectedRevision != _revision) return;
     _replaceSelection(null);
@@ -348,10 +464,13 @@ class ImageImportController extends ChangeNotifier {
   /// text is kept: the user may have edited it.
   void onPreviewError(int selectionId) {
     if (_disposed || _selection?.id != selectionId) return;
+    final oldCrop = _ownedCrop;
+    _ownedCrop = null;
     _selection = null;
     _revision++;
     _errorMessage = 'Görsel görüntülenemedi. Lütfen başka bir görsel seçin.';
     _infoMessage = null;
+    _releaseAfterFrame(oldCrop);
     _notify();
   }
 
@@ -416,8 +535,9 @@ class ImageImportController extends ChangeNotifier {
     _isRecognizing = true;
     _errorMessage = null;
     _infoMessage = null;
-    _notify();
     final quarterTurns = _quarterTurns;
+    final sourceCrop = _ownedCrop?.retain();
+    _notify();
     OcrResult? ocr;
     String? error;
     // Temporary rotated copy owned by this OCR run; deleted only after OCR has
@@ -454,6 +574,7 @@ class ImageImportController extends ChangeNotifier {
           ocr = null;
         }
       }
+      if (sourceCrop != null) await sourceCrop.release();
     }
     if (_disposed) return;
     if (_selection?.id != selection.id) {
@@ -485,6 +606,8 @@ class ImageImportController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _releaseAfterFrame(_ownedCrop);
+    _ownedCrop = null;
     textController
       ..removeListener(_onTextChanged)
       ..dispose();

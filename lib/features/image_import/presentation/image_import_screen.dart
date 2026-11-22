@@ -26,6 +26,7 @@ import '../services/image_rotation_service.dart';
 import '../services/text_recognition_service.dart';
 
 import 'image_import_controller.dart';
+import 'crop_screen.dart';
 import 'multi_page_screen.dart';
 import 'widgets/add_page_source.dart';
 import 'widgets/image_preview.dart';
@@ -111,6 +112,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   bool _openingBackup = false;
   bool _pickingBatch = false;
   bool _pickerActive = false;
+  bool _cropOpen = false;
   bool _manualEntry = false;
   bool _pageSaving = false;
   bool _pageExitInProgress = false;
@@ -129,7 +131,11 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   DocumentStore get _store =>
       widget.store ?? _preferences?.store ?? DocumentStore.instance;
   bool get _pageLocked =>
-      _pageSaving || _pageExitInProgress || _pickingBatch || _openingBackup;
+      _pageSaving ||
+      _pageExitInProgress ||
+      _pickingBatch ||
+      _openingBackup ||
+      _cropOpen;
 
   @override
   void initState() {
@@ -558,6 +564,72 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     }
 
     _controller.removeImage(expectedRevision: revision);
+  }
+
+  Future<void> _cropImage() async {
+    final selection = _controller.selection;
+    if (selection == null ||
+        _controller.isBusy ||
+        _listening.isActive ||
+        _pageLocked) {
+      return;
+    }
+    final revision = _controller.revision;
+    final text = _controller.textController.text;
+    final retained = _controller.retainOwnedImage();
+    setState(() => _cropOpen = true);
+    try {
+      final route = MaterialPageRoute<Rect>(
+        builder: (_) => CropScreen(
+          image: selection.image,
+          quarterTurns: _controller.quarterTurns,
+        ),
+      );
+      final bounds = await Navigator.of(context).push(route);
+      await route.completed;
+      if (!mounted ||
+          bounds == null ||
+          bounds == const Rect.fromLTRB(0, 0, 1, 1)) {
+        return;
+      }
+      if (_controller.revision != revision ||
+          _controller.textController.text != text ||
+          _controller.selection?.id != selection.id) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Görsel veya metin değişti. Kırpmayı tekrar deneyin.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (text.isNotEmpty || _controller.hasOcrResult) {
+        final confirmed = await _confirm(
+          title: 'Mevcut metin temizlensin mi?',
+          content: 'Kırpma uygulanınca mevcut metin temizlenecek. Görselden yeniden metin çıkarabilirsin.',
+          confirmLabel: 'Kırpmayı uygula',
+        );
+        if (!mounted || !confirmed) return;
+      }
+      final applied = await _controller.applyCrop(
+        bounds,
+        expectedRevision: revision,
+        expectedText: text,
+      );
+      if (mounted && !applied && _controller.errorMessage == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Görsel veya metin değişti. Kırpmayı tekrar deneyin.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (retained != null) await retained.release();
+      if (mounted) setState(() => _cropOpen = false);
+    }
   }
 
   Future<void> _setJoinLines(bool value) async {
@@ -1318,6 +1390,13 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                           spacing: 8,
                           runSpacing: 8,
                           children: [
+                            OutlinedButton.icon(
+                              onPressed: listeningActive || _pageLocked
+                                  ? null
+                                  : _cropImage,
+                              icon: const Icon(Icons.crop),
+                              label: const Text('Kırp'),
+                            ),
                             OutlinedButton.icon(
                               onPressed: listeningActive
                                   ? null
