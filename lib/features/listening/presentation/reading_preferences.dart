@@ -110,6 +110,7 @@ class ReadingPreferences extends ChangeNotifier {
 
   static final instance = ReadingPreferences();
   final DocumentStore _store;
+  DocumentStore get store => _store;
   Future<void>? _loading;
   Future<void> _writeTail = Future.value();
   bool _ready = false;
@@ -128,6 +129,7 @@ class ReadingPreferences extends ChangeNotifier {
   int _errorRevision = 0;
   int _claimedErrorRevision = 0;
   String? _errorMessage;
+  bool _disposed = false;
 
   bool get ready => _ready;
   ReadingSpeed get speed => _speed;
@@ -155,9 +157,10 @@ class ReadingPreferences extends ChangeNotifier {
       _errorMessage =
           'Okuma tercihleri yüklenemedi. Varsayılanlar kullanılıyor.';
       _errorRevision++;
+      if (_disposed) debugPrint(_errorMessage);
     } finally {
       _ready = true;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -321,6 +324,10 @@ class ReadingPreferences extends ChangeNotifier {
         );
         _saveFailureReported = false;
       } catch (_) {
+        if (_disposed) {
+          debugPrint('Okuma tercihleri kalıcı kaydedilemedi.');
+          return;
+        }
         if (!_saveFailureReported) {
           _saveFailureReported = true;
           _errorMessage = 'Okuma tercihleri kalıcı kaydedilemedi.';
@@ -336,6 +343,12 @@ class ReadingPreferences extends ChangeNotifier {
     _claimedErrorRevision = revision;
     return true;
   }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 }
 
 class ReadingPreferencesScope extends InheritedWidget {
@@ -347,11 +360,12 @@ class ReadingPreferencesScope extends InheritedWidget {
 
   final ReadingPreferences preferences;
 
+  static ReadingPreferences? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<ReadingPreferencesScope>()
+      ?.preferences;
+
   static ReadingPreferences of(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<ReadingPreferencesScope>()
-          ?.preferences ??
-      ReadingPreferences.instance;
+      maybeOf(context) ?? ReadingPreferences.instance;
 
   @override
   bool updateShouldNotify(ReadingPreferencesScope oldWidget) =>

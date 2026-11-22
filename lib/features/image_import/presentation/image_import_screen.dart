@@ -78,6 +78,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   late final ImageImportController _controller;
   late final ListeningController _listening;
   ReadingPreferences? _preferences;
+  ReadingPreferences? _ownedPreferences;
   int _preferencesErrorRevision = 0;
 
   SpeechService? _ownedSpeechService;
@@ -114,6 +115,8 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       _controller.textController.text.trim().isEmpty;
 
   bool get _addingPage => widget.onSavePage != null;
+  DocumentStore get _store =>
+      widget.store ?? _preferences?.store ?? DocumentStore.instance;
   bool get _pageLocked =>
       _pageSaving || _pageExitInProgress || _pickingBatch || _openingBackup;
 
@@ -152,9 +155,17 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final preferences = ReadingPreferencesScope.of(context);
+    final preferences =
+        ReadingPreferencesScope.maybeOf(context) ??
+        (widget.store == null
+            ? ReadingPreferences.instance
+            : (_ownedPreferences ??= ReadingPreferences(store: widget.store)));
     if (_preferences == preferences) return;
     _preferences?.removeListener(_onPreferencesChanged);
+    if (_ownedPreferences != null && _ownedPreferences != preferences) {
+      _ownedPreferences!.dispose();
+      _ownedPreferences = null;
+    }
     _preferences = preferences;
     preferences.addListener(_onPreferencesChanged);
     if (preferences.ready) {
@@ -208,6 +219,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       _controller.textController.detachListening();
     }
     _preferences?.removeListener(_onPreferencesChanged);
+    _ownedPreferences?.dispose();
     _contentScrollController.dispose();
 
     _listening.removeListener(_onListeningChanged);
@@ -481,17 +493,20 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   }) async {
     final savedCount = await Navigator.of(context).push<int>(
       MaterialPageRoute(
-        builder: (_) => MultiPageScreen(
-          files: files,
-          pickerService: widget.pickerService,
-          textRecognitionService: widget.textRecognitionService,
-          rotationService: widget.rotationService,
-          previewImageBuilder: widget.previewImageBuilder,
-          speechService: widget.speechService,
-          store: widget.store,
-          onSavePages: widget.onSavePages,
-          documentTitle: widget.pageDocumentTitle,
-          initialController: initialController,
+        builder: (_) => ReadingPreferencesScope(
+          preferences: _preferences!,
+          child: MultiPageScreen(
+            files: files,
+            pickerService: widget.pickerService,
+            textRecognitionService: widget.textRecognitionService,
+            rotationService: widget.rotationService,
+            previewImageBuilder: widget.previewImageBuilder,
+            speechService: widget.speechService,
+            store: _store,
+            onSavePages: widget.onSavePages,
+            documentTitle: widget.pageDocumentTitle,
+            initialController: initialController,
+          ),
         ),
       ),
     );
@@ -772,8 +787,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       final saved = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (context) =>
-            SaveDocumentDialog(text: text, store: widget.store),
+        builder: (context) => SaveDocumentDialog(text: text, store: _store),
       );
 
       if (!mounted || saved != true) return;
@@ -893,8 +907,17 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (context) =>
-            LibraryScreen(speechService: _listening.speechService),
+        builder: (context) => ReadingPreferencesScope(
+          preferences: _preferences!,
+          child: LibraryScreen(
+            store: _store,
+            speechService: _listening.speechService,
+            pickerService: widget.pickerService,
+            textRecognitionService: widget.textRecognitionService,
+            rotationService: widget.rotationService,
+            previewImageBuilder: widget.previewImageBuilder,
+          ),
+        ),
       ),
     );
   }
@@ -925,7 +948,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       final restored = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => BackupScreen(
-            store: widget.store ?? DocumentStore.instance,
+            store: _store,
             preferences: _preferences!,
             files: widget.backupFileService,
           ),

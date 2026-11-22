@@ -4,10 +4,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/presentation/save_document_dialog.dart';
-import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 
 import '../listening/fake_speech_service.dart';
+import '../listening/fake_preferences_store.dart';
 
 class _Picker extends ImagePickerService {
   XFile? result;
@@ -22,7 +22,7 @@ class _Picker extends ImagePickerService {
   }) async => [?result];
 }
 
-class _Store extends DocumentStore {
+class _Store extends FakePreferencesStore {
   @override
   Future<List<DocumentCategory>> categories() async => DocumentCategory.values;
 }
@@ -150,6 +150,7 @@ void main() {
         home: ImageImportScreen(
           pickerService: _Picker(),
           speechService: FakeSpeechService(),
+          store: _Store(),
         ),
       ),
     );

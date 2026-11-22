@@ -5,6 +5,7 @@ import '../../image_import/services/image_picker_service.dart';
 import '../../image_import/services/image_rotation_service.dart';
 import '../../image_import/services/text_recognition_service.dart';
 import '../../listening/services/speech_service.dart';
+import '../../listening/presentation/reading_preferences.dart';
 import '../data/document_store.dart';
 
 /// Reuses the import/editor UI and saves directly into the existing content.
@@ -32,6 +33,10 @@ class AddPageScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolvedStore =
+        store ??
+        ReadingPreferencesScope.maybeOf(context)?.store ??
+        DocumentStore.instance;
     return ImageImportScreen(
       pickerService: pickerService,
       textRecognitionService: textRecognitionService,
@@ -39,16 +44,11 @@ class AddPageScreen extends StatelessWidget {
       previewImageBuilder: previewImageBuilder,
       speechService: speechService,
       pageDocumentTitle: documentTitle,
-      store: store,
-      onSavePages: (texts) => (store ?? DocumentStore.instance).appendPages(
-        documentId: documentId,
-        texts: texts,
-      ),
+      store: resolvedStore,
+      onSavePages: (texts) =>
+          resolvedStore.appendPages(documentId: documentId, texts: texts),
       onSavePage: (text) async {
-        await (store ?? DocumentStore.instance).appendPage(
-          documentId: documentId,
-          text: text,
-        );
+        await resolvedStore.appendPage(documentId: documentId, text: text);
       },
     );
   }

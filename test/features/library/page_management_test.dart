@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/services/image_picker_service.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
-import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/reading_position.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/add_page_screen.dart';
@@ -16,6 +15,7 @@ import 'package:reading_assistant/features/library/presentation/saved_document_s
 import 'package:reading_assistant/features/listening/services/sentence_splitter.dart';
 
 import '../listening/fake_speech_service.dart';
+import '../listening/fake_preferences_store.dart';
 
 // Page-management tests must never wait for native Android picker recovery.
 class _NoPicker extends ImagePickerService {
@@ -35,7 +35,7 @@ class _NoPicker extends ImagePickerService {
   }) async => multiple;
 }
 
-class _PageStore extends DocumentStore with FakeReadingPositions {
+class _PageStore extends FakePreferencesStore with FakeReadingPositions {
   SavedDocument document = SavedDocument(
     id: 7,
     title: 'Deneme',
@@ -51,18 +51,18 @@ class _PageStore extends DocumentStore with FakeReadingPositions {
   int? appendedDocumentId;
   String? appendedText;
   Object? appendError;
-  Object? loadError;
+  Object? pageLoadError;
   Completer<void>? appendGate;
 
   @override
   Future<SavedDocument?> getDocument(int id) async {
-    if (loadError != null) throw loadError!;
+    if (pageLoadError != null) throw pageLoadError!;
     return id == document.id ? document : null;
   }
 
   @override
   Future<List<DocumentPage>> pages(int documentId) async {
-    if (loadError != null) throw loadError!;
+    if (pageLoadError != null) throw pageLoadError!;
     return List<DocumentPage>.of(storedPages);
   }
 
@@ -845,10 +845,10 @@ void main() {
   });
 
   testWidgets('load failure can be retried', (tester) async {
-    final store = _PageStore()..loadError = StateError('disk');
+    final store = _PageStore()..pageLoadError = StateError('disk');
     await _show(tester, store);
     expect(find.textContaining('Sayfalar yüklenemedi'), findsOneWidget);
-    store.loadError = null;
+    store.pageLoadError = null;
     await tester.tap(find.text('Tekrar dene'));
     await tester.pumpAndSettle();
     expect(find.text('Sayfa 1'), findsOneWidget);

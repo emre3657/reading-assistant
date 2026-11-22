@@ -32,13 +32,14 @@ Future<_Harness> _open(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   addTearDown(tester.view.resetViewInsets);
+  final preferences = ReadingPreferences(store: FakePreferencesStore());
   await tester.pumpWidget(
     Builder(
       builder: (context) => MediaQuery(
         data: MediaQuery.of(context)
             .copyWith(textScaler: TextScaler.linear(textScale)),
         child: ReadingAssistantApp(
-          readingPreferences: ReadingPreferences(store: FakePreferencesStore()),
+          readingPreferences: preferences,
           pickerService: FakeImagePickerService(
             onPick: () async => XFile('/tmp/a.jpg'),
           ),

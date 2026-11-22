@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../image_import/presentation/image_import_controller.dart';
+import '../../image_import/services/image_picker_service.dart';
+import '../../image_import/services/image_rotation_service.dart';
+import '../../image_import/services/text_recognition_service.dart';
 import '../../listening/services/speech_service.dart';
+import '../../listening/presentation/reading_preferences.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
 import '../data/turkish_text.dart';
@@ -14,12 +19,24 @@ enum _DocumentAction { edit, delete }
 enum _DateOrder { newest, oldest }
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key, this.store, this.speechService});
+  const LibraryScreen({
+    super.key,
+    this.store,
+    this.speechService,
+    this.pickerService = const ImagePickerService(),
+    this.textRecognitionService = const TextRecognitionService(),
+    this.rotationService = const ImageRotationService(),
+    this.previewImageBuilder = fileImageProvider,
+  });
 
   final DocumentStore? store;
 
   /// An injected service remains owned by its caller.
   final SpeechService? speechService;
+  final ImagePickerService pickerService;
+  final TextRecognitionService textRecognitionService;
+  final ImageRotationService rotationService;
+  final PreviewImageBuilder previewImageBuilder;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -39,7 +56,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
   final Set<int> _selectedIds = {};
   List<SavedDocument> _visibleDocuments = const [];
 
-  DocumentStore get _store => widget.store ?? DocumentStore.instance;
+  DocumentStore get _store =>
+      widget.store ??
+      context
+          .getInheritedWidgetOfExactType<ReadingPreferencesScope>()
+          ?.preferences
+          .store ??
+      DocumentStore.instance;
   bool get _busy => _opening || _deleting || _loadingCategories;
 
   @override
@@ -188,15 +211,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (_busy) return;
     setState(() => _opening = true);
     var changed = false;
+    final preferences = ReadingPreferencesScope.maybeOf(context);
     try {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (context) => DocumentContentsScreen(
-            document: document,
-            store: _store,
-            speechService: widget.speechService,
-            onUpdated: () => changed = true,
-          ),
+          builder: (context) {
+            final screen = DocumentContentsScreen(
+              document: document,
+              store: _store,
+              speechService: widget.speechService,
+              pickerService: widget.pickerService,
+              textRecognitionService: widget.textRecognitionService,
+              rotationService: widget.rotationService,
+              previewImageBuilder: widget.previewImageBuilder,
+              onUpdated: () => changed = true,
+            );
+            return preferences == null
+                ? screen
+                : ReadingPreferencesScope(
+                    preferences: preferences,
+                    child: screen,
+                  );
+          },
         ),
       );
     } finally {

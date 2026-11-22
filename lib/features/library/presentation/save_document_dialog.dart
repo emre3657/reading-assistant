@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../listening/presentation/reading_preferences.dart';
 import '../data/document_store.dart';
 import '../data/saved_document.dart';
 import 'category_editor.dart';
@@ -28,7 +29,13 @@ class _SaveDocumentDialogState extends State<SaveDocumentDialog> {
   bool _saving = false;
   bool _categoriesReady = false;
   String? _error;
-  DocumentStore get _store => widget.store ?? DocumentStore.instance;
+  DocumentStore get _store =>
+      widget.store ??
+      context
+          .getInheritedWidgetOfExactType<ReadingPreferencesScope>()
+          ?.preferences
+          .store ??
+      DocumentStore.instance;
 
   @override
   void dispose() {

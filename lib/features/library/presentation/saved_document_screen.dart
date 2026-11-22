@@ -158,6 +158,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   late final ListeningController _listening;
   ReadingPreferences? _preferences;
+  ReadingPreferences? _ownedPreferences;
   int _preferencesErrorRevision = 0;
   SpeechService? _ownedSpeechService;
 
@@ -237,7 +238,13 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   /// confirmation never applies to a newer edit.
   int _editSession = 0;
 
-  DocumentStore get _store => widget.store ?? DocumentStore.instance;
+  DocumentStore get _store =>
+      widget.store ??
+      context
+          .getInheritedWidgetOfExactType<ReadingPreferencesScope>()
+          ?.preferences
+          .store ??
+      DocumentStore.instance;
 
   bool get _hasChanges => _textController.text != _saved.text;
 
@@ -289,9 +296,17 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final preferences = ReadingPreferencesScope.of(context);
+    final preferences =
+        ReadingPreferencesScope.maybeOf(context) ??
+        (widget.store == null
+            ? ReadingPreferences.instance
+            : (_ownedPreferences ??= ReadingPreferences(store: widget.store)));
     if (_preferences == preferences) return;
     _preferences?.removeListener(_onPreferencesChanged);
+    if (_ownedPreferences != null && _ownedPreferences != preferences) {
+      _ownedPreferences!.dispose();
+      _ownedPreferences = null;
+    }
     _preferences = preferences;
     preferences.addListener(_onPreferencesChanged);
     if (preferences.ready) {
@@ -352,6 +367,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     WidgetsBinding.instance.removeObserver(this);
     _listening.removeListener(_onListeningChanged);
     _preferences?.removeListener(_onPreferencesChanged);
+    _ownedPreferences?.dispose();
     _readController.dispose();
     _listening.dispose();
     _ownedSpeechService?.dispose();

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../library/data/document_store.dart';
 import '../../library/presentation/save_document_dialog.dart';
 import '../../listening/services/speech_service.dart';
+import '../../listening/presentation/reading_preferences.dart';
 import '../services/image_picker_service.dart';
 import '../services/image_rotation_service.dart';
 import '../services/text_recognition_service.dart';
@@ -50,6 +51,13 @@ class _PageDraft {
 }
 
 class _MultiPageScreenState extends State<MultiPageScreen> {
+  DocumentStore get _store =>
+      widget.store ??
+      context
+          .getInheritedWidgetOfExactType<ReadingPreferencesScope>()
+          ?.preferences
+          .store ??
+      DocumentStore.instance;
   late final List<_PageDraft> _pages;
   bool _processing = false;
   bool _picking = false;
@@ -228,20 +236,30 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
 
   Future<void> _open(_PageDraft page) async {
     if (_busy) return;
+    final preferences = ReadingPreferencesScope.maybeOf(context);
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => ImageImportScreen(
-          batchController: page.controller,
-          batchPageNumber: _pages.indexOf(page) + 1,
-          batchTextValidated:
-              _validationStarted ||
-              page.controller.textController.text.trim().isEmpty,
-          pickerService: widget.pickerService,
-          textRecognitionService: widget.textRecognitionService,
-          rotationService: widget.rotationService,
-          previewImageBuilder: widget.previewImageBuilder,
-          speechService: widget.speechService,
-        ),
+        builder: (_) {
+          final screen = ImageImportScreen(
+            batchController: page.controller,
+            batchPageNumber: _pages.indexOf(page) + 1,
+            batchTextValidated:
+                _validationStarted ||
+                page.controller.textController.text.trim().isEmpty,
+            pickerService: widget.pickerService,
+            textRecognitionService: widget.textRecognitionService,
+            rotationService: widget.rotationService,
+            store: _store,
+            previewImageBuilder: widget.previewImageBuilder,
+            speechService: widget.speechService,
+          );
+          return preferences == null
+              ? screen
+              : ReadingPreferencesScope(
+                  preferences: preferences,
+                  child: screen,
+                );
+        },
       ),
     );
     if (mounted) setState(_refreshEmptyPages);
@@ -314,7 +332,7 @@ class _MultiPageScreenState extends State<MultiPageScreen> {
           builder: (_) => SaveDocumentDialog(
             text: texts.first,
             pages: texts,
-            store: widget.store,
+            store: _store,
           ),
         );
         if (!mounted || saved != true) return;

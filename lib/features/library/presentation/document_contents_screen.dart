@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../image_import/services/image_picker_service.dart';
+import '../../image_import/presentation/image_import_controller.dart';
+import '../../image_import/services/image_rotation_service.dart';
+import '../../image_import/services/text_recognition_service.dart';
 import '../../listening/services/speech_service.dart';
+import '../../listening/presentation/reading_preferences.dart';
 import '../data/document_page.dart';
 import '../data/document_store.dart';
 import '../data/reading_position.dart';
@@ -20,6 +24,9 @@ class DocumentContentsScreen extends StatefulWidget {
     this.speechService,
     this.onUpdated,
     this.pickerService = const ImagePickerService(),
+    this.textRecognitionService = const TextRecognitionService(),
+    this.rotationService = const ImageRotationService(),
+    this.previewImageBuilder = fileImageProvider,
   });
 
   final SavedDocument document;
@@ -27,6 +34,9 @@ class DocumentContentsScreen extends StatefulWidget {
   final SpeechService? speechService;
   final VoidCallback? onUpdated;
   final ImagePickerService pickerService;
+  final TextRecognitionService textRecognitionService;
+  final ImageRotationService rotationService;
+  final PreviewImageBuilder previewImageBuilder;
 
   @override
   State<DocumentContentsScreen> createState() => _DocumentContentsScreenState();
@@ -48,7 +58,13 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
   bool _selecting = false;
   final Set<int> _selectedPageIds = {};
 
-  DocumentStore get _store => widget.store ?? DocumentStore.instance;
+  DocumentStore get _store =>
+      widget.store ??
+      context
+          .getInheritedWidgetOfExactType<ReadingPreferencesScope>()
+          ?.preferences
+          .store ??
+      DocumentStore.instance;
   bool get _busy => _loading || _opening || _deleting || _reordering;
 
   @override
@@ -143,28 +159,37 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     if (_busy || _error != null) return;
     setState(() => _opening = true);
     var changed = false;
+    final preferences = ReadingPreferencesScope.maybeOf(context);
     try {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (context) => SavedDocumentScreen(
-            document: SavedDocument(
-              id: _document.id,
-              title: _document.title,
-              category: _document.category,
-              text: page.text,
-              createdAt: _document.createdAt,
-            ),
-            pageId: page.id,
-            pageNumber: number,
-            initialSentence: initialSentence,
-            revealInitialSentence: revealInitialSentence,
-            store: _store,
-            speechService: widget.speechService,
-            onUpdated: () {
-              changed = true;
-              widget.onUpdated?.call();
-            },
-          ),
+          builder: (context) {
+            final screen = SavedDocumentScreen(
+              document: SavedDocument(
+                id: _document.id,
+                title: _document.title,
+                category: _document.category,
+                text: page.text,
+                createdAt: _document.createdAt,
+              ),
+              pageId: page.id,
+              pageNumber: number,
+              initialSentence: initialSentence,
+              revealInitialSentence: revealInitialSentence,
+              store: _store,
+              speechService: widget.speechService,
+              onUpdated: () {
+                changed = true;
+                widget.onUpdated?.call();
+              },
+            );
+            return preferences == null
+                ? screen
+                : ReadingPreferencesScope(
+                    preferences: preferences,
+                    child: screen,
+                  );
+          },
         ),
       );
     } finally {
@@ -202,16 +227,28 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     if (_busy || _error != null) return;
     setState(() => _opening = true);
     int? savedCount;
+    final preferences = ReadingPreferencesScope.maybeOf(context);
     try {
       savedCount = await Navigator.of(context).push<int>(
         MaterialPageRoute(
-          builder: (context) => AddPageScreen(
-            documentId: _document.id,
-            documentTitle: _document.title,
-            store: _store,
-            speechService: widget.speechService,
-            pickerService: widget.pickerService,
-          ),
+          builder: (context) {
+            final screen = AddPageScreen(
+              documentId: _document.id,
+              documentTitle: _document.title,
+              store: _store,
+              speechService: widget.speechService,
+              pickerService: widget.pickerService,
+              textRecognitionService: widget.textRecognitionService,
+              rotationService: widget.rotationService,
+              previewImageBuilder: widget.previewImageBuilder,
+            );
+            return preferences == null
+                ? screen
+                : ReadingPreferencesScope(
+                    preferences: preferences,
+                    child: screen,
+                  );
+          },
         ),
       );
     } finally {

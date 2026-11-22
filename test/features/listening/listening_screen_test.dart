@@ -5,6 +5,7 @@ import 'package:reading_assistant/app.dart';
 import 'package:reading_assistant/features/listening/services/speech_service.dart';
 
 import '../image_import/test_doubles.dart';
+import 'fake_preferences_store.dart';
 import 'fake_speech_service.dart';
 
 // A fake engine is used: these tests cover the screen's controls and the
@@ -33,6 +34,7 @@ Future<FakeSpeechService> _openWithText(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ReadingAssistantApp(
+      store: FakePreferencesStore(),
       pickerService: FakeImagePickerService(
         onPick: () async => XFile('/tmp/a.jpg'),
       ),
