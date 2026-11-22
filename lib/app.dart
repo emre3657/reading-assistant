@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'features/image_import/presentation/image_import_screen.dart';
 import 'features/image_import/services/image_picker_service.dart';

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../image_import/presentation/image_import_screen.dart';
 import '../../image_import/services/image_picker_service.dart';

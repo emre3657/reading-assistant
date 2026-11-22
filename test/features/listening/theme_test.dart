@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/app.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';

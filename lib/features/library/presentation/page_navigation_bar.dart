@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Compact page navigation row shown above the listening panel. It is visually
 /// and semantically separate from the sentence controls. It only reports

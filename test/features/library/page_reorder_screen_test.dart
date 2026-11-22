@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'fake_reading_positions.dart';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
@@ -143,7 +143,14 @@ void main() {
     final semantics = tester.ensureSemantics();
     await _show(tester, _Store(2));
 
-    expect(find.byTooltip('Sırayı değiştirmek için sürükle'), findsNWidgets(2));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            widget.message == 'Sırayı değiştirmek için sürükle',
+      ),
+      findsNWidgets(2),
+    );
     for (final number in [1, 2]) {
       expect(
         find.byWidgetPredicate(

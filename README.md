@@ -88,7 +88,7 @@ Android'de kurulu ve ağ gerektirmediğini bildiren Türkçe TTS sesi seçilir. 
 
 ## Geliştirme
 
-Flutter SDK ve hedef platformun geliştirme araçları gereklidir. Mevcut minimum sürümler Android API 24 ve iOS 15.5'tir. iOS derlemesi için macOS/Xcode gerekir.
+Flutter SDK (en az 3.47 ve Dart 3.13.5) ve hedef platformun geliştirme araçları gereklidir. Mevcut minimum sürümler Android API 24 ve iOS 15.5'tir. iOS derlemesi için macOS/Xcode gerekir.
 
 ```bash
 flutter pub get
@@ -106,7 +106,7 @@ Android release APK:
 flutter build apk --release
 ```
 
-Temel bağımlılıklar: `image_picker`, `google_mlkit_text_recognition`, `image`, `flutter_tts`, `sqflite`, `file_picker` ve `path_provider`. Sürümler için [pubspec.yaml](pubspec.yaml) ve [pubspec.lock](pubspec.lock) dosyalarına bakın.
+Temel bağımlılıklar: `material_ui`, `image_picker`, `google_mlkit_text_recognition`, `image`, `flutter_tts`, `sqflite`, `file_picker` ve `path_provider`. Sürümler için [pubspec.yaml](pubspec.yaml) ve [pubspec.lock](pubspec.lock) dosyalarına bakın.
 
 Testler arayüz/controller akışlarını, metin biçimlendirmeyi, cümle bölmeyi ve gerçek SQLite üzerinde veritabanı işlemlerini kapsar. Sahte OCR/TTS servisleriyle geçen testler, gerçek motor veya cihaz davranışının doğrulandığı anlamına gelmez.
 

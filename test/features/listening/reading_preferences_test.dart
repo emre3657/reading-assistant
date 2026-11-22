@@ -7,7 +7,7 @@ import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 import 'package:reading_assistant/theme/app_theme.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'fake_preferences_store.dart';

@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
@@ -529,6 +530,33 @@ void main() {
       expect(copied, selected);
     },
   );
+
+  testWidgets('iOS selection menu can copy the selected text', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    String? copied;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+    await _show(tester, _Store(), FakeSpeechService());
+    await tester.longPressAt(_character(tester, 1));
+    await tester.pumpAndSettle();
+    final controller = tester.widget<TextField>(_field).controller!;
+    expect(controller.selection.isCollapsed, isFalse);
+    expect(find.text('Copy'), findsOneWidget);
+    final selected = controller.selection.textInside(controller.text);
+    await _tap(tester, find.text('Copy'));
+    expect(copied, selected);
+  });
 
   testWidgets(
     'bubble fits a narrow screen with large text without moving content',

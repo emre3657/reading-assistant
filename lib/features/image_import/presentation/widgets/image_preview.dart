@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Shows [image] at full width, keeping its aspect ratio, rotated clockwise by
 /// [quarterTurns] * 90 degrees.

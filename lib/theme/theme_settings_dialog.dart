@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../features/listening/presentation/reading_preferences.dart';
 import 'app_theme.dart';
