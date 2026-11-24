@@ -34,7 +34,7 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 - Ses motoru kelime ilerlemesi bildirdiğinde okunan kelimeyi ayrıca arka plan ve alt çizgiyle vurgulama.
 - Kayıtlı sayfada bir cümleye dokunup “Buradan oku” ile okumaya o cümleden başlama.
 - İsteğe bağlı olarak okunan cümleyi otomatik takip etme; elle kaydırınca takip duraklatılır.
-- 0.75×, 1×, 1.25× ve 1.5× hız seçenekleri.
+- 0.75×, 0.8×, 0.9×, 1×, 1.25× ve 1.5× hız seçenekleri.
 - İlk ekran, sayfa ekleme ve kayıtlı sayfa okuma/düzenleme metinleri için yazı boyutu, hizalama ve satır aralığı seçenekleri.
 - Ekranın altında küçültülebilen dinleme paneli; hız seçenekleri üstteki “Görünüm ve sesli okuma” menüsündedir.
 

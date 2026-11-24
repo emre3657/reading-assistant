@@ -221,6 +221,51 @@ void main() {
     }
   });
 
+  test('new speeds persist and reopen using stable names', () async {
+    final dir = await Directory.systemTemp.createTemp('speed-preferences-');
+    final path = '${dir.path}${Platform.pathSeparator}test.db';
+    OpenDatabaseOptions options() => OpenDatabaseOptions(
+      version: documentDatabaseVersion,
+      singleInstance: false,
+      onConfigure: configureDocumentDatabase,
+      onCreate: createDocumentSchema,
+      onUpgrade: upgradeDocumentSchema,
+    );
+    try {
+      for (final speed in [ReadingSpeed.slow08, ReadingSpeed.slow09]) {
+        final db = await databaseFactoryFfi.openDatabase(
+          path,
+          options: options(),
+        );
+        final preferences = ReadingPreferences(
+          store: DocumentStore(databaseOpener: () async => db),
+        );
+        await preferences.load();
+        preferences.setSpeed(speed);
+        await preferences.pendingWrites;
+        expect(
+          (await db.query('reading_preferences')).single['speed'],
+          speed.name,
+        );
+        preferences.dispose();
+        await db.close();
+        final reopened = await databaseFactoryFfi.openDatabase(
+          path,
+          options: options(),
+        );
+        final restored = ReadingPreferences(
+          store: DocumentStore(databaseOpener: () async => reopened),
+        );
+        await restored.load();
+        expect(restored.speed, speed);
+        restored.dispose();
+        await reopened.close();
+      }
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
+
   test(
     'v13 migration adds theme defaults without changing preferences',
     () async {

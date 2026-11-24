@@ -11,6 +11,8 @@ import '../services/speech_text_splitter.dart';
 /// ratios.
 enum ReadingSpeed {
   slow(0.75, '0.75×'),
+  slow08(0.8, '0.8×'),
+  slow09(0.9, '0.9×'),
   normal(1, '1×'),
   fast(1.25, '1.25×'),
   faster(1.5, '1.5×');

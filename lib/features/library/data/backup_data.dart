@@ -231,7 +231,14 @@ class BackupData {
     if (preferences.isNotEmpty) {
       final row = preferences.single;
       if (row['id'] != 1 ||
-          !{'slow', 'normal', 'fast', 'faster'}.contains(row['speed']) ||
+          !{
+            'slow',
+            'slow08',
+            'slow09',
+            'normal',
+            'fast',
+            'faster',
+          }.contains(row['speed']) ||
           !{0, 1}.contains(row['auto_next_page']) ||
           !{0, 1}.contains(row['follow_sentence']) ||
           !{0, 1}.contains(row['page_animation_enabled']) ||

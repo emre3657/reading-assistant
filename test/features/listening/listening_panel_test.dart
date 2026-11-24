@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/app.dart';
+import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 
 import '../image_import/test_doubles.dart';
@@ -365,7 +366,7 @@ void main() {
       await tester.ensureVisible(find.byKey(const ValueKey('reading-speed')));
       await tester.tap(find.byKey(const ValueKey('reading-speed')));
       await tester.pumpAndSettle();
-      for (final label in ['0.75×', '1×', '1.25×', '1.5×']) {
+      for (final label in ['0.75×', '0.8×', '0.9×', '1×', '1.25×', '1.5×']) {
         expect(find.text(label), findsWidgets);
       }
       await tester.tap(find.text(value).last);
@@ -375,6 +376,15 @@ void main() {
 
     await openSettings();
     expect(find.text('1×'), findsOneWidget);
+    expect(
+      tester
+          .widget<DropdownButton<ReadingSpeed>>(
+            find.byKey(const ValueKey('reading-speed')),
+          )
+          .items!
+          .map((item) => item.value),
+      ReadingSpeed.values,
+    );
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
     await selectSpeed('1.25×');
     await tester.tap(find.text('Kapat'));
@@ -387,8 +397,8 @@ void main() {
 
     await openSettings();
     expect(h.speech.stopCalls, 0);
-    await selectSpeed('1.5×');
-    expect(h.speech.spokenRates, [1.25, 1.5]);
+    await selectSpeed('0.8×');
+    expect(h.speech.spokenRates, [1.25, 0.8]);
     expect(h.speech.spoken.last, h.speech.spoken.first);
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
@@ -398,8 +408,14 @@ void main() {
     await tester.pump();
     final spoken = h.speech.spoken.length;
     await openSettings();
-    await selectSpeed('0.75×');
+    await selectSpeed('0.9×');
     expect(h.speech.spoken.length, spoken);
+    await tester.tap(find.text('Kapat'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Devam et'));
+    await tester.pump();
+    await tester.pump();
+    expect(h.speech.spokenRates.last, 0.9);
   });
 
   group('auto-scroll after OCR', () {

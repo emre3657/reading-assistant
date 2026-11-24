@@ -7,6 +7,8 @@ import 'package:reading_assistant/features/library/data/document_schema.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/encrypted_backup.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
+import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
+import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -122,6 +124,27 @@ void main() {
     expect((await target.loadReadingPreferences())?['bookmark_color'], 'teal');
     expect((await target.loadReadingPreferences())?['theme_mode'], 'dark');
     expect((await target.loadReadingPreferences())?['theme_palette'], 'blue');
+  });
+
+  test('new and legacy speed names survive backup and restore', () async {
+    await populated();
+    for (final speed in ReadingSpeed.values) {
+      await sourceDb.update(
+        'reading_preferences',
+        {'speed': speed.name},
+        where: 'id = ?',
+        whereArgs: [1],
+      );
+      final backup = BackupData.decode(
+        (await source.backupSnapshot()).encode(),
+      );
+      await target.restoreBackup(backup);
+      expect((await target.loadReadingPreferences())?['speed'], speed.name);
+      final preferences = ReadingPreferences(store: target);
+      await preferences.load();
+      expect(preferences.speed, speed);
+      preferences.dispose();
+    }
   });
 
   test('encrypted snapshot restores every table to SQLite', () async {
