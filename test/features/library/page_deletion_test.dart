@@ -97,6 +97,59 @@ Finder _iconButton(String tooltip) => find.byWidgetPredicate(
 );
 
 void main() {
+  testWidgets('page menu opens empty selection and toggles all states', (
+    tester,
+  ) async {
+    final store = _Store();
+    await _show(tester, store);
+    await tester.tap(find.byKey(const ValueKey('content-options')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Sayfa seç')).dy,
+      lessThan(tester.getTopLeft(find.text('Düzenle')).dy),
+    );
+    await tester.tap(find.text('Sayfa seç'));
+    await tester.pumpAndSettle();
+    final all = find.widgetWithText(CheckboxListTile, 'Tümünü seç');
+    bool? value() => tester.widget<CheckboxListTile>(all).value;
+    expect(find.text('0 seçili'), findsOneWidget);
+    expect(value(), isFalse);
+    expect(
+      tester.widget<IconButton>(_iconButton('Seçilenleri sil')).onPressed,
+      isNull,
+    );
+    expect(find.byType(ReorderableDragStartListener), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('page-70')));
+    await tester.pumpAndSettle();
+    expect(value(), isNull);
+    await tester.tap(find.text('Tümünü seç'));
+    await tester.pumpAndSettle();
+    expect(value(), isTrue);
+    expect(find.text('3 seçili'), findsOneWidget);
+    await tester.tap(find.text('Tümünü seç'));
+    await tester.pumpAndSettle();
+    expect(value(), isFalse);
+    expect(find.text('0 seçili'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Kitabım'), findsOneWidget);
+  });
+
+  testWidgets('page select menu is disabled without pages', (tester) async {
+    final store = _Store()..stored = [];
+    await _show(tester, store);
+    await tester.tap(find.byKey(const ValueKey('content-options')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<PopupMenuItem<String>>(
+            find.widgetWithText(PopupMenuItem<String>, 'Sayfa seç'),
+          )
+          .enabled,
+      isFalse,
+    );
+  });
+
   testWidgets(
     'page confirmation is usable with large text on a narrow screen',
     (tester) async {
@@ -110,7 +163,7 @@ void main() {
       await tester.ensureVisible(find.byKey(const ValueKey('page-70')));
       await tester.longPress(find.byKey(const ValueKey('page-70')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Tümünü seç'));
+      await tester.tap(find.text('Tümünü seç'));
       await tester.tap(find.byTooltip('Seçilenleri sil'));
       await tester.pumpAndSettle();
       expect(find.text('3 sayfa silinsin mi?'), findsOneWidget);
@@ -158,7 +211,7 @@ void main() {
     await _show(tester, store);
     await tester.longPress(find.byKey(const ValueKey('page-70')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Tümünü seç'));
+    await tester.tap(find.text('Tümünü seç'));
     await tester.tap(find.byTooltip('Seçilenleri sil'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Sil'));
@@ -177,6 +230,14 @@ void main() {
     await tester.pump();
     expect(
       tester.widget<IconButton>(_iconButton('Seçilenleri sil')).onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.widgetWithText(CheckboxListTile, 'Tümünü seç'),
+          )
+          .onChanged,
       isNull,
     );
     await tester.binding.handlePopRoute();

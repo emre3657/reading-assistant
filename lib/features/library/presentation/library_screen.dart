@@ -317,6 +317,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
+  void _startSelection([int? id]) {
+    if (_busy || _visibleDocuments.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _selecting = true;
+      _selectedIds.clear();
+      if (id != null) _selectedIds.add(id);
+    });
+  }
+
   void _toggleSelection(int id) {
     setState(() {
       if (!_selectedIds.add(id)) _selectedIds.remove(id);
@@ -458,173 +468,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_selecting,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _selecting && !_busy) _exitSelection();
-      },
-      child: Scaffold(
-        appBar: _selecting
-            ? selectionAppBar(
-                count: _selectedIds.length,
-                busy: _busy,
-                onClose: _exitSelection,
-                onSelectAll: () => setState(() {
-                  _selectedIds.addAll(_visibleDocuments.map((d) => d.id));
-                }),
-                onDelete: _deleteSelected,
-              )
-            : AppBar(
-                title: const Text('Kayıtlarım'),
-                actions: [
-                  PopupMenuButton<String>(
-                    tooltip: 'Kayıtlarım menüsü',
-                    enabled: !_busy,
-                    onSelected: (_) => _manageCategories(),
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'categories',
-                        child: Row(
-                          children: [
-                            Icon(Icons.category_outlined, size: 20),
-                            SizedBox(width: 12),
-                            Expanded(child: Text('Kategorileri yönet')),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    onPressed: _busy ? null : _reload,
-                    tooltip: 'Yenile',
-                    icon: const Icon(Icons.refresh),
-                  ),
-                ],
-              ),
-        body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: TextField(
-                  key: const ValueKey('title-search'),
-                  controller: _searchController,
-                  enabled: !_selecting && !_busy,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'Başlık ara',
-                    prefixIcon: const Icon(Icons.search),
-                    border: const OutlineInputBorder(),
-                    suffixIcon: _searchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Aramayı temizle',
-                            onPressed: _busy || _selecting
-                                ? null
-                                : () {
-                                    _searchController.clear();
-                                    setState(() {});
-                                  },
-                            icon: const Icon(Icons.clear),
-                          ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 5),
-                child: Wrap(
-                  spacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    OutlinedButton.icon(
-                      key: const ValueKey('category-filter-button'),
-                      onPressed: _busy || _selecting
-                          ? null
-                          : _openCategoryFilter,
-                      icon: Semantics(
-                        label: _selectedCategories.isEmpty
-                            ? null
-                            : '${_selectedCategories.length} kategori seçili',
-                        child: ExcludeSemantics(
-                          child: Badge(
-                            isLabelVisible: _selectedCategories.isNotEmpty,
-                            label: Text('${_selectedCategories.length}'),
-                            child: const Icon(Icons.filter_list),
-                          ),
-                        ),
-                      ),
-                      label: const Text('Kategori'),
-                    ),
-                    DropdownButton<_DateOrder>(
-                      key: const ValueKey('date-order'),
-                      value: _dateOrder,
-                      underline: const SizedBox.shrink(),
-                      items: const [
-                        DropdownMenuItem(
-                          value: _DateOrder.newest,
-                          child: Text('En yeni'),
-                        ),
-                        DropdownMenuItem(
-                          value: _DateOrder.oldest,
-                          child: Text('En eski'),
-                        ),
-                      ],
-                      onChanged: _busy || _selecting
-                          ? null
-                          : (value) {
-                              if (value != null) {
-                                setState(() => _dateOrder = value);
-                              }
-                            },
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(child: _buildDocumentList()),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDocumentList() {
     return FutureBuilder<List<SavedDocument>>(
       future: _documents,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Kayıtlar yüklenemedi.'),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _busy ? null : _reload,
-                    child: const Text('Tekrar dene'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        final documents = snapshot.data ?? const <SavedDocument>[];
-        if (documents.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Henüz kayıt yok. Çıkardığın metni kaydederek başlayabilirsin.',
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
-        }
+        final documents =
+            snapshot.connectionState == ConnectionState.done &&
+                !snapshot.hasError
+            ? snapshot.data ?? const <SavedDocument>[]
+            : const <SavedDocument>[];
         final query = normalizeTurkishCase(_searchController.text.trim());
         final filtered =
             documents.where((document) {
@@ -637,54 +488,254 @@ class _LibraryScreenState extends State<LibraryScreen> {
               return _dateOrder == _DateOrder.newest ? -comparison : comparison;
             });
         _visibleDocuments = filtered;
-        if (filtered.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Aramana veya filtrelerine uygun kayıt bulunamadı.',
-                textAlign: TextAlign.center,
+        return PopScope(
+          canPop: !_selecting,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop && _selecting && !_busy) _exitSelection();
+          },
+          child: Scaffold(
+            appBar: _selecting
+                ? selectionAppBar(
+                    count: _selectedIds.length,
+                    busy: _busy,
+                    onClose: _exitSelection,
+                    onDelete: _deleteSelected,
+                  )
+                : AppBar(
+                    title: const Text('Kayıtlarım'),
+                    actions: [
+                      PopupMenuButton<String>(
+                        tooltip: 'Kayıtlarım menüsü',
+                        enabled: !_busy,
+                        onSelected: (action) {
+                          if (action == 'select') {
+                            _startSelection();
+                          } else {
+                            _manageCategories();
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: 'select',
+                            enabled: !_busy && _visibleDocuments.isNotEmpty,
+                            child: const Row(
+                              children: [
+                                Icon(Icons.checklist, size: 20),
+                                SizedBox(width: 12),
+                                Expanded(child: Text('Kayıt seç')),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'categories',
+                            child: Row(
+                              children: [
+                                Icon(Icons.category_outlined, size: 20),
+                                SizedBox(width: 12),
+                                Expanded(child: Text('Kategorileri yönet')),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: _busy ? null : _reload,
+                        tooltip: 'Yenile',
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+            body: SafeArea(
+              child: Column(
+                children: [
+                  if (_selecting)
+                    selectAllCheckbox(
+                      selectedCount: filtered
+                          .where(
+                            (document) => _selectedIds.contains(document.id),
+                          )
+                          .length,
+                      totalCount: filtered.length,
+                      busy: _busy,
+                      onToggle: () => setState(() {
+                        if (filtered.every(
+                          (d) => _selectedIds.contains(d.id),
+                        )) {
+                          _selectedIds.clear();
+                        } else {
+                          _selectedIds.addAll(filtered.map((d) => d.id));
+                        }
+                      }),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TextField(
+                      key: const ValueKey('title-search'),
+                      controller: _searchController,
+                      enabled: !_selecting && !_busy,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        labelText: 'Başlık ara',
+                        prefixIcon: const Icon(Icons.search),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: _searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Aramayı temizle',
+                                onPressed: _busy || _selecting
+                                    ? null
+                                    : () {
+                                        _searchController.clear();
+                                        setState(() {});
+                                      },
+                                icon: const Icon(Icons.clear),
+                              ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      bottom: 5,
+                    ),
+                    child: Wrap(
+                      spacing: 12,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          key: const ValueKey('category-filter-button'),
+                          onPressed: _busy || _selecting
+                              ? null
+                              : _openCategoryFilter,
+                          icon: Semantics(
+                            label: _selectedCategories.isEmpty
+                                ? null
+                                : '${_selectedCategories.length} kategori seçili',
+                            child: ExcludeSemantics(
+                              child: Badge(
+                                isLabelVisible: _selectedCategories.isNotEmpty,
+                                label: Text('${_selectedCategories.length}'),
+                                child: const Icon(Icons.filter_list),
+                              ),
+                            ),
+                          ),
+                          label: const Text('Kategori'),
+                        ),
+                        DropdownButton<_DateOrder>(
+                          key: const ValueKey('date-order'),
+                          value: _dateOrder,
+                          underline: const SizedBox.shrink(),
+                          items: const [
+                            DropdownMenuItem(
+                              value: _DateOrder.newest,
+                              child: Text('En yeni'),
+                            ),
+                            DropdownMenuItem(
+                              value: _DateOrder.oldest,
+                              child: Text('En eski'),
+                            ),
+                          ],
+                          onChanged: _busy || _selecting
+                              ? null
+                              : (value) {
+                                  if (value != null) {
+                                    setState(() => _dateOrder = value);
+                                  }
+                                },
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildDocumentList(snapshot, documents, filtered),
+                  ),
+                ],
               ),
             ),
-          );
-        }
-        return ListView.separated(
-          itemCount: filtered.length,
-          separatorBuilder: (context, index) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final document = filtered[index];
-            return ListTile(
-              key: ValueKey('document-${document.id}'),
-              leading: _selecting
-                  ? Semantics(
-                      label: '${document.title} seçimi',
-                      child: Checkbox(
-                        value: _selectedIds.contains(document.id),
-                        onChanged: _busy
-                            ? null
-                            : (_) => _toggleSelection(document.id),
-                      ),
-                    )
-                  : const Icon(Icons.description_outlined),
-              title: Text(document.title),
-              subtitle: Text(document.category.label),
-              trailing: _selecting ? null : _buildDocumentMenu(document),
-              onTap: _busy
-                  ? null
-                  : () => _selecting
-                        ? _toggleSelection(document.id)
-                        : _open(document),
-              onLongPress: _busy || _selecting
-                  ? null
-                  : () {
-                      FocusManager.instance.primaryFocus?.unfocus();
-                      setState(() {
-                        _selecting = true;
-                        _selectedIds.add(document.id);
-                      });
-                    },
-            );
-          },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDocumentList(
+    AsyncSnapshot<List<SavedDocument>> snapshot,
+    List<SavedDocument> documents,
+    List<SavedDocument> filtered,
+  ) {
+    if (snapshot.connectionState != ConnectionState.done) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (snapshot.hasError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Kayıtlar yüklenemedi.'),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _busy ? null : _reload,
+                child: const Text('Tekrar dene'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (documents.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Henüz kayıt yok. Çıkardığın metni kaydederek başlayabilirsin.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    if (filtered.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Aramana veya filtrelerine uygun kayıt bulunamadı.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: filtered.length,
+      separatorBuilder: (context, index) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final document = filtered[index];
+        return ListTile(
+          key: ValueKey('document-${document.id}'),
+          leading: _selecting
+              ? Semantics(
+                  label: '${document.title} seçimi',
+                  child: Checkbox(
+                    value: _selectedIds.contains(document.id),
+                    onChanged: _busy
+                        ? null
+                        : (_) => _toggleSelection(document.id),
+                  ),
+                )
+              : const Icon(Icons.description_outlined),
+          title: Text(document.title),
+          subtitle: Text(document.category.label),
+          trailing: _selecting ? null : _buildDocumentMenu(document),
+          onTap: _busy
+              ? null
+              : () => _selecting
+                    ? _toggleSelection(document.id)
+                    : _open(document),
+          onLongPress: _busy || _selecting
+              ? null
+              : () => _startSelection(document.id),
         );
       },
     );

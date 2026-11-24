@@ -355,6 +355,15 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
     });
   }
 
+  void _startSelection([int? id]) {
+    if (_busy || _error != null || _pages.isEmpty) return;
+    setState(() {
+      _selecting = true;
+      _selectedPageIds.clear();
+      if (id != null) _selectedPageIds.add(id);
+    });
+  }
+
   void _toggleSelection(int id) {
     setState(() {
       if (!_selectedPageIds.add(id)) _selectedPageIds.remove(id);
@@ -547,9 +556,6 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                   count: _selectedPageIds.length,
                   busy: _busy,
                   onClose: _exitSelection,
-                  onSelectAll: () => setState(() {
-                    _selectedPageIds.addAll(_pages.map((page) => page.id));
-                  }),
                   onDelete: _deleteSelected,
                 )
               : AppBar(
@@ -574,14 +580,51 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                       key: const ValueKey('content-options'),
                       tooltip: 'İçerik seçenekleri',
                       enabled: !_busy && _error == null,
-                      onSelected: (_) => _editDetails(),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                      onSelected: (action) {
+                        if (action == 'select') {
+                          _startSelection();
+                        } else {
+                          _editDetails();
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'select',
+                          enabled: !_busy && _pages.isNotEmpty,
+                          child: const Text('Sayfa seç'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Düzenle'),
+                        ),
                       ],
                     ),
                   ],
                 ),
-          body: SafeArea(child: _buildBody(context)),
+          body: SafeArea(
+            child: Column(
+              children: [
+                if (_selecting)
+                  selectAllCheckbox(
+                    selectedCount: _pages
+                        .where((page) => _selectedPageIds.contains(page.id))
+                        .length,
+                    totalCount: _pages.length,
+                    busy: _busy,
+                    onToggle: () => setState(() {
+                      if (_pages.every(
+                        (page) => _selectedPageIds.contains(page.id),
+                      )) {
+                        _selectedPageIds.clear();
+                      } else {
+                        _selectedPageIds.addAll(_pages.map((page) => page.id));
+                      }
+                    }),
+                  ),
+                Expanded(child: _buildBody(context)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -810,12 +853,7 @@ class _DocumentContentsScreenState extends State<DocumentContentsScreen> {
                         : _openPage(page, number),
               onLongPress: _busy || _selecting
                   ? null
-                  : () {
-                      setState(() {
-                        _selecting = true;
-                        _selectedPageIds.add(page.id);
-                      });
-                    },
+                  : () => _startSelection(page.id),
             ),
             const Divider(height: 1),
           ],

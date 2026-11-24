@@ -58,7 +58,7 @@ Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirili
 - Her içeriğe bir manuel ayraç konabilir; okumaya devam etmek ayracı taşımaz. “Ayraca git” okumayı başlatmadan işaretli cümleyi açar. İşaretli sayfanın metni değişirse ayraç sayfanın başına döner.
 - Okuma ayarlarında ayraç biçimi (Şerit, Kurdele veya Köşe ayracı) ve rengi seçilebilir; okuma başlarken görsel ayraç çekilir, kayıtlı konum korunur.
 - Başlık ve kategoriyi içerik menüsünden, sayfa metinlerinden bağımsız düzenleme.
-- Kayıt veya sayfaya uzun basarak çoklu seçme ve onayla atomik silme; tekli silme seçenekleri de kullanılabilir.
+- Menüden “Kayıt seç” veya “Sayfa seç” ile ya da öğeye uzun basarak çoklu seçim; “Tümünü seç” ile seçimleri topluca değiştirme ve onayla atomik silme. Tekli silme seçenekleri de kullanılabilir.
 - Sayfa okuma ekranında önceki/sonraki düğmeleri veya sayfa göstergesine dokunup numara girerek kayıtlı sırada gezinme; geçişte okuma durdurulur ve yeni sayfa otomatik okunmaz. Düzenleme sırasında gezinme gizlenir; düzenlemeden vazgeçerken kaydedilmemiş değişiklikler için onay istenir.
 - Çok sayfalı içeriklerde “Görünüm ve sesli okuma” ayarlarındaki varsayılan kapalı “Sonraki sayfayı otomatik oku” anahtarı, sayfa doğal olarak bittiğinde sonraki sayfayı okur. Son veya boş sayfada okuma biter. Bekleyen geçiş Durdur, anahtarı kapatma veya arka plana geçme ile iptal edilir.
 - Sayfaları basılı tutup (veya tutamaçtan) sürükleyerek yeniden sıralama; yeni sıra tek SQLite transaction'ıyla kaydedilir, hatada önceki sıra korunur.

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/library/data/document_store.dart';
 import 'package:reading_assistant/features/library/data/saved_document.dart';
 import 'package:reading_assistant/features/library/presentation/library_screen.dart';
+import 'package:reading_assistant/features/library/presentation/selection_app_bar.dart';
 import 'package:sqflite/sqflite.dart';
 
 SavedDocument _document(
@@ -114,6 +115,31 @@ Future<void> _requestDeletion(WidgetTester tester, int id) async {
 }
 
 void main() {
+  testWidgets('empty select-all control is disabled and unchecked', (
+    tester,
+  ) async {
+    var toggled = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: selectAllCheckbox(
+            selectedCount: 0,
+            totalCount: 0,
+            busy: false,
+            onToggle: () => toggled = true,
+          ),
+        ),
+      ),
+    );
+    final control = tester.widget<CheckboxListTile>(
+      find.widgetWithText(CheckboxListTile, 'Tümünü seç'),
+    );
+    expect(control.value, isFalse);
+    expect(control.onChanged, isNull);
+    await tester.tap(find.text('Tümünü seç'));
+    expect(toggled, isFalse);
+  });
+
   group('DocumentStore.delete', () {
     test('targets only the requested id', () async {
       final database = _RecordingDatabase();
@@ -144,6 +170,123 @@ void main() {
   });
 
   group('deletion from library', () {
+    testWidgets(
+      'menu opens empty selection and checkbox follows filtered items',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final store = _FakeStore([
+          _document(1, 'Ortak bir'),
+          _document(2, 'Ortak iki'),
+          _document(3, 'Başka'),
+        ]);
+        await _showLibrary(tester, store);
+        await tester.enterText(
+          find.byKey(const ValueKey('title-search')),
+          'Ortak',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Kayıtlarım menüsü'));
+        await tester.pumpAndSettle();
+        expect(
+          tester.getTopLeft(find.text('Kayıt seç')).dy,
+          lessThan(tester.getTopLeft(find.text('Kategorileri yönet')).dy),
+        );
+        await tester.tap(find.text('Kayıt seç'));
+        await tester.pumpAndSettle();
+        final all = find.widgetWithText(CheckboxListTile, 'Tümünü seç');
+        bool? value() => tester.widget<CheckboxListTile>(all).value;
+        expect(find.text('0 seçili'), findsOneWidget);
+        expect(value(), isFalse);
+        expect(
+          tester.widget<IconButton>(_iconButton('Seçilenleri sil')).onPressed,
+          isNull,
+        );
+        await tester.tap(find.byKey(const ValueKey('document-1')));
+        await tester.pumpAndSettle();
+        expect(value(), isNull);
+        expect(
+          tester.getSemantics(
+            find.descendant(of: all, matching: find.byType(Checkbox)),
+          ),
+          matchesSemantics(
+            label: 'Tümünü seç',
+            hasCheckedState: true,
+            isCheckStateMixed: true,
+            hasEnabledState: true,
+            isEnabled: true,
+            hasTapAction: true,
+          ),
+        );
+        await tester.tap(find.text('Tümünü seç'));
+        await tester.pumpAndSettle();
+        expect(value(), isTrue);
+        expect(find.text('2 seçili'), findsOneWidget);
+        await tester.tap(find.text('Tümünü seç'));
+        await tester.pumpAndSettle();
+        expect(value(), isFalse);
+        expect(find.text('0 seçili'), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.text('Kayıtlarım'), findsOneWidget);
+        semantics.dispose();
+      },
+    );
+
+    testWidgets('selection controls fit large text in landscape', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(560, 320);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _showLibrary(tester, _FakeStore([_document(1, 'Bir')]));
+      await tester.longPress(find.byKey(const ValueKey('document-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Tümünü seç'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('select menu is disabled for empty and unmatched lists', (
+      tester,
+    ) async {
+      final store = _FakeStore([]);
+      await _showLibrary(tester, store);
+      Future<void> checkDisabled() async {
+        await tester.tap(find.byTooltip('Kayıtlarım menüsü'));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<PopupMenuItem<String>>(
+                find.widgetWithText(PopupMenuItem<String>, 'Kayıt seç'),
+              )
+              .enabled,
+          isFalse,
+        );
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+      }
+
+      await checkDisabled();
+      store.documents = [_document(1, 'Bir')];
+      await tester.tap(find.byTooltip('Yenile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('title-search')),
+        'bulunmaz',
+      );
+      await tester.pumpAndSettle();
+      await checkDisabled();
+      await tester.enterText(find.byKey(const ValueKey('title-search')), '');
+      await tester.tap(find.byKey(const ValueKey('category-filter-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('category-filter-book')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kapat'));
+      await tester.pumpAndSettle();
+      await checkDisabled();
+    });
+
     testWidgets('selection uses visible filtered records and back exits', (
       tester,
     ) async {
@@ -195,7 +338,7 @@ void main() {
         tester.widget<IconButton>(_iconButton('Seçilenleri sil')).onPressed,
         isNull,
       );
-      await tester.tap(find.byTooltip('Tümünü seç'));
+      await tester.tap(find.text('Tümünü seç'));
       await tester.pumpAndSettle();
       expect(find.text('2 seçili'), findsOneWidget);
       await tester.tap(find.byTooltip('Seçilenleri sil'));
@@ -243,7 +386,7 @@ void main() {
       await _showLibrary(tester, store);
       await tester.longPress(find.byKey(const ValueKey('document-1')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Tümünü seç'));
+      await tester.tap(find.text('Tümünü seç'));
       await tester.tap(find.byTooltip('Seçilenleri sil'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Sil'));
@@ -266,6 +409,14 @@ void main() {
       );
       expect(
         tester.widget<IconButton>(_iconButton('Seçimden çık')).onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, 'Tümünü seç'),
+            )
+            .onChanged,
         isNull,
       );
       store.deleteGate!.complete();
@@ -292,7 +443,7 @@ void main() {
       await _showLibrary(tester, store);
       await tester.longPress(find.byKey(const ValueKey('document-7')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Tümünü seç'));
+      await tester.tap(find.text('Tümünü seç'));
       await tester.tap(find.byTooltip('Seçilenleri sil'));
       await tester.pumpAndSettle();
       expect(find.text('7 kayıt silinsin mi?'), findsOneWidget);
