@@ -1,3 +1,5 @@
+import 'reader_controls_test_utils.dart';
+
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
@@ -379,7 +381,7 @@ void main() {
         FocusManager.instance.primaryFocus?.unfocus();
         tester.testTextInput.hide();
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Sesli oku'));
+        await tapReadingControl(tester, 'Sesli oku');
         await tester.pump();
         await tester.pump();
         speech.progress(8, 11);
@@ -429,7 +431,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     speech.progress(4, 7);
@@ -482,7 +484,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pump();
       await tester.pump();
       speech.progress(4, 7);

@@ -1,3 +1,5 @@
+import 'reader_controls_test_utils.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
@@ -100,7 +102,8 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     final oldOffset = scroll.offset;
     final oldCalls = speech.stopCalls;
     preferences.setTextSize(ReadingTextSize.extraLarge);
@@ -145,11 +148,13 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     await tester.dragFrom(const Offset(200, 170), const Offset(0, 170));
     await tester.pumpAndSettle();
     expect(find.text('Okunan cümleye dön'), findsOneWidget);
-    await _tap(tester, find.text('Duraklat'));
+    await tapReadingControl(tester, 'Duraklat');
+    await tester.pumpAndSettle();
     final before = scroll.offset;
     preferences.setTextSize(ReadingTextSize.extraLarge);
     preferences.setTextAlignment(ReadingTextAlignment.right);
@@ -177,7 +182,8 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     final offset = scroll.offset;
     expect(offset, greaterThan(0));
     speech.progress(0, 5);
@@ -208,7 +214,7 @@ void main() {
     );
     const selection = TextSelection(baseOffset: 2, extentOffset: 8);
     field.controller!.selection = selection;
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     await tester.pump();
@@ -259,7 +265,8 @@ void main() {
           .controller!;
       scroll.jumpTo(0);
       await tester.pumpAndSettle();
-      await _tap(tester, find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
+      await tester.pumpAndSettle();
       for (var i = 0; i < 15; i++) {
         speech.finishCurrent();
         await tester.pumpAndSettle();
@@ -303,7 +310,8 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     expect(scroll.offset, 0);
     preferences.setFollowSentence(true);
     await tester.pumpAndSettle();
@@ -325,21 +333,24 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     expect(scroll.offset, greaterThan(0));
     await tester.dragFrom(const Offset(200, 170), const Offset(0, 170));
     await tester.pumpAndSettle();
     expect(find.text('Okunan cümleye dön'), findsOneWidget);
-    await _tap(tester, find.text('Duraklat'));
+    await tapReadingControl(tester, 'Duraklat');
+    await tester.pumpAndSettle();
     final pausedOffset = scroll.offset;
-    await _tap(tester, find.text('Sonraki cümle'));
+    await _tap(tester, readingControl('Sonraki cümle'));
     await tester.pump(const Duration(seconds: 1));
     expect(scroll.offset, pausedOffset);
     await _tap(tester, find.text('Okunan cümleye dön'));
     expect(find.text('Okunan cümleye dön'), findsNothing);
     expect(scroll.offset, greaterThan(pausedOffset));
     expect(speech.isSpeaking, isFalse);
-    await _tap(tester, find.text('Devam et'));
+    await tapReadingControl(tester, 'Devam et');
+    await tester.pumpAndSettle();
     expect(speech.isSpeaking, isTrue);
     expect(preferences.followSentence, isTrue);
   });
@@ -358,7 +369,7 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
@@ -388,12 +399,15 @@ void main() {
       preferences: preferences,
       initialSentence: 29,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     await tester.dragFrom(const Offset(200, 170), const Offset(0, 170));
     await tester.pumpAndSettle();
     expect(find.text('Okunan cümleye dön'), findsOneWidget);
-    await _tap(tester, find.text('Duraklat'));
-    await _tap(tester, find.text('Devam et'));
+    await tapReadingControl(tester, 'Duraklat');
+    await tester.pumpAndSettle();
+    await tapReadingControl(tester, 'Devam et');
+    await tester.pumpAndSettle();
     expect(find.text('Okunan cümleye dön'), findsOneWidget);
     speech.finishCurrent();
     await tester.pumpAndSettle();
@@ -420,7 +434,8 @@ void main() {
       preferences: preferences,
       initialSentence: 15,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     final editable = tester
         .state<EditableTextState>(find.byType(EditableText))
         .renderEditable;
@@ -457,7 +472,8 @@ void main() {
       speech: speech,
       preferences: preferences,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     expect(scroll.offset, 0);
     expect(speech.isSpeaking, isTrue);
   });
@@ -474,13 +490,14 @@ void main() {
         preferences: preferences,
         initialSentence: 20,
       );
-      await _tap(tester, find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
+      await tester.pumpAndSettle();
       preferences.setFollowSentence(true);
       preferences.setFollowSentence(false);
       await tester.pumpAndSettle();
       expect(scroll.offset, 0);
       preferences.setFollowSentence(true);
-      await tester.tap(find.text('Durdur'));
+      await tapReadingControl(tester, 'Durdur');
       await tester.pumpAndSettle();
       expect(scroll.offset, 0);
       expect(speech.isSpeaking, isFalse);
@@ -500,7 +517,8 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     preferences.setFollowSentence(true);
     await tester.tap(find.byKey(const ValueKey('next-page')));
     await tester.pumpAndSettle();
@@ -523,7 +541,7 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
@@ -547,13 +565,16 @@ void main() {
       preferences: preferences,
       initialSentence: 20,
     );
-    await _tap(tester, find.text('Sesli oku'));
-    await _tap(tester, find.text('Duraklat'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
+    await tapReadingControl(tester, 'Duraklat');
+    await tester.pumpAndSettle();
     preferences.setFollowSentence(true);
     await tester.pumpAndSettle();
     expect(scroll.offset, 0);
     expect(speech.isSpeaking, isFalse);
-    await _tap(tester, find.text('Devam et'));
+    await tapReadingControl(tester, 'Devam et');
+    await tester.pumpAndSettle();
     expect(scroll.offset, greaterThan(0));
     expect(speech.isSpeaking, isTrue);
   });
@@ -571,9 +592,11 @@ void main() {
         speech: speech,
         preferences: preferences,
       );
-      await _tap(tester, find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
+      await tester.pumpAndSettle();
       expect(scroll.offset, 0);
-      await _tap(tester, find.text('Durdur'));
+      await tapReadingControl(tester, 'Durdur');
+      await tester.pumpAndSettle();
       expect(scroll.offset, 0);
       expect(speech.isSpeaking, isFalse);
     },

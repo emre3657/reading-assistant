@@ -1,3 +1,5 @@
+import '../listening/reader_controls_test_utils.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -576,7 +578,7 @@ void main() {
     final speech = FakeSpeechService();
     await openApp(tester, store, speech: speech);
     await openReader(tester);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     expect(speech.isSpeaking, isTrue);
     final manager = tester.widget<GuideScope>(find.byType(GuideScope)).manager;
@@ -585,7 +587,7 @@ void main() {
     manager.complete(GuideGroup.home);
     await tester.pumpAndSettle();
     expect(find.text('Buradan oku'), findsNothing);
-    await tester.tap(find.text('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
     await tester.pumpAndSettle();
     expect(find.text('Buradan oku'), findsOneWidget);
   });
@@ -712,7 +714,7 @@ void main() {
       'Bir metin.',
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     expect(speech.isSpeaking, isTrue);
     final manager = tester.widget<GuideScope>(find.byType(GuideScope)).manager;
@@ -724,7 +726,7 @@ void main() {
       find.text('Metni kontrol edip gerektiğinde düzeltebilirsin.'),
       findsNothing,
     );
-    await tester.tap(find.text('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
     await tester.pumpAndSettle();
     expect(
       find.text('Metni kontrol edip gerektiğinde düzeltebilirsin.'),

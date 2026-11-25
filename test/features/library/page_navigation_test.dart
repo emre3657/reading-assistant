@@ -67,9 +67,8 @@ bool _enabled(Finder finder) =>
 bool _pageButtonEnabled(Finder finder) =>
     (finder.evaluate().single.widget as IconButton).onPressed != null;
 
-Finder _button(String label) => find.ancestor(
-  of: find.text(label),
-  matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+Finder _button(String label) => find.byWidgetPredicate(
+  (widget) => widget is IconButton && widget.tooltip == label,
 );
 
 Future<void> _show(
@@ -358,6 +357,62 @@ void main() {
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('landscape keyboard keeps page dialog usable at $scale×', (
+        tester,
+      ) async {
+        await _show(
+          tester,
+          _Store(_threePages()),
+          FakeSpeechService(),
+          size: const Size(720, 360),
+          textScale: scale,
+        );
+        addTearDown(tester.view.resetViewInsets);
+        await _openGoToPage(tester);
+        tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(tester.testTextInput.isVisible, isTrue);
+
+        final field = find.byKey(const ValueKey('page-number-input'));
+        final go = find.text('Git');
+        final keyboardTop = 360.0 - 240;
+        await _tap(tester, go);
+        expect(find.text('Sayfa numarası girin.'), findsOneWidget);
+        await tester.ensureVisible(field);
+        await tester.pumpAndSettle();
+        await tester.enterText(field, '2');
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(go);
+        await tester.pumpAndSettle();
+        expect(go.hitTestable(), findsOneWidget);
+        expect(tester.getRect(go).bottom, lessThanOrEqualTo(keyboardTop));
+        await _tap(tester, go);
+        expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('landscape page dialog can be cancelled with keyboard open', (
+      tester,
+    ) async {
+      await _show(
+        tester,
+        _Store(_threePages()),
+        FakeSpeechService(),
+        size: const Size(720, 360),
+      );
+      addTearDown(tester.view.resetViewInsets);
+      await _openGoToPage(tester);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 240);
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('Vazgeç'));
+      expect(find.text('Sayfa 1 / 3'), findsOneWidget);
+      expect(find.byKey(const ValueKey('page-number-input')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('page navigation', () {
@@ -500,8 +555,7 @@ void main() {
       await tester.pump();
       expect(_button('Sesli oku').evaluate(), isNotEmpty);
       expect(
-        (_button('Sesli oku').evaluate().single.widget as ButtonStyleButton)
-            .onPressed,
+        (_button('Sesli oku').evaluate().single.widget as IconButton).onPressed,
         isNull,
       );
       store.pagesGate!.complete();
@@ -592,8 +646,8 @@ void main() {
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
       await _tap(tester, _next);
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
-      await tester.ensureVisible(find.byTooltip('Paneli küçült'));
-      await _tap(tester, find.byTooltip('Paneli küçült'));
+      expect(find.byTooltip('Paneli küçült'), findsNothing);
+      expect(find.byTooltip('Sonraki cümle'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

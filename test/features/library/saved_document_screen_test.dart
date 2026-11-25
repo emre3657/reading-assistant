@@ -117,10 +117,31 @@ SavedDocument _doc({
 const _initialText = 'Birinci cümle. İkinci cümle. Üçüncü cümle.';
 
 final _panel = find.byKey(const ValueKey('listening-panel'));
-Finder _button(String label) => find.ancestor(
-  of: find.text(label),
-  matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-);
+Finder _button(String label) =>
+    {
+      'Sesli oku',
+      'Duraklat',
+      'Devam et',
+      'Önceki cümle',
+      'Sonraki cümle',
+    }.contains(label)
+    ? find.byTooltip(label)
+    : find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      );
+
+Future<void> _openPlaybackMenu(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Diğer seçenekler'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _stopReading(WidgetTester tester) async {
+  await _openPlaybackMenu(tester);
+  await tester.tap(find.text('Durdur'));
+  await tester.pumpAndSettle();
+}
+
 final _titleField = find.byKey(const ValueKey('document-title'));
 final _textField = find.byKey(const ValueKey('document-text'));
 final _editButton = find.byIcon(Icons.edit_outlined);
@@ -235,7 +256,10 @@ void main() {
 
       await _startReading(tester);
       expect(speech.spoken.first, contains('Birinci cümle.'));
-      expect(find.text('Cümle 1 / 3'), findsOneWidget);
+      await _openPlaybackMenu(tester);
+      expect(find.text('Cümle 1 / 3'), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
 
       await tester.tap(_button('Duraklat'));
       await tester.pump();
@@ -244,34 +268,132 @@ void main() {
 
       await tester.tap(_button('Sonraki cümle'));
       await tester.pump();
-      expect(find.text('Cümle 2 / 3'), findsOneWidget);
+      expect(speech.spoken, hasLength(1));
+      await _openPlaybackMenu(tester);
+      expect(find.text('Cümle 2 / 3'), findsNothing);
+    });
+
+    testWidgets('panel hides status messages but reports speech errors', (
+      tester,
+    ) async {
+      final speech = FakeSpeechService()..prepareGate = Completer<void>();
+      await _show(tester, FakeDocumentStore([_doc()]), speech);
+      await _startReading(tester);
+      expect(find.text('Okuma hazırlanıyor…'), findsNothing);
+      speech.prepareGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Okunuyor…'), findsNothing);
+      await tester.tap(_button('Duraklat'));
+      await tester.pumpAndSettle();
+      expect(find.text('Duraklatıldı.'), findsNothing);
+      await tester.tap(_button('Devam et'));
+      await tester.pumpAndSettle();
+      speech.failCurrent();
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text(
+          'Sesli okuma sırasında bir hata oluştu. Tekrar deneyebilirsin.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _panel,
+          matching: find.text(
+            'Sesli okuma sırasında bir hata oluştu. Tekrar deneyebilirsin.',
+          ),
+        ),
+        findsNothing,
+      );
     });
   });
 
-  group('listening and editing lock each other', () {
-    testWidgets('edit is disabled while reading and while paused', (
+  group('listening and editing', () {
+    for (final initiallyPaused in [false, true]) {
+      testWidgets(
+        'discarding editing preserves ${initiallyPaused ? 'paused' : 'active'} position',
+        (tester) async {
+          final speech = FakeSpeechService();
+          await _show(tester, FakeDocumentStore([_doc()]), speech);
+          await _startReading(tester);
+          await tester.tap(_button('Sonraki cümle'));
+          await tester.pumpAndSettle();
+          expect(speech.spoken.last, 'İkinci cümle. ');
+          if (initiallyPaused) {
+            await tester.tap(_button('Duraklat'));
+            await tester.pumpAndSettle();
+          }
+          await _enterEdit(tester);
+          expect(speech.isSpeaking, isFalse);
+          await _type(tester, _textField, 'Değişiklik.');
+          await tester.tap(find.text('Düzenlemekten vazgeç'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Kaydetmeden vazgeç'));
+          await tester.pumpAndSettle();
+          expect(find.text(_initialText), findsOneWidget);
+          expect(_button('Devam et'), findsOneWidget);
+          expect(speech.isSpeaking, isFalse);
+          await tester.tap(_button('Devam et'));
+          await tester.pumpAndSettle();
+          expect(speech.spoken.last, 'İkinci cümle. ');
+        },
+      );
+    }
+
+    testWidgets('a changed saved text ends the paused old session', (
       tester,
     ) async {
       final speech = FakeSpeechService();
       await _show(tester, FakeDocumentStore([_doc()]), speech);
-
       await _startReading(tester);
+      await tester.tap(_button('Sonraki cümle'));
+      await tester.pumpAndSettle();
+      await _enterEdit(tester);
+      await _type(tester, _textField, 'Yeni metin. Başka cümle.');
+      await _tapSave(tester);
+      await tester.pumpAndSettle();
+      expect(_button('Devam et'), findsNothing);
+      expect(_button('Sesli oku'), findsOneWidget);
+      await _startReading(tester);
+      expect(speech.spoken.last, 'Yeni metin. ');
+    });
 
-      IconButton edit() => tester.widget<IconButton>(
-        find.ancestor(of: _editButton, matching: find.byType(IconButton)),
+    testWidgets('pause failure does not open editing', (tester) async {
+      final speech = FakeSpeechService(stopError: StateError('stop'));
+      await _show(tester, FakeDocumentStore([_doc()]), speech);
+      await _startReading(tester);
+      await _enterEdit(tester);
+      expect(_textField, findsNothing);
+      expect(find.textContaining('Okuma durdurulamadı.'), findsOneWidget);
+    });
+
+    testWidgets('failed save preserves the paused session and draft', (
+      tester,
+    ) async {
+      final speech = FakeSpeechService();
+      final store = FakeDocumentStore([_doc()])
+        ..updateError = Exception('disk');
+      await _show(tester, store, speech);
+      await _startReading(tester);
+      await tester.tap(_button('Sonraki cümle'));
+      await tester.pumpAndSettle();
+      await _enterEdit(tester);
+      await _type(tester, _textField, 'Yeni metin.');
+      await _tapSave(tester);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextFormField>(_textField).controller!.text,
+        'Yeni metin.',
       );
-      expect(edit().onPressed, isNull);
-      expect(edit().tooltip, 'Düzenlemek için okumayı durdur');
-
-      await tester.tap(_button('Duraklat'));
-      await tester.pump();
-      await tester.pump();
-      expect(edit().onPressed, isNull);
-
-      await tester.tap(_button('Durdur'));
-      await tester.pump();
-      await tester.pump();
-      expect(edit().onPressed, isNotNull);
+      expect(store.documents.single.text, _initialText);
+      await tester.tap(find.text('Düzenlemekten vazgeç'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kaydetmeden vazgeç'));
+      await tester.pumpAndSettle();
+      await tester.tap(_button('Devam et'));
+      await tester.pumpAndSettle();
+      expect(speech.spoken.last, 'İkinci cümle. ');
     });
 
     testWidgets('edit mode hides the panel and shows the form', (tester) async {
@@ -301,7 +423,7 @@ void main() {
       await _startReading(tester);
       await tester.tap(_button('Sonraki cümle'));
       await tester.pump();
-      await tester.tap(_button('Durdur'));
+      await _stopReading(tester);
       await tester.pump();
       await tester.pump();
 
@@ -312,7 +434,8 @@ void main() {
 
       await _startReading(tester);
       expect(speech.spoken.last, contains('Yeni metin.'));
-      expect(find.text('Cümle 1 / 2'), findsOneWidget);
+      await _openPlaybackMenu(tester);
+      expect(find.text('Cümle 1 / 2'), findsNothing);
     });
   });
 
@@ -702,6 +825,34 @@ void main() {
   });
 
   group('layout', () {
+    testWidgets('rotation preserves speaking and paused sessions', (
+      tester,
+    ) async {
+      final speech = FakeSpeechService();
+      await _show(
+        tester,
+        FakeDocumentStore([_doc()]),
+        speech,
+        size: const Size(400, 800),
+      );
+      await _startReading(tester);
+      expect(speech.spoken, hasLength(1));
+      tester.view.physicalSize = const Size(800, 400);
+      await tester.pumpAndSettle();
+      expect(speech.spoken, hasLength(1));
+      expect(find.byTooltip('Duraklat'), findsOneWidget);
+      await tester.tap(find.byTooltip('Duraklat'));
+      await tester.pumpAndSettle();
+      tester.view.physicalSize = const Size(400, 800);
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Devam et'), findsOneWidget);
+      await tester.tap(find.byTooltip('Devam et'));
+      await tester.pumpAndSettle();
+      expect(speech.spoken, hasLength(2));
+      expect(speech.spoken.last, speech.spoken.first);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('clear action fits narrow screen with large text', (
       tester,
     ) async {
@@ -741,25 +892,13 @@ void main() {
       );
       expect(tester.takeException(), isNull);
 
-      final moreControls = find.byTooltip('Paneli küçült');
-
-      await tester.ensureVisible(moreControls);
+      expect(find.byTooltip('Önceki cümle'), findsOneWidget);
+      expect(find.byTooltip('Sonraki cümle'), findsOneWidget);
+      await _openPlaybackMenu(tester);
+      expect(find.text('Durdur'), findsOneWidget);
+      expect(find.text('Başa dön'), findsOneWidget);
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(moreControls.hitTestable(), findsOneWidget);
-      await tester.tap(moreControls);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Önceki cümle'), findsNothing);
-      expect(tester.takeException(), isNull);
-
-      final expandControls = find.byTooltip('Paneli genişlet');
-      await tester.ensureVisible(expandControls);
-      await tester.pumpAndSettle();
-      expect(expandControls.hitTestable(), findsOneWidget);
-      await tester.tap(expandControls);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Önceki cümle'), findsOneWidget);
 
       await _enterEdit(tester);
       tester.view.viewInsets = const FakeViewPadding(bottom: 250);

@@ -2,12 +2,14 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/app.dart';
+import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/listening/presentation/listening_controller.dart';
 import 'package:reading_assistant/features/listening/presentation/reading_preferences.dart';
 
 import '../image_import/test_doubles.dart';
 import 'fake_preferences_store.dart';
 import 'fake_speech_service.dart';
+import 'reader_controls_test_utils.dart';
 
 // Fake engine and fake OCR: these tests cover layout and UI wiring only.
 // Real speech speed and the scrolling feel need manual verification.
@@ -27,6 +29,7 @@ Future<_Harness> _open(
   List<Object> results, {
   Size size = const Size(800, 2400),
   double textScale = 1,
+  bool addingPage = false,
 }) async {
   final harness = _Harness(FakeSpeechService(), results);
   tester.view.physicalSize = size;
@@ -39,18 +42,38 @@ Future<_Harness> _open(
       builder: (context) => MediaQuery(
         data: MediaQuery.of(context)
             .copyWith(textScaler: TextScaler.linear(textScale)),
-        child: ReadingAssistantApp(
-          readingPreferences: preferences,
-          pickerService: FakeImagePickerService(
-            onPick: () async => XFile('/tmp/a.jpg'),
-          ),
-          textRecognitionService: FakeTextRecognitionService((_) async {
-            final r = harness.results[harness.calls++];
-            if (r is String) return r;
-            throw r;
-          }),
-          previewImageBuilder: (file) => ControlledImageProvider(),
-          speechService: harness.speech,
+        child: Builder(
+          builder: (context) {
+            final picker = FakeImagePickerService(
+              onPick: () async => XFile('/tmp/a.jpg'),
+            );
+            final recognition = FakeTextRecognitionService((_) async {
+              final r = harness.results[harness.calls++];
+              if (r is String) return r;
+              throw r;
+            });
+            if (addingPage) {
+              return ReadingPreferencesScope(
+                preferences: preferences,
+                child: MaterialApp(
+                  home: ImageImportScreen(
+                    onSavePage: (_) async {},
+                    pickerService: picker,
+                    textRecognitionService: recognition,
+                    previewImageBuilder: (file) => ControlledImageProvider(),
+                    speechService: harness.speech,
+                  ),
+                ),
+              );
+            }
+            return ReadingAssistantApp(
+              readingPreferences: preferences,
+              pickerService: picker,
+              textRecognitionService: recognition,
+              previewImageBuilder: (file) => ControlledImageProvider(),
+              speechService: harness.speech,
+            );
+          },
         ),
       ),
     ),
@@ -84,6 +107,77 @@ void main() {
     await _extract(tester);
     expect(_panel, findsOneWidget);
   });
+
+  for (final addingPage in [false, true]) {
+    testWidgets(
+      'compact controls preserve playback on rotation for ${addingPage ? 'added page' : 'home'}',
+      (tester) async {
+        final h = await _open(
+          tester,
+          ['Bir. İki.'],
+          size: const Size(400, 800),
+          textScale: 2,
+          addingPage: addingPage,
+        );
+        await _extract(tester);
+        final read = find.byTooltip('Sesli oku');
+        expect(tester.getCenter(read).dx, closeTo(200, 1));
+        expect(find.byTooltip('Paneli küçült'), findsNothing);
+        await tapReadingControl(tester, 'Sesli oku');
+        await tester.pumpAndSettle();
+        await tapReadingControl(tester, 'Sonraki cümle');
+        await tester.pumpAndSettle();
+        expect(h.speech.spoken, ['Bir. ', 'İki.']);
+
+        tester.view.physicalSize = const Size(720, 360);
+        await tester.pumpAndSettle();
+        expect(h.speech.isSpeaking, isTrue);
+        expect(h.speech.spoken, hasLength(2));
+        expect(
+          tester.getCenter(find.byTooltip('Duraklat')).dx,
+          closeTo(360, 1),
+        );
+        expect(tester.getSize(_panel).height, lessThanOrEqualTo(48));
+        await tapReadingControl(tester, 'Duraklat');
+        await tester.pumpAndSettle();
+        expect(find.text('Duraklatıldı.'), findsNothing);
+        tester.view.physicalSize = const Size(400, 800);
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Devam et'), findsOneWidget);
+        await tapReadingControl(tester, 'Devam et');
+        await tester.pumpAndSettle();
+        expect(h.speech.spoken.last, 'İki.');
+        await tapReadingControl(tester, 'Başa dön');
+        await tester.pumpAndSettle();
+        expect(h.speech.spoken.last, 'Bir. ');
+        await tapReadingControl(tester, 'Durdur');
+        await tester.pumpAndSettle();
+        expect(h.speech.isSpeaking, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'speech errors remain visible for ${addingPage ? 'added page' : 'home'}',
+      (tester) async {
+        final h = await _open(tester, ['Bir.'], addingPage: addingPage);
+        await _extract(tester);
+        await tapReadingControl(tester, 'Sesli oku');
+        await tester.pumpAndSettle();
+        h.speech.failCurrent();
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.text(
+            'Sesli okuma sırasında bir hata oluştu. Tekrar deneyebilirsin.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.byTooltip('Sesli oku'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('panel does not cover the end of the text', (tester) async {
     await _open(tester, [_long], size: const Size(400, 600));
@@ -178,24 +272,17 @@ void main() {
     expect(_panel, findsNothing);
   });
 
-  testWidgets('panel defaults expanded, toggles, survives rebuild '
-      'and the panel being hidden by the keyboard', (tester) async {
+  testWidgets('compact controls survive rebuild and keyboard hiding', (
+    tester,
+  ) async {
     await _open(tester, ['Bir. İki.']);
     await _extract(tester);
-    expect(find.text('Önceki cümle'), findsOneWidget);
+    expect(find.byTooltip('Önceki cümle'), findsOneWidget);
     expect(find.text('Hız 1×'), findsNothing);
-    await tester.tap(find.byTooltip('Paneli küçült'));
-    await tester.pump();
-    expect(find.text('Önceki cümle'), findsNothing);
-    expect(find.text('Başa dön'), findsNothing);
-    expect(find.text('Durdur'), findsOneWidget);
-
-    // Ordinary rebuild (text edit) keeps it collapsed.
+    expect(find.byTooltip('Paneli küçült'), findsNothing);
     await tester.enterText(_field, 'Bir. İki. Üç.');
     await tester.pump();
-    expect(find.text('Önceki cümle'), findsNothing);
-
-    // Keyboard hides the whole panel; it returns with the same state.
+    expect(find.byTooltip('Önceki cümle'), findsOneWidget);
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -204,92 +291,51 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(_panel, findsOneWidget);
-    expect(find.text('Önceki cümle'), findsNothing);
-
-    await tester.tap(find.byTooltip('Paneli genişlet'));
-    await tester.pump();
-    expect(find.text('Önceki cümle'), findsOneWidget);
+    expect(find.byTooltip('Önceki cümle'), findsOneWidget);
   });
 
-  testWidgets('main controls stay available and Stop is not hidden in the '
-      'collapsed section', (tester) async {
+  testWidgets('playback and stop menu remain available', (tester) async {
     final harness = await _open(tester, ['Bir. İki.']);
     await _extract(tester);
-    expect(find.text('Durdur'), findsOneWidget);
-    expect(find.byTooltip('Paneli küçült'), findsOneWidget);
-
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
-    await tester.pump();
-    await tester.tap(find.byTooltip('Paneli küçült'));
     await tester.pump();
     expect(harness.speech.isSpeaking, isTrue);
     expect(harness.speech.stopCalls, 0);
-    expect(find.text('Önceki cümle'), findsNothing);
-    expect(find.text('Duraklat'), findsOneWidget);
-    await tester.tap(find.text('Duraklat'));
+    expect(find.byTooltip('Önceki cümle'), findsOneWidget);
+    expect(find.byTooltip('Duraklat'), findsOneWidget);
+    await tapReadingControl(tester, 'Duraklat');
     await tester.pump();
     await tester.pump();
-    expect(find.text('Devam et'), findsOneWidget);
-    await tester.tap(find.text('Durdur'));
+    expect(find.byTooltip('Devam et'), findsOneWidget);
+    await tapReadingControl(tester, 'Durdur');
     await tester.pump();
     await tester.pump();
-    expect(find.text('Sesli oku'), findsOneWidget);
-
-    // Reachable and at least 48 px high, with tooltips/semantics labels.
-    for (final label in ['Sesli oku', 'Durdur']) {
-      final size = tester.getSize(
-        find.ancestor(
-          of: find.text(label),
-          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-        ),
-      );
-      expect(size.height, greaterThanOrEqualTo(48), reason: label);
-    }
+    expect(find.byTooltip('Sesli oku'), findsOneWidget);
   });
 
-  testWidgets('expanded controls are centered in the specified rows', (
-    tester,
-  ) async {
+  testWidgets('compact controls are centered and accessible', (tester) async {
     await _open(tester, ['Bir. İki.']);
     await _extract(tester);
-    final read = tester.getCenter(find.text('Sesli oku'));
-    final stop = tester.getCenter(find.text('Durdur'));
-    final previous = tester.getCenter(find.text('Önceki cümle'));
-    final next = tester.getCenter(find.text('Sonraki cümle'));
-    final restart = tester.getCenter(find.text('Başa dön'));
-    expect(read.dy, stop.dy);
-    expect(previous.dy, next.dy);
-    expect(previous.dy, greaterThan(read.dy));
-    expect(restart.dy, greaterThan(previous.dy));
-    expect(
-      tester
-          .getCenter(
-            find.ancestor(
-              of: find.text('Başa dön'),
-              matching: find.byType(OutlinedButton),
-            ),
-          )
-          .dx,
-      closeTo(400, 1),
-    );
-    final collapse = find.byTooltip('Paneli küçült');
-    final size = tester.getSize(collapse);
-    expect(size.width, greaterThanOrEqualTo(48));
-    expect(size.height, greaterThanOrEqualTo(48));
-    expect(
-      find.byWidgetPredicate(
-        (w) => w is Semantics && w.properties.expanded == true,
-      ),
-      findsWidgets,
-    );
-    await tester.tap(find.text('Sesli oku'));
+    final read = find.byTooltip('Sesli oku');
+    final previous = find.byTooltip('Önceki cümle');
+    final next = find.byTooltip('Sonraki cümle');
+    final more = playbackMenu;
+    expect(tester.getCenter(read).dx, closeTo(400, 1));
+    expect(tester.getCenter(previous).dy, tester.getCenter(read).dy);
+    expect(tester.getCenter(next).dy, tester.getCenter(read).dy);
+    expect(tester.getCenter(more).dx, greaterThan(tester.getCenter(next).dx));
+    for (final control in [read, previous, next, more]) {
+      expect(tester.getSize(control).shortestSide, greaterThanOrEqualTo(48));
+    }
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
-    expect(
-      tester.getCenter(find.text('Cümle 1 / 2')).dy,
-      greaterThan(tester.getCenter(find.text('Başa dön')).dy),
-    );
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+    expect(find.text('Cümle 1 / 2'), findsNothing);
+    expect(find.text('Durdur'), findsOneWidget);
+    expect(find.text('Başa dön'), findsOneWidget);
   });
 
   testWidgets('starting to read removes the text field focus', (tester) async {
@@ -300,7 +346,7 @@ void main() {
     await tester.pump();
     expect(editable.widget.focusNode.hasFocus, isTrue);
 
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     expect(editable.widget.focusNode.hasFocus, isFalse);
@@ -311,12 +357,12 @@ void main() {
   ) async {
     await _open(tester, ['Bir. İki.']);
     await _extract(tester);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     await tester.pump();
-    expect(find.text('Durdur'), findsOneWidget);
+    expect(playbackMenu, findsOneWidget);
   });
 
   testWidgets('narrow screen with large text: no overflow, controls usable', (
@@ -331,20 +377,24 @@ void main() {
     await _extract(tester);
     expect(tester.takeException(), isNull);
 
-    final read = find.text('Sesli oku');
+    final read = find.byTooltip('Sesli oku');
     await tester.ensureVisible(read);
     await tester.tap(read);
     await tester.pump();
     await tester.pump();
     expect(h.speech.spoken, ['Merhaba dünya.']);
 
-    final next = find.text('Sonraki cümle');
+    final next = find.byTooltip('Sonraki cümle');
     await tester.ensureVisible(next);
     expect(next.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
+    await tester.tap(playbackMenu);
+    await tester.pumpAndSettle();
     final restart = find.text('Başa dön');
     await tester.ensureVisible(restart);
     expect(restart.hitTestable(), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('reading-speed')), findsOneWidget);
@@ -390,7 +440,7 @@ void main() {
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     expect(h.speech.spokenRates, [1.25]);
@@ -403,7 +453,7 @@ void main() {
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Duraklat'));
+    await tapReadingControl(tester, 'Duraklat');
     await tester.pump();
     await tester.pump();
     final spoken = h.speech.spoken.length;
@@ -412,7 +462,7 @@ void main() {
     expect(h.speech.spoken.length, spoken);
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Devam et'));
+    await tapReadingControl(tester, 'Devam et');
     await tester.pump();
     await tester.pump();
     expect(h.speech.spokenRates.last, 0.9);

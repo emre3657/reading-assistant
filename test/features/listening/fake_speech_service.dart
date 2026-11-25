@@ -16,6 +16,7 @@ class FakeSpeechService implements SpeechService {
   Object? prepareError;
   Object? stopError;
   Completer<void>? prepareGate;
+  Completer<void>? transitionStopGate;
 
   final List<String> spoken = [];
   int prepareCalls = 0;
@@ -77,6 +78,7 @@ class FakeSpeechService implements SpeechService {
   @override
   Future<void> stop() async {
     stopCalls++;
+    await transitionStopGate?.future;
     _complete(SpeechOutcome.stopped);
     if (stopError != null) throw stopError!;
   }

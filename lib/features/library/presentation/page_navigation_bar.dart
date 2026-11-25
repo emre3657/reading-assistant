@@ -11,6 +11,7 @@ class PageNavigationBar extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     required this.onGoToPage,
+    this.compact = false,
   });
 
   /// 1-based number of the open page.
@@ -21,6 +22,7 @@ class PageNavigationBar extends StatelessWidget {
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final VoidCallback? onGoToPage;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -38,13 +40,20 @@ class PageNavigationBar extends StatelessWidget {
         explicitChildNodes: true,
         label: 'Sayfa gezinme',
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: compact
+              ? EdgeInsets.zero
+              : const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: total <= 1
               ? ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 48),
-                  child: Center(heightFactor: 1, child: indicator),
+                  child: Center(
+                    widthFactor: compact ? 1 : null,
+                    heightFactor: 1,
+                    child: indicator,
+                  ),
                 )
               : Row(
+                  mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
                   children: [
                     IconButton(
                       key: const ValueKey('previous-page'),
@@ -59,25 +68,7 @@ class PageNavigationBar extends StatelessWidget {
                     Expanded(
                       child: Center(
                         heightFactor: 1,
-                        child: Semantics(
-                          label: 'Sayfaya git. Sayfa $current / $total',
-                          button: true,
-                          enabled: onGoToPage != null,
-                          onTap: onGoToPage,
-                          liveRegion: true,
-                          excludeSemantics: true,
-                          child: TextButton(
-                            key: const ValueKey('go-to-page'),
-                            style: TextButton.styleFrom(
-                              minimumSize: const Size(48, 48),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
-                            ),
-                            onPressed: onGoToPage,
-                            child: indicator,
-                          ),
-                        ),
+                        child: _pageButton(indicator, current, total),
                       ),
                     ),
                     IconButton(
@@ -96,4 +87,22 @@ class PageNavigationBar extends StatelessWidget {
       ),
     );
   }
+
+  Widget _pageButton(Widget indicator, int current, int total) => Semantics(
+    label: 'Sayfaya git. Sayfa $current / $total',
+    button: true,
+    enabled: onGoToPage != null,
+    onTap: onGoToPage,
+    liveRegion: true,
+    excludeSemantics: true,
+    child: TextButton(
+      key: const ValueKey('go-to-page'),
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      ),
+      onPressed: onGoToPage,
+      child: indicator,
+    ),
+  );
 }

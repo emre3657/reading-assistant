@@ -18,6 +18,7 @@ import 'package:reading_assistant/features/listening/presentation/bookmark_artwo
 
 import '../listening/fake_speech_service.dart';
 import '../listening/fake_preferences_store.dart';
+import '../listening/reader_controls_test_utils.dart';
 
 // Fake store and fake speech engine: these cover our own sequencing and state
 // handling, not the real SQLite file or the real TTS engine.
@@ -73,13 +74,21 @@ final _switch = find.byKey(const ValueKey('auto-next-page'));
 final _next = find.byKey(const ValueKey('next-page'));
 final _editButton = find.byIcon(Icons.edit_outlined);
 
-Finder _button(String label) => find.ancestor(
-  of: find.text(label),
-  matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-);
+Finder _button(String label) => label == 'Önizlemeyi oynat'
+    ? find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      )
+    : find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == label,
+      );
 
-bool _enabled(Finder finder) =>
-    (finder.evaluate().single.widget as ButtonStyleButton).onPressed != null;
+bool _enabled(Finder finder) {
+  final widget = finder.evaluate().single.widget;
+  return widget is IconButton
+      ? widget.onPressed != null
+      : (widget as ButtonStyleButton).onPressed != null;
+}
 
 bool _pageButtonEnabled(Finder finder) =>
     (finder.evaluate().single.widget as IconButton).onPressed != null;
@@ -243,6 +252,54 @@ void main() {
     },
   );
 
+  testWidgets('controls are centered and landscape halves are equal', (
+    tester,
+  ) async {
+    await _show(
+      tester,
+      _Store(_threePages()),
+      FakeSpeechService(),
+      size: const Size(400, 800),
+    );
+    final panel = find.byKey(const ValueKey('listening-panel'));
+    final navigation = find.byType(PageNavigationBar);
+    final play = _button('Sesli oku');
+    final more = find.byTooltip('Diğer seçenekler');
+    expect(tester.getCenter(play).dx, closeTo(200, 0.1));
+    expect(tester.getCenter(more).dx, closeTo(tester.getCenter(_next).dx, 0.1));
+    for (final finder in [
+      _button('Önceki cümle'),
+      play,
+      _button('Sonraki cümle'),
+      more,
+    ]) {
+      expect(
+        tester.getSize(finder).width,
+        greaterThanOrEqualTo(48),
+        reason: '$finder',
+      );
+      expect(
+        tester.getSize(finder).height,
+        greaterThanOrEqualTo(48),
+        reason: '$finder',
+      );
+    }
+
+    tester.view.physicalSize = const Size(800, 360);
+    await tester.pumpAndSettle();
+    final navRect = tester.getRect(navigation);
+    final panelRect = tester.getRect(panel);
+    expect(navRect.width, closeTo(panelRect.width, 0.1));
+    expect(navRect.right, closeTo(panelRect.left, 0.1));
+    expect(tester.getCenter(play).dx, closeTo(panelRect.center.dx, 0.1));
+    expect(tester.getCenter(more).dx, greaterThan(tester.getCenter(play).dx));
+    expect(
+      find.byKey(const ValueKey('saved-reading-text')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'bookmark artwork reveals its location without changing progress',
     (tester) async {
@@ -316,7 +373,7 @@ void main() {
       await tester.tap(_button('Duraklat'));
       await tester.pumpAndSettle();
       expect(bookmark, findsNothing);
-      await tester.tap(_button('Durdur'));
+      await tapReadingControl(tester, 'Durdur');
       await tester.pumpAndSettle();
       expect(bookmark, findsOneWidget);
       expect(store.bookmarks[7]?.sentenceIndex, 1);
@@ -338,7 +395,7 @@ void main() {
     await tester.tap(_button('Sesli oku'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 80));
-    await tester.tap(_button('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
     await tester.pumpAndSettle();
     expect(speech.prepareCalls, 0);
     expect(find.byKey(const ValueKey('visual-bookmark')), findsOneWidget);
@@ -926,7 +983,7 @@ void main() {
       await _finish(tester, speech); // last sentence
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
       expect(speech.spoken, ['Birinci sayfa. ', 'İkinci cümle.']);
-      expect(find.text('Okuma tamamlandı.'), findsOneWidget);
+      expect(find.text('Okuma tamamlandı.'), findsNothing);
     });
 
     testWidgets('turning it on alone starts nothing', (tester) async {
@@ -958,7 +1015,7 @@ void main() {
 
       expect(find.text('Sayfa 2 / 3'), findsOneWidget);
       expect(speech.spoken.last, 'Üçüncü cümle.');
-      expect(find.text('Cümle 1 / 1'), findsOneWidget);
+      expect(find.text('Cümle 1 / 1'), findsNothing);
       expect(store.positions[7]?.pageId, 10);
       expect(store.positions[7]?.sentenceIndex, 0);
 
@@ -1049,12 +1106,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(_button('Sonraki cümle'));
       await tester.pumpAndSettle();
-      await tester.tap(_button('Başa dön'));
+      await tapReadingControl(tester, 'Başa dön');
       await tester.pumpAndSettle();
       await _setSpeed(tester, '1.25×');
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
 
-      await tester.tap(_button('Durdur'));
+      await tapReadingControl(tester, 'Durdur');
       await tester.pumpAndSettle();
       expect(find.text('Sayfa 1 / 3'), findsOneWidget);
       expect(speech.isSpeaking, isFalse);
@@ -1121,11 +1178,10 @@ void main() {
       speech.finishCurrent();
       await tester.pump();
       await tester.pump();
-      expect(find.text('Sonraki sayfa açılıyor…'), findsOneWidget);
-      expect(_enabled(_button('Durdur')), isTrue);
+      expect(find.text('Sonraki sayfa açılıyor…'), findsNothing);
       expect(_pageButtonEnabled(_next), isFalse);
       expect(_enabled(_button('Sesli oku')), isFalse);
-      await tester.tap(_button('Durdur'));
+      await tapReadingControl(tester, 'Durdur');
       await tester.pump();
       expect(find.text('Sonraki sayfa açılıyor…'), findsNothing);
       expect(_pageButtonEnabled(_next), isTrue);
@@ -1442,27 +1498,25 @@ void main() {
       expect(speech.isSpeaking, isFalse);
     });
 
-    testWidgets(
-      'page row and panel stay full width and collapsed across pages',
-      (tester) async {
-        await _show(tester, _Store(_threePages()), FakeSpeechService());
-        final panel = find.byKey(const ValueKey('listening-panel'));
-        final row = find.byType(PageNavigationBar);
-        expect(tester.getSize(panel).width, 800);
-        expect(tester.getSize(row).width, 800);
-        expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
-        await tester.tap(find.byTooltip('Paneli küçült'));
-        await tester.pumpAndSettle();
-        expect(find.text('Sonraki cümle'), findsNothing);
-        expect(find.text('Durdur'), findsOneWidget);
-        await tester.tap(_next);
-        await tester.pumpAndSettle();
-        expect(find.text('Sayfa 2 / 3'), findsOneWidget);
-        expect(find.byTooltip('Paneli genişlet'), findsOneWidget);
-        expect(tester.getSize(panel).width, 800);
-        expect(tester.getSize(row).width, 800);
-      },
-    );
+    testWidgets('page row and panel stay full width across pages', (
+      tester,
+    ) async {
+      await _show(tester, _Store(_threePages()), FakeSpeechService());
+      final panel = find.byKey(const ValueKey('listening-panel'));
+      final row = find.byType(PageNavigationBar);
+      expect(tester.getSize(panel).width, 800);
+      expect(tester.getSize(row).width, 800);
+      expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+      expect(find.byTooltip('Paneli küçült'), findsNothing);
+      expect(find.byTooltip('Sonraki cümle'), findsOneWidget);
+      expect(find.byTooltip('Diğer seçenekler'), findsOneWidget);
+      await tester.tap(_next);
+      await tester.pumpAndSettle();
+      expect(find.text('Sayfa 2 / 3'), findsOneWidget);
+      expect(find.byTooltip('Sonraki cümle'), findsOneWidget);
+      expect(tester.getSize(panel).width, 800);
+      expect(tester.getSize(row).width, 800);
+    });
 
     testWidgets('single-page content has no switch', (tester) async {
       final speech = FakeSpeechService();

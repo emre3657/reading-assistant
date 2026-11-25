@@ -103,12 +103,15 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
   int _lastRecognitionId = 0;
   int _scrollToken = 0;
-  bool _panelExpanded = true;
+  ListeningStatus _lastListeningStatus = ListeningStatus.idle;
 
   OverlayEntry? _editLockNotice;
   Timer? _editLockNoticeTimer;
 
   bool _saveDialogOpen = false;
+  bool _openingLibrary = false;
+  bool _foreground = true;
+  int _lifecycleToken = 0;
   bool _openingBackup = false;
   bool _pickingBatch = false;
   bool _pickerActive = false;
@@ -133,6 +136,8 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   bool get _pageLocked =>
       _pageSaving ||
       _pageExitInProgress ||
+      _saveDialogOpen ||
+      _openingLibrary ||
       _pickingBatch ||
       _openingBackup ||
       _cropOpen;
@@ -258,16 +263,29 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _foreground = true;
     // Temporary inactive states, such as system dialogs, do not stop reading.
     if (state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _foreground = false;
+      _lifecycleToken++;
       _hideEditLockNotice();
       _listening.stop();
     }
   }
 
   void _onListeningChanged() {
+    final status = _listening.status;
+    if (status == ListeningStatus.failed &&
+        _lastListeningStatus != ListeningStatus.failed &&
+        _listening.message != null &&
+        mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(_listening.message!)));
+    }
+    _lastListeningStatus = status;
     if (!_listening.isActive) {
       _hideEditLockNotice();
     }
@@ -853,7 +871,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
   Future<void> _saveDocument() async {
     if (_saveDialogOpen ||
         _controller.isBusy ||
-        _listening.isActive ||
+        (_listening.isActive &&
+            (_addingPage ||
+                widget.returnText ||
+                (!_listening.canPause && !_listening.canResume))) ||
         _pageLocked) {
       return;
     }
@@ -872,10 +893,16 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       return;
     }
 
-    _saveDialogOpen = true;
+    setState(() => _saveDialogOpen = true);
+    final token = _lifecycleToken;
 
     try {
       FocusManager.instance.primaryFocus?.unfocus();
+      if (_listening.canPause) {
+        await _listening.pause();
+        if (!mounted || !_listening.canResume) return;
+      }
+      if (!mounted || !_foreground || token != _lifecycleToken) return;
 
       final saved = await showDialog<bool>(
         context: context,
@@ -888,7 +915,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Metin kaydedildi.')));
     } finally {
-      _saveDialogOpen = false;
+      if (mounted) setState(() => _saveDialogOpen = false);
     }
   }
 
@@ -990,29 +1017,41 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
   Future<void> _openLibrary() async {
     if (_controller.isBusy ||
-        _listening.isActive ||
+        (_listening.isActive &&
+            !_listening.canPause &&
+            !_listening.canResume) ||
         _saveDialogOpen ||
         _pageLocked) {
       return;
     }
 
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (context) => ReadingPreferencesScope(
-          preferences: _preferences!,
-          child: LibraryScreen(
-            store: _store,
-            speechService: _listening.speechService,
-            pickerService: widget.pickerService,
-            textRecognitionService: widget.textRecognitionService,
-            rotationService: widget.rotationService,
-            previewImageBuilder: widget.previewImageBuilder,
+    setState(() => _openingLibrary = true);
+    final token = _lifecycleToken;
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      if (_listening.canPause) {
+        await _listening.pause();
+        if (!mounted || !_listening.canResume) return;
+      }
+      if (!mounted || !_foreground || token != _lifecycleToken) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (context) => ReadingPreferencesScope(
+            preferences: _preferences!,
+            child: LibraryScreen(
+              store: _store,
+              speechService: _listening.speechService,
+              pickerService: widget.pickerService,
+              textRecognitionService: widget.textRecognitionService,
+              rotationService: widget.rotationService,
+              previewImageBuilder: widget.previewImageBuilder,
+            ),
           ),
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) setState(() => _openingLibrary = false);
+    }
   }
 
   Future<void> _openBackup() async {
@@ -1148,19 +1187,20 @@ class _ImageImportScreenState extends State<ImageImportScreen>
 
     return _AnimatedPanel(
       visible: visible,
-      child: ListeningSurface(
-        child: ListeningControls(
-          key: const ValueKey('listening-panel'),
-          startButtonKey: _guideListen,
-          listening: _listening,
-          canStart:
-              !_listening.isActive &&
-              !_controller.isBusy &&
-              (_preferences?.ready ?? false),
-          onStart: _startListening,
-          expanded: _panelExpanded,
-          onToggleExpanded: () =>
-              setState(() => _panelExpanded = !_panelExpanded),
+      child: SafeArea(
+        top: false,
+        child: ListeningSurface(
+          child: CompactListeningControls(
+            key: const ValueKey('listening-panel'),
+            startButtonKey: _guideListen,
+            listening: _listening,
+            canStart:
+                !_listening.isActive &&
+                !_controller.isBusy &&
+                (_preferences?.ready ?? false),
+            onStart: _startListening,
+            onStop: () => unawaited(_listening.stop()),
+          ),
         ),
       ),
     );
@@ -1232,7 +1272,10 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               icon: const Icon(Icons.save_outlined),
               onPressed:
                   controller.isBusy ||
-                      listeningActive ||
+                      (listeningActive &&
+                          !_listening.canPause &&
+                          !_listening.canResume) ||
+                      _pageLocked ||
                       _openingBackup ||
                       controller.textController.text.trim().isEmpty
                   ? null
@@ -1244,7 +1287,13 @@ class _ImageImportScreenState extends State<ImageImportScreen>
             IconButton(
               tooltip: 'Kayıtlarım',
               icon: const Icon(Icons.library_books_outlined),
-              onPressed: controller.isBusy || listeningActive || _openingBackup
+              onPressed:
+                  controller.isBusy ||
+                      _pageLocked ||
+                      (listeningActive &&
+                          !_listening.canPause &&
+                          !_listening.canResume) ||
+                      _openingBackup
                   ? null
                   : _openLibrary,
             ),
@@ -1253,8 +1302,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               widget.batchController == null)
             PopupMenuButton<String>(
               tooltip: 'Diğer seçenekler',
-              enabled:
-                  !_openingBackup && !controller.isBusy && !_saveDialogOpen,
+              enabled: !_openingBackup && !controller.isBusy && !_pageLocked,
               onSelected: (value) {
                 if (value == 'theme') {
                   unawaited(_openThemeSettings());

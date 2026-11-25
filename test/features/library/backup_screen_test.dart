@@ -1,3 +1,5 @@
+import '../listening/reader_controls_test_utils.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -561,10 +563,15 @@ void main() {
     );
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     expect(speech.isSpeaking, isTrue);
-    await tester.tap(find.byTooltip('Diğer seçenekler'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byTooltip('Diğer seçenekler'),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Yedekle ve geri yükle'));
     await tester.pumpAndSettle();

@@ -189,6 +189,134 @@ class ListeningControls extends StatelessWidget {
   }
 }
 
+class CompactListeningControls extends StatelessWidget {
+  const CompactListeningControls({
+    super.key,
+    required this.listening,
+    required this.canStart,
+    required this.onStart,
+    required this.onStop,
+    this.nextPagePending = false,
+    this.onCancelNextPage,
+    this.startPending = false,
+    this.onCancelStart,
+    this.startButtonKey,
+  });
+
+  final ListeningController listening;
+  final bool canStart;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
+  final bool nextPagePending;
+  final VoidCallback? onCancelNextPage;
+  final bool startPending;
+  final VoidCallback? onCancelStart;
+  final Key? startButtonKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final stop = nextPagePending
+        ? onCancelNextPage
+        : startPending
+        ? onCancelStart
+        : listening.canStop
+        ? listening.stop
+        : null;
+    final buttons = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          tooltip: 'Önceki cümle',
+          onPressed: listening.canGoPrevious
+              ? listening.previousSentence
+              : null,
+          icon: const Icon(Icons.skip_previous),
+        ),
+        IconButton.filled(
+          key: startButtonKey,
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          tooltip: listening.canResume
+              ? 'Devam et'
+              : listening.canPause
+              ? 'Duraklat'
+              : 'Sesli oku',
+          onPressed: listening.canResume
+              ? listening.resume
+              : listening.canPause
+              ? listening.pause
+              : canStart
+              ? onStart
+              : null,
+          icon: Icon(listening.canPause ? Icons.pause : Icons.play_arrow),
+        ),
+        IconButton(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          tooltip: 'Sonraki cümle',
+          onPressed: listening.canGoNext ? listening.nextSentence : null,
+          icon: const Icon(Icons.skip_next),
+        ),
+      ],
+    );
+    final menu = SizedBox(
+      width: 48,
+      height: 48,
+      child: PopupMenuButton<String>(
+        tooltip: 'Diğer seçenekler',
+        popUpAnimationStyle: AnimationStyle.noAnimation,
+        onSelected: (action) {
+          if (action == 'stop') onStop();
+          if (action == 'restart') {
+            listening.restartFromBeginning();
+          }
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'stop',
+            enabled: stop != null,
+            child: const Text('Durdur'),
+          ),
+          PopupMenuItem(
+            value: 'restart',
+            enabled: listening.canRestart,
+            child: const Text('Başa dön'),
+          ),
+        ],
+      ),
+    );
+    return Material(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      child: Semantics(
+        container: true,
+        label: 'Oynatma kontrolleri',
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 240) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(child: buttons),
+                  Align(alignment: AlignmentDirectional.centerEnd, child: menu),
+                ],
+              );
+            }
+            return SizedBox(
+              height: 48,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  buttons,
+                  PositionedDirectional(end: 8, child: menu),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 /// Keeps the bottom surface at its natural height unless it exceeds the
 /// screen space available beneath the app bar.
 class ListeningSurface extends StatelessWidget {

@@ -1,3 +1,5 @@
+import '../listening/reader_controls_test_utils.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -124,7 +126,7 @@ void main() {
   ) async {
     await _show(tester, _Picker(), FakeSpeechService());
     await _create(tester, 'Bir cümle.');
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     for (final label in ['Temizle', 'Kapat']) {
       expect(
@@ -216,7 +218,7 @@ void main() {
     final dialogContext = tester.element(find.byType(SaveDocumentDialog));
     Navigator.of(dialogContext).pop(false);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     expect(speech.spoken.join(), contains('Yazılan metin.'));

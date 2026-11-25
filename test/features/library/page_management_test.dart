@@ -1,3 +1,5 @@
+import '../listening/reader_controls_test_utils.dart';
+
 import 'dart:async';
 
 import 'fake_reading_positions.dart';
@@ -236,18 +238,18 @@ void main() {
       await _show(tester, store, speech: speech);
       await tester.tap(find.byKey(const ValueKey('page-70')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pumpAndSettle();
       speech.finishCurrent();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Duraklat'));
+      await tapReadingControl(tester, 'Duraklat');
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Ayraç seçenekleri'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Ayraç koy'));
       await tester.pumpAndSettle();
       expect(store.bookmarks[7]?.sentenceIndex, 1);
-      await tester.tap(find.text('Devam et'));
+      await tapReadingControl(tester, 'Devam et');
       await tester.pumpAndSettle();
       speech.finishCurrent();
       await tester.pumpAndSettle();
@@ -261,7 +263,7 @@ void main() {
       expect(speech.isSpeaking, isFalse);
       expect(store.positionWrites, writes);
       expect(store.positions[7]?.sentenceIndex, 2);
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pumpAndSettle();
       expect(speech.spoken.last, 'İki. ');
     },
@@ -314,7 +316,7 @@ void main() {
       isTrue,
     );
     expect(speech.spoken, isEmpty);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     expect(speech.spoken.single, startsWith('Cümle 60.'));
   });
@@ -411,7 +413,7 @@ void main() {
       expect(find.byKey(const ValueKey('visual-bookmark')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('previous-page')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pumpAndSettle();
       expect(store.positions[7]?.pageId, 70);
       expect(store.bookmarks[7]?.pageId, 71);
@@ -420,7 +422,7 @@ void main() {
       expect(speech.isSpeaking, isFalse);
       expect(store.positionWrites, writes);
       expect(store.positions[7]?.pageId, 70);
-      expect(find.text('Sayfa 2'), findsWidgets);
+      expect(find.text('Sayfa 2 / 2'), findsOneWidget);
       await action('Ayracı kaldır');
       expect(store.bookmarks, isEmpty);
       expect(find.byKey(const ValueKey('visual-bookmark')), findsNothing);
@@ -455,7 +457,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(speech.spoken, isEmpty);
       expect(store.positions[7]?.sentenceIndex, 0);
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pumpAndSettle();
       expect(speech.spoken.single, 'İki.');
       expect(store.bookmarks[7]?.sentenceIndex, 1);
@@ -492,17 +494,17 @@ void main() {
       71,
     );
     expect(speech.spoken, isEmpty);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     expect(speech.spoken.single, 'İki. ');
     expect(store.positions[7]?.sentenceIndex, 1);
-    await tester.tap(find.text('Duraklat'));
+    await tapReadingControl(tester, 'Duraklat');
     await tester.pumpAndSettle();
     expect(store.positions[7]?.sentenceIndex, 1);
-    await tester.tap(find.text('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
     await tester.pumpAndSettle();
     expect(store.positions[7]?.sentenceIndex, 1);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     expect(speech.spoken.last, 'Bir. ');
     await tester.binding.handlePopRoute();
@@ -527,7 +529,7 @@ void main() {
       await _show(tester, store, speech: speech);
       await tester.tap(find.text('Kaldığın yerden devam et'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pumpAndSettle();
       expect(speech.spoken.last, 'Bir. ');
       await tester.binding.handlePopRoute();
@@ -539,7 +541,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('page-70')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pumpAndSettle();
       expect(speech.spoken.last, 'Bir. ');
     },
@@ -600,7 +602,7 @@ void main() {
       await _show(tester, store, speech: speech);
       await tester.tap(find.byKey(const ValueKey('page-70')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
       await tester.pumpAndSettle();
       expect(speech.isSpeaking, isTrue);
       expect(find.textContaining('Okuma konumu kaydedilemedi'), findsOneWidget);
@@ -652,7 +654,7 @@ void main() {
     );
     expect(reader.pageId, 71);
     expect(reader.document.text, 'İkinci sayfa.');
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     expect(speech.spoken.single, 'İkinci sayfa.');

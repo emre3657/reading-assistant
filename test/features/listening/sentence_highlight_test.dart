@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'reader_controls_test_utils.dart';
+
 import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
@@ -81,7 +84,13 @@ TextSpan _editableSpan(WidgetTester tester) =>
 TextSpan _savedSpan(WidgetTester tester) => _editableSpan(tester);
 
 Future<void> _tap(WidgetTester tester, String label) async {
-  final finder = find.text(label);
+  final finder = readingControl(label);
+  if (label == 'Durdur' || label == 'Başa dön') {
+    await tapReadingControl(tester, label);
+    await tester.pump();
+    await tester.pump();
+    return;
+  }
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   expect(finder.hitTestable(), findsOneWidget);

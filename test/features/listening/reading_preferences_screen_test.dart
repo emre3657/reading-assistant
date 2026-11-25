@@ -1,3 +1,5 @@
+import 'reader_controls_test_utils.dart';
+
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
@@ -478,7 +480,7 @@ void main() {
     final field = find.byKey(const ValueKey('saved-reading-text'));
     final originalSize = tester.widget<TextField>(field).style!.fontSize!;
     expect(originalSize, 16);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pumpAndSettle();
     speech.progress(0, 3);
     await tester.pumpAndSettle();
@@ -547,7 +549,7 @@ void main() {
     expect((span.children![1] as TextSpan).style!.backgroundColor, isNotNull);
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Düzenle'));
     await tester.pumpAndSettle();
@@ -625,7 +627,7 @@ void main() {
         FocusManager.instance.primaryFocus?.unfocus();
         tester.testTextInput.hide();
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Sesli oku'));
+        await tapReadingControl(tester, 'Sesli oku');
         await tester.pumpAndSettle();
         speech.progress(0, 3);
         await tester.pumpAndSettle();
@@ -651,20 +653,20 @@ void main() {
           (span.children![1] as TextSpan).style!.backgroundColor,
           isNotNull,
         );
-        await tester.tap(find.text('Duraklat'));
+        await tapReadingControl(tester, 'Duraklat');
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
         expect(editable.renderEditable.text!.style!.height, 2);
         expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
-        await tester.tap(find.text('Devam et'));
+        await tapReadingControl(tester, 'Devam et');
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Durdur'));
+        await tapReadingControl(tester, 'Durdur');
         await tester.pumpAndSettle();
         expect(editable.renderEditable.text!.style!.fontSize, baseSize * 1.5);
         expect(editable.renderEditable.text!.style!.height, 2);
         expect(tester.widget<TextField>(field).textAlign, TextAlign.right);
         expect(controller.text, 'Bir iki.');
-        await tester.tap(find.text('Sesli oku'));
+        await tapReadingControl(tester, 'Sesli oku');
         await tester.pumpAndSettle();
         speech.finishCurrent();
         await tester.pumpAndSettle();
@@ -921,11 +923,10 @@ void main() {
     final speech = FakeSpeechService();
     await tester.pumpWidget(_app(preferences, _import(speech)));
     await _createText(tester);
-    final readButton = find.ancestor(
-      of: find.text('Sesli oku'),
-      matching: find.byType(FilledButton),
+    final readButton = find.byWidgetPredicate(
+      (widget) => widget is IconButton && widget.tooltip == 'Sesli oku',
     );
-    expect(tester.widget<FilledButton>(readButton).onPressed, isNull);
+    expect(tester.widget<IconButton>(readButton).onPressed, isNull);
     expect(store.saveCalls, 0);
     expect(speech.spoken, isEmpty);
     store.loadGate!.complete();
@@ -1022,7 +1023,7 @@ void main() {
     expect(speech.spoken, isEmpty);
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     expect(speech.spokenRates, [1.25]);
@@ -1037,7 +1038,7 @@ void main() {
     await tester.pumpWidget(_app(preferences, _import(speech)));
     await tester.pumpAndSettle();
     await _createText(tester);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     preferences.setFollowSentence(true);
@@ -1097,7 +1098,7 @@ void main() {
     await tester.tap(find.text('Kapat'));
     await tester.pumpAndSettle();
     await _createText(tester);
-    await tester.tap(find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
     await tester.pump();
     await tester.pump();
     expect(speech.spokenRates, [0.75]);

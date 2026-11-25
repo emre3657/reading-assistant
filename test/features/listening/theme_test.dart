@@ -1,3 +1,5 @@
+import 'reader_controls_test_utils.dart';
+
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
@@ -111,7 +113,13 @@ void main() {
         ReadingAssistantApp(readingPreferences: preferences),
       );
       await tester.pumpAndSettle();
-      await _tap(tester, find.byTooltip('Diğer seçenekler'));
+      await _tap(
+        tester,
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.byTooltip('Diğer seçenekler'),
+        ),
+      );
       await _tap(tester, find.text('Tema'));
       for (final mode in [ThemeMode.light, ThemeMode.dark]) {
         await _tap(
@@ -179,9 +187,16 @@ void main() {
       final controller = tester.widget<TextField>(field).controller!;
       controller.selection = const TextSelection.collapsed(offset: 3);
       await tester.pumpAndSettle();
-      await _tap(tester, find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
+      await tester.pumpAndSettle();
       expect(speech.isSpeaking, isTrue);
-      await _tap(tester, find.byTooltip('Diğer seçenekler'));
+      await _tap(
+        tester,
+        find.descendant(
+          of: find.byType(AppBar),
+          matching: find.byTooltip('Diğer seçenekler'),
+        ),
+      );
       await _tap(tester, find.text('Tema'));
       final scroll = tester
           .widget<SingleChildScrollView>(

@@ -1,3 +1,5 @@
+import '../listening/reader_controls_test_utils.dart';
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -341,7 +343,8 @@ void main() {
       preferences.setAutoNextPage(true);
       preferences.setFollowSentence(true);
       await _show(tester, store, speech, preferences: preferences);
-      await _tap(tester, find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
+      await tester.pumpAndSettle();
       expect(speech.spoken, ['Aynı. ']);
       await tester.tapAt(_character(tester, 13));
       await tester.pumpAndSettle();
@@ -402,7 +405,8 @@ void main() {
       final a = foreground.computeLuminance() + 0.05;
       final b = background.computeLuminance() + 0.05;
       expect(a > b ? a / b : b / a, greaterThanOrEqualTo(4.5));
-      await _tap(tester, find.text('Sesli oku'));
+      await tapReadingControl(tester, 'Sesli oku');
+      await tester.pumpAndSettle();
       await tester.tapAt(_character(tester, 1));
       await tester.pumpAndSettle();
       final selectedAndPlaying = _segments(tester)
@@ -437,8 +441,8 @@ void main() {
         )
         .first
         .toRect();
-    final firstLineTop = editable.localToGlobal(firstBox.topLeft).dy;
-    expect(firstBubble.bottom, lessThanOrEqualTo(firstLineTop));
+    final firstLine = firstBox.shift(editable.localToGlobal(Offset.zero));
+    expect(firstBubble.overlaps(firstLine), isFalse);
     expect(firstBubble.height, greaterThanOrEqualTo(48));
     expect(tester.getRect(_field), textBefore);
     expect(
@@ -474,11 +478,13 @@ void main() {
   ) async {
     final speech = FakeSpeechService();
     await _show(tester, _Store(), speech);
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     await tester.tapAt(_character(tester, 7));
     await tester.pumpAndSettle();
     expect(_readFrom, findsOneWidget);
-    await _tap(tester, find.text('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
+    await tester.pumpAndSettle();
     expect(_readFrom, findsNothing);
     expect(speech.isSpeaking, isFalse);
     expect(speech.stopCalls, 1);
@@ -628,8 +634,10 @@ void main() {
   ) async {
     final speech = FakeSpeechService();
     await _show(tester, _Store(), speech, initialSentence: 1);
-    await _tap(tester, find.text('Sesli oku'));
-    await _tap(tester, find.text('Duraklat'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
+    await tapReadingControl(tester, 'Duraklat');
+    await tester.pumpAndSettle();
     final previousStops = speech.stopCalls;
     await tester.tapAt(_character(tester, 1));
     await tester.pumpAndSettle();
@@ -645,7 +653,8 @@ void main() {
     final store = _Store();
     final speech = FakeSpeechService(stopError: StateError('stop'));
     await _show(tester, store, speech);
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     await tester.tapAt(_character(tester, 13));
     await tester.pumpAndSettle();
     await _tap(tester, _readFrom);
@@ -699,7 +708,8 @@ void main() {
   ) async {
     final speech = _SlowStop();
     await _show(tester, _Store(), speech);
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     await tester.tapAt(_character(tester, 13));
     await tester.pumpAndSettle();
     await tester.tap(_readFrom);
@@ -751,7 +761,7 @@ void main() {
       speech.finishCurrent();
       await tester.pump();
       await tester.pump();
-      expect(find.text('Sonraki sayfa açılıyor…'), findsOneWidget);
+      expect(find.text('Sonraki sayfa açılıyor…'), findsNothing);
       await _tap(tester, _readFrom);
       expect(speech.spoken, ['Son cümle.', 'Son cümle.']);
       store.pagesGate!.complete();
@@ -766,7 +776,8 @@ void main() {
   ) async {
     final speech = _SlowStop();
     await _show(tester, _Store(), speech);
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     await tester.tapAt(_character(tester, 13));
     await tester.pumpAndSettle();
     await tester.tap(_readFrom);

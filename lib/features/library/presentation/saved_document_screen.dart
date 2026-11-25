@@ -160,8 +160,6 @@ class _SentenceBubbleLayout extends SingleChildLayoutDelegate {
 
 class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
-  static const _lockedHint = 'Düzenlemek için okumayı durdur';
-
   late final ListeningController _listening;
   ReadingPreferences? _preferences;
   ReadingPreferences? _ownedPreferences;
@@ -211,12 +209,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   int? _pageNumber;
 
   bool _editing = false;
+  bool _editingStartPending = false;
   bool _saving = false;
   bool _transitioning = false;
   bool _pageDialogOpen = false;
   bool _exitInProgress = false;
   bool _allowPop = false;
-  bool _panelExpanded = true;
   int? _resumeSentence;
   int? _selectedSentence;
   int? _pendingReadFrom;
@@ -804,6 +802,12 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
 
   void _onListeningChanged() {
     final status = _listening.status;
+    if (status == ListeningStatus.failed &&
+        _lastStatus != ListeningStatus.failed &&
+        _listening.message != null &&
+        mounted) {
+      _showMessage(_listening.message!);
+    }
     final finishedNow =
         status == ListeningStatus.completed &&
         _lastStatus != ListeningStatus.completed;
@@ -933,7 +937,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     }
   }
 
-  Widget? _buildPageNavigation() {
+  Widget? _buildPageNavigation({bool compact = false}) {
     if (!_hasPageNavigation) return null;
     final index = _pageIndex;
     final total = _pages!.length;
@@ -946,6 +950,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     return PageNavigationBar(
       current: index + 1,
       total: total,
+      compact: compact,
       onPrevious: blocked || index == 0 ? null : () => _navigate(delta: -1),
       onNext: blocked || index == total - 1 ? null : () => _navigate(delta: 1),
       onGoToPage: blocked || _pageDialogOpen ? null : _showGoToPage,
@@ -1009,6 +1014,7 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
         !(_preferences?.ready ?? false)) {
       return;
     }
+
     final initialSentence = _resumeSentence ?? 0;
     if (!_showVisualBookmark || MediaQuery.disableAnimationsOf(context)) {
       _beginListening(initialSentence);
@@ -1019,6 +1025,16 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     final text = _saved.text;
     setState(() => _transitioning = true);
     unawaited(_startAfterRetraction(token, pageId, text, initialSentence));
+  }
+
+  void _stopCompactListening() {
+    if (_autoPending) {
+      _cancelAutoAdvance();
+    } else if (_bookmarkRetracting) {
+      _cancelBookmarkRetraction();
+    } else if (_listening.canStop) {
+      unawaited(_listening.stop());
+    }
   }
 
   Future<void> _startAfterRetraction(
@@ -1301,25 +1317,45 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
     }
   }
 
-  void _startEditing() {
+  Future<void> _startEditing() async {
     if (_bookmarkBusy ||
         _editing ||
         _saving ||
         _transitioning ||
-        _listening.isActive) {
+        (_listening.isActive &&
+            !_listening.canPause &&
+            !_listening.canResume)) {
       return;
     }
 
     FocusManager.instance.primaryFocus?.unfocus();
-
     setState(() {
-      _readFromToken++;
-      _clearSentenceSelection();
-      _editSession++;
-      _editing = true;
-      _error = null;
-      _textController.text = _saved.text;
+      _transitioning = true;
+      _editingStartPending = true;
     });
+    final token = _navigationToken;
+    try {
+      if (_listening.canPause) {
+        await _listening.pause();
+        if (!mounted || !_listening.canResume) return;
+      }
+      if (!mounted || !_foreground || token != _navigationToken) return;
+      setState(() {
+        _readFromToken++;
+        _clearSentenceSelection();
+        _editSession++;
+        _editing = true;
+        _error = null;
+        _textController.text = _saved.text;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _transitioning = false;
+          _editingStartPending = false;
+        });
+      }
+    }
   }
 
   void _leaveEditing() {
@@ -1541,6 +1577,11 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
       return false;
     }
 
+    if (_listening.isActive) {
+      await _listening.stop();
+      if (!mounted) return false;
+    }
+
     setState(() {
       _saved = SavedDocument(
         id: _saved.id,
@@ -1644,14 +1685,21 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
           IconButton(
             tooltip: 'Görünüm ve sesli okuma',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: _previousPage != null ? null : _openReadingSettings,
+            onPressed: _previousPage != null || _editingStartPending
+                ? null
+                : _openReadingSettings,
           ),
           IconButton(
-            tooltip: listeningActive ? _lockedHint : 'Düzenle',
+            tooltip: 'Düzenle',
             icon: const Icon(Icons.edit_outlined),
-            onPressed: listeningActive || _transitioning || _bookmarkBusy
+            onPressed:
+                _transitioning ||
+                    _bookmarkBusy ||
+                    (listeningActive &&
+                        !_listening.canPause &&
+                        !_listening.canResume)
                 ? null
-                : _startEditing,
+                : () => unawaited(_startEditing()),
           ),
           if (_pageId != null)
             PopupMenuButton<String>(
@@ -1743,16 +1791,14 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   Text(
-                                    document.category.label,
+                                    _pageNumber == null
+                                        ? document.category.label
+                                        : '${document.category.label} · Sayfa $_pageNumber',
                                     style: Theme.of(context)
                                         .textTheme
                                         .labelLarge,
                                   ),
-                                  if (_pageNumber != null) ...[
-                                    const SizedBox(height: 8),
-                                    Text('Sayfa $_pageNumber'),
-                                  ],
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 8),
                                   ReadingPageSurface(
                                     view: _preferences!.pageView,
                                     child: KeyedSubtree(
@@ -1906,37 +1952,67 @@ class _SavedDocumentScreenState extends State<SavedDocumentScreen>
   }
 
   Widget? _buildBottomBar(SavedDocument document, bool listeningActive) {
-    final pageNavigation = _buildPageNavigation();
+    final media = MediaQuery.of(context);
+    final pageText = TextPainter(
+      text: TextSpan(
+        text: 'Sayfa ${_pageIndex + 1} / ${_pages?.length ?? 0}',
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: media.textScaler,
+      maxLines: 1,
+    )..layout();
+    final availableWidth =
+        media.size.width - media.padding.left - media.padding.right;
+    final compact =
+        media.orientation == Orientation.landscape &&
+        availableWidth / 2 >= 240 &&
+        availableWidth / 2 >= 96 + pageText.width + 16;
+    pageText.dispose();
+    final pageNavigation = _buildPageNavigation(compact: compact);
     final controls = document.text.trim().isEmpty
         ? null
-        : ListeningControls(
-            key: const ValueKey('listening-panel'),
-            listening: _listening,
-            canStart:
-                !_bookmarkBusy &&
-                !listeningActive &&
-                !_transitioning &&
-                (_preferences?.ready ?? false),
-            onStart: _startListening,
-            expanded: _panelExpanded,
-            onToggleExpanded: () =>
-                setState(() => _panelExpanded = !_panelExpanded),
-            nextPagePending: _autoPending,
-            onCancelNextPage: _cancelAutoAdvance,
-            startPending: _bookmarkRetracting,
-            onCancelStart: _cancelBookmarkRetraction,
+        : IgnorePointer(
+            ignoring: _editingStartPending,
+            child: CompactListeningControls(
+              key: const ValueKey('listening-panel'),
+              listening: _listening,
+              canStart:
+                  !_bookmarkBusy &&
+                  !listeningActive &&
+                  !_transitioning &&
+                  (_preferences?.ready ?? false),
+              onStart: _startListening,
+              onStop: _stopCompactListening,
+              nextPagePending: _autoPending,
+              onCancelNextPage: _cancelAutoAdvance,
+              startPending: _bookmarkRetracting,
+              onCancelStart: _cancelBookmarkRetraction,
+            ),
           );
     if (pageNavigation == null) {
-      return controls == null ? null : ListeningSurface(child: controls);
+      return controls == null
+          ? null
+          : SafeArea(top: false, child: ListeningSurface(child: controls));
     }
     if (controls == null) {
-      return SafeArea(child: pageNavigation);
+      return SafeArea(top: false, child: pageNavigation);
     }
-    return ListeningSurface(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [pageNavigation, controls],
+    return SafeArea(
+      top: false,
+      child: ListeningSurface(
+        child: compact
+            ? Row(
+                children: [
+                  Expanded(child: pageNavigation),
+                  Expanded(child: controls),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [pageNavigation, controls],
+              ),
       ),
     );
   }

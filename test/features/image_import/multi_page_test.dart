@@ -1,3 +1,5 @@
+import '../listening/reader_controls_test_utils.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -671,16 +673,18 @@ void main() {
       tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
       false,
     );
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     expect(speech.spoken, ['Elle düzeltme']);
-    await _tap(tester, find.text('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
+    await tester.pumpAndSettle();
     await _tap(tester, find.text('Satırları birleştir'));
     await _tap(tester, find.text('Metni sil ve uygula'));
     expect(tester.widget<TextField>(_field).controller!.text, 'a bir iki');
     await _tap(tester, find.text('Temizle'));
     await _tap(tester, find.widgetWithText(FilledButton, 'Temizle'));
     expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
-    expect(find.text('Sesli oku'), findsNothing);
+    expect(find.byTooltip('Sesli oku'), findsNothing);
     expect(speech.spoken, ['Elle düzeltme']);
   });
 
@@ -736,7 +740,7 @@ void main() {
           find.byKey(ValueKey(addingPage ? 'new-page-text' : 'import-text')),
           findsNothing,
         );
-        expect(find.text('Sesli oku'), findsNothing);
+        expect(find.byTooltip('Sesli oku'), findsNothing);
         if (addingPage) {
           expect(
             tester
@@ -787,7 +791,7 @@ void main() {
     await _tap(tester, find.text('Temizle'));
     await _tap(tester, find.widgetWithText(FilledButton, 'Temizle'));
     expect(tester.widget<TextField>(_field).controller!.text, isEmpty);
-    expect(find.text('Sesli oku'), findsNothing);
+    expect(find.byTooltip('Sesli oku'), findsNothing);
     await _back(tester);
     await _tap(tester, _action(0, 'Kaldır'));
     expect(_draft(0), findsNothing);
@@ -795,7 +799,8 @@ void main() {
     await _tap(tester, find.text('Kaydetmeden çık'));
     expect(find.byType(ImagePreview), findsOneWidget);
     expect(tester.widget<TextField>(_field).controller!.text, 'Önce');
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     expect(speech.spoken, ['Önce']);
   });
 
@@ -895,9 +900,11 @@ void main() {
         .controller!
         .text;
     expect(text, 'a');
-    await _tap(tester, find.text('Sesli oku'));
+    await tapReadingControl(tester, 'Sesli oku');
+    await tester.pumpAndSettle();
     expect(speech.spoken, [text]);
-    await _tap(tester, find.text('Durdur'));
+    await tapReadingControl(tester, 'Durdur');
+    await tester.pumpAndSettle();
     await _tap(tester, find.byKey(const ValueKey('save-page')));
     expect(saved, text);
     expect(find.text('Aç'), findsOneWidget);
@@ -965,7 +972,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(MultiPageScreen), findsNothing);
     expect(_field, findsNothing);
-    expect(find.text('Sesli oku'), findsNothing);
+    expect(find.byTooltip('Sesli oku'), findsNothing);
     expect(find.byType(ImagePreview), findsOneWidget);
   });
 
