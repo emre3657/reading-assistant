@@ -223,6 +223,17 @@ void main() {
           .onPressed,
       isNull,
     );
+    expect(
+      tester
+          .widget<PopupMenuButton<String>>(
+            find.descendant(
+              of: find.byType(AppBar),
+              matching: find.byType(PopupMenuButton<String>),
+            ),
+          )
+          .enabled,
+      isFalse,
+    );
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);

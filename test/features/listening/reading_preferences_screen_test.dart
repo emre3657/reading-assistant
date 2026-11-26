@@ -3,7 +3,9 @@ import 'reader_controls_test_utils.dart';
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_screen.dart';
 import 'package:reading_assistant/features/image_import/presentation/image_import_controller.dart';
 import 'package:reading_assistant/features/library/data/document_page.dart';
@@ -62,6 +64,167 @@ Future<void> _createText(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('short landscape keeps the home text area usable', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    tester.view.physicalSize = const Size(720, 480);
+    tester.view.devicePixelRatio = 2;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await tester.pumpWidget(_app(preferences, _import(FakeSpeechService())));
+    await tester.pumpAndSettle();
+    final title = find.text('Okuma Asistanı');
+    final titleScroll = find.ancestor(
+      of: title,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is SingleChildScrollView &&
+            widget.scrollDirection == Axis.horizontal,
+      ),
+    );
+    expect(titleScroll, findsOneWidget);
+    expect(MediaQuery.textScalerOf(tester.element(title)).scale(20), 40);
+    expect(tester.getSemantics(title).label, 'Okuma Asistanı');
+    await tester.drag(titleScroll, const Offset(-100, 0));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .state<ScrollableState>(
+            find.descendant(of: titleScroll, matching: find.byType(Scrollable)),
+          )
+          .position
+          .pixels,
+      greaterThan(0),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('content-scroll'))).height,
+      greaterThanOrEqualTo(
+        tester.getSize(find.byKey(const ValueKey('pick-multiple'))).height,
+      ),
+    );
+    await openHomeReadingSettings(tester);
+    expect(find.byKey(const ValueKey('reading-speed')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('home menu remains usable with narrow width and large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await tester.pumpWidget(_app(preferences, _import(FakeSpeechService())));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Görünüm ve sesli okuma'), findsNothing);
+    final title = tester.renderObject<RenderParagraph>(
+      find.text('Okuma Asistanı'),
+    );
+    expect(
+      MediaQuery.textScalerOf(tester.element(find.text('Okuma Asistanı')))
+          .scale(20),
+      40,
+    );
+    expect(title.didExceedMaxLines, isFalse);
+    expect(
+      title.size.height,
+      greaterThanOrEqualTo(title.getMaxIntrinsicHeight(title.size.width)),
+    );
+    for (final tooltip in ['Metni kaydet', 'Kayıtlarım']) {
+      final button = find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == tooltip,
+      );
+      expect(tester.getSize(button).shortestSide, greaterThanOrEqualTo(48));
+    }
+    await tester.tap(find.byTooltip('Diğer seçenekler'));
+    await tester.pumpAndSettle();
+    for (final label in [
+      'Görünüm ve sesli okuma',
+      'Tema',
+      'Kullanım rehberi',
+      'Yedekle ve geri yükle',
+    ]) {
+      await tester.ensureVisible(find.text(label));
+      await tester.pumpAndSettle();
+      expect(find.text(label).hitTestable(), findsOneWidget);
+      expect(
+        MediaQuery.textScalerOf(tester.element(find.text(label))).scale(20),
+        40,
+      );
+      final item = find.ancestor(
+        of: find.text(label),
+        matching: find.byType(PopupMenuItem<String>),
+      );
+      expect(tester.getSize(item).shortestSide, greaterThanOrEqualTo(48));
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text(label))
+            .didExceedMaxLines,
+        isFalse,
+      );
+    }
+    expect(
+      tester.getSize(find.byType(PopupMenuButton<String>)).shortestSide,
+      greaterThanOrEqualTo(48),
+    );
+    await tester.ensureVisible(find.text('Görünüm ve sesli okuma'));
+    await tester.tap(find.text('Görünüm ve sesli okuma'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('reading-speed')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home settings remain available while OCR is busy', (
+    tester,
+  ) async {
+    final recognition = Completer<String>();
+    final preferences = ReadingPreferences(store: FakePreferencesStore());
+    await tester.pumpWidget(
+      _app(
+        preferences,
+        ImageImportScreen(
+          pickerService: FakeImagePickerService(
+            onPick: () async => XFile('test.jpg'),
+          ),
+          textRecognitionService: FakeTextRecognitionService(
+            (_) => recognition.future,
+          ),
+          previewImageBuilder: (_) => ControlledImageProvider(),
+          speechService: FakeSpeechService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Galeriden görsel seç'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Metni çıkar'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Diğer seçenekler'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    for (final label in ['Tema', 'Kullanım rehberi', 'Yedekle ve geri yükle']) {
+      final item = tester.widget<PopupMenuItem<String>>(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(PopupMenuItem<String>),
+        ),
+      );
+      expect(item.enabled, isFalse);
+    }
+    await tester.tap(find.text('Görünüm ve sesli okuma'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('reading-speed')), findsOneWidget);
+    recognition.complete('Metin.');
+    await tester.pumpAndSettle();
+  });
+
   for (final brightness in Brightness.values) {
     testWidgets('book surface stays readable and bounded in $brightness', (
       tester,
@@ -176,6 +339,10 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        expect(
+          find.byTooltip('Görünüm ve sesli okuma'),
+          mode == 'home' ? findsNothing : findsOneWidget,
+        );
         if (mode != 'batch') {
           await tester.tap(find.text('Metin yaz veya yapıştır'));
           await tester.pumpAndSettle();
@@ -945,8 +1112,7 @@ void main() {
     final speech = FakeSpeechService();
     await tester.pumpWidget(_app(preferences, _import(speech)));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
-    await tester.pumpAndSettle();
+    await openHomeReadingSettings(tester);
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
     expect(
       tester
@@ -1090,8 +1256,7 @@ void main() {
     await tester.pumpAndSettle();
     Navigator.of(tester.element(find.byType(SavedDocumentScreen))).pop();
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
-    await tester.pumpAndSettle();
+    await openHomeReadingSettings(tester);
     expect(find.text('0.75×'), findsOneWidget);
     expect(find.text('Sonraki sayfayı otomatik oku'), findsNothing);
     expect(preferences.autoNextPage, isTrue);
@@ -1111,8 +1276,7 @@ void main() {
     final preferences = ReadingPreferences(store: store);
     await tester.pumpWidget(_app(preferences, _import(FakeSpeechService())));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
-    await tester.pumpAndSettle();
+    await openHomeReadingSettings(tester);
     await tester.ensureVisible(find.byKey(const ValueKey('reading-speed')));
     await tester.tap(find.byKey(const ValueKey('reading-speed')));
     await tester.pumpAndSettle();

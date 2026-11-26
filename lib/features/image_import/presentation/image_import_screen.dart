@@ -1214,19 +1214,69 @@ class _ImageImportScreenState extends State<ImageImportScreen>
     final errorMessage = controller.errorMessage;
     final infoMessage = controller.infoMessage;
     final listeningActive = _listening.isActive;
+    final isHome =
+        !widget.returnText && !_addingPage && widget.batchController == null;
+    final media = MediaQuery.of(context);
+    double? homeToolbarHeight;
+    int? homeTitleLines;
+    var scrollHomeTitle = false;
+    if (isHome) {
+      // AppBar normally clamps title scaling, so measure the system-scaled text.
+      final titleWidth =
+          media.size.width -
+          media.padding.horizontal -
+          3 * kMinInteractiveDimension -
+          32 -
+          ((ModalRoute.of(context)?.canPop ?? false) ? kToolbarHeight : 0);
+      final title = TextPainter(
+        text: TextSpan(
+          text: 'Okuma Asistanı',
+          style:
+              Theme.of(context).appBarTheme.titleTextStyle ??
+              Theme.of(context).textTheme.titleLarge,
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: media.textScaler,
+      )..layout(maxWidth: titleWidth.clamp(1.0, double.infinity));
+      homeToolbarHeight = (title.height + 16).clamp(
+        kToolbarHeight,
+        double.infinity,
+      );
+      homeTitleLines = title.computeLineMetrics().length;
+      if (homeToolbarHeight > media.size.height / 2) {
+        // Keep the content usable in a very short viewport.
+        scrollHomeTitle = true;
+        title.layout();
+        homeToolbarHeight = (title.height + 16).clamp(
+          kToolbarHeight,
+          double.infinity,
+        );
+        homeTitleLines = 1;
+      }
+      title.dispose();
+    }
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: homeToolbarHeight,
         backgroundColor: colorScheme.inversePrimary,
-        title: Text(
-          widget.batchController != null
-              ? '${widget.batchPageNumber}. sayfa'
-              : _addingPage
-              ? 'Sayfa ekle'
-              : widget.returnText
-              ? 'Metin Çıkar'
-              : 'Okuma Asistanı',
-        ),
+        title: isHome
+            ? MediaQuery(
+                data: media,
+                child: scrollHomeTitle
+                    ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Text('Okuma Asistanı', maxLines: homeTitleLines),
+                      )
+                    : Text('Okuma Asistanı', maxLines: homeTitleLines),
+              )
+            : Text(
+                widget.batchController != null
+                    ? '${widget.batchPageNumber}. sayfa'
+                    : _addingPage
+                    ? 'Sayfa ekle'
+                    : 'Metin Çıkar',
+              ),
         leading: _addingPage
             ? BackButton(
                 onPressed: _pageSaving || _controller.isBusy
@@ -1235,11 +1285,12 @@ class _ImageImportScreenState extends State<ImageImportScreen>
               )
             : null,
         actions: [
-          IconButton(
-            tooltip: 'Görünüm ve sesli okuma',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: _pageLocked ? null : _openReadingSettings,
-          ),
+          if (!isHome)
+            IconButton(
+              tooltip: 'Görünüm ve sesli okuma',
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: _pageLocked ? null : _openReadingSettings,
+            ),
           if (widget.batchController != null)
             const SizedBox.shrink()
           else if (_addingPage)
@@ -1281,9 +1332,7 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                   ? null
                   : _saveDocument,
             ),
-          if (!widget.returnText &&
-              !_addingPage &&
-              widget.batchController == null)
+          if (isHome)
             IconButton(
               tooltip: 'Kayıtlarım',
               icon: const Icon(Icons.library_books_outlined),
@@ -1297,14 +1346,16 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                   ? null
                   : _openLibrary,
             ),
-          if (!widget.returnText &&
-              !_addingPage &&
-              widget.batchController == null)
+          if (isHome)
             PopupMenuButton<String>(
               tooltip: 'Diğer seçenekler',
-              enabled: !_openingBackup && !controller.isBusy && !_pageLocked,
+              enabled: !_pageLocked,
               onSelected: (value) {
-                if (value == 'theme') {
+                if (value == 'reading-settings') {
+                  if (!_pageLocked) unawaited(_openReadingSettings());
+                } else if (_pageLocked || controller.isBusy) {
+                  return;
+                } else if (value == 'theme') {
                   unawaited(_openThemeSettings());
                 } else if (value == 'backup') {
                   unawaited(_openBackup());
@@ -1323,12 +1374,25 @@ class _ImageImportScreenState extends State<ImageImportScreen>
                   }
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'theme', child: Text('Tema')),
-                PopupMenuItem(value: 'guide', child: Text('Kullanım rehberi')),
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'reading-settings',
+                  child: Text('Görünüm ve sesli okuma'),
+                ),
+                PopupMenuItem(
+                  value: 'theme',
+                  enabled: !controller.isBusy,
+                  child: const Text('Tema'),
+                ),
+                PopupMenuItem(
+                  value: 'guide',
+                  enabled: !controller.isBusy,
+                  child: const Text('Kullanım rehberi'),
+                ),
                 PopupMenuItem(
                   value: 'backup',
-                  child: Text('Yedekle ve geri yükle'),
+                  enabled: !controller.isBusy,
+                  child: const Text('Yedekle ve geri yükle'),
                 ),
               ],
             ),

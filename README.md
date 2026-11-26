@@ -36,7 +36,7 @@ Metinler cihazın TTS motoruyla Türkçe seslendirilir.
 - İsteğe bağlı olarak okunan cümleyi otomatik takip etme; elle kaydırınca takip duraklatılır.
 - 0.75×, 0.8×, 0.9×, 1×, 1.25× ve 1.5× hız seçenekleri.
 - İlk ekran, sayfa ekleme ve kayıtlı sayfa okuma/düzenleme metinleri için yazı boyutu, hizalama ve satır aralığı seçenekleri.
-- Metin ekranlarında altta kompakt dinleme kontrolleri bulunur; durdurma ve başa dönme “Diğer seçenekler” menüsündedir. Hız seçenekleri “Görünüm ve sesli okuma” menüsündedir.
+- Metin ekranlarında altta kompakt dinleme kontrolleri bulunur; durdurma ve başa dönme “Diğer seçenekler” menüsündedir. Ana ekranda hız ve görünüm ayarları, üstteki “Diğer seçenekler” menüsündeki “Görünüm ve sesli okuma” üzerinden açılır.
 
 Devam et, mevcut cümlenin başından okur. Okuma sırasında hız değiştirilirse aynı cümle yeni hızla yeniden başlar. İlk ekranda kaydetme veya Kayıtlarım'a geçiş ve kayıtlı sayfada düzenleme okumayı duraklatır; dönüşte Devam et ile sürdürülür. Değişen kayıtlı metin kaydedilirse eski okuma oturumu sona erer.
 

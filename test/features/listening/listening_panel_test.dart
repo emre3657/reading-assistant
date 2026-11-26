@@ -79,6 +79,7 @@ Future<_Harness> _open(
     ),
   );
   await tester.pump();
+  await tester.ensureVisible(find.text('Galeriden görsel seç'));
   await tester.tap(find.text('Galeriden görsel seç'));
   await tester.pump();
   return harness;
@@ -395,8 +396,7 @@ void main() {
     expect(restart.hitTestable(), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
-    await tester.pumpAndSettle();
+    await openHomeReadingSettings(tester);
     expect(find.byKey(const ValueKey('reading-speed')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -408,8 +408,7 @@ void main() {
     await _extract(tester);
 
     Future<void> openSettings() async {
-      await tester.tap(find.byTooltip('Görünüm ve sesli okuma'));
-      await tester.pumpAndSettle();
+      await openHomeReadingSettings(tester);
     }
 
     Future<void> selectSpeed(String value) async {
